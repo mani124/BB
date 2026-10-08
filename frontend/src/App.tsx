@@ -87,7 +87,7 @@ const DashboardContent: React.FC = () => {
       const res = await fetch('/api/paper/trade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signal, lots: state.paper_portfolio?.default_lots || 1 }),
+        body: JSON.stringify({ signal, lots: state.paper_portfolio?.default_lots || 2 }),
       });
       if (res.ok) {
         // Refresh portfolio immediately

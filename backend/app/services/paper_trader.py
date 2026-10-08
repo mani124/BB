@@ -32,12 +32,16 @@ class PaperPosition(BaseModel):
     status: Literal["OPEN", "TARGET_1", "TARGET_2", "STOPPED_OUT", "CLOSED"]
     exit_time: Optional[str] = None
     exit_reason: Optional[str] = None
+    initial_lots: Optional[int] = None
+    initial_quantity: Optional[int] = None
+    booked_lots: int = 0
+    booked_pnl_rupees: float = 0.0
 
 class PaperPortfolio(BaseModel):
     active_positions: list[PaperPosition] = []
     closed_trades: list[PaperPosition] = []
     auto_trade_enabled: bool = True
-    default_lots: int = 1
+    default_lots: int = 2
     total_realized_pnl: float = 0.0
     total_unrealized_pnl: float = 0.0
     total_pnl: float = 0.0
@@ -100,6 +104,10 @@ class PaperTradingEngine:
             lot_size=lot_size,
             lots=lots_to_trade,
             quantity=qty,
+            initial_lots=lots_to_trade,
+            initial_quantity=qty,
+            booked_lots=0,
+            booked_pnl_rupees=0.0,
             current_underlying=signal.entry_price,
             current_option_price=rec.estimated_option_entry,
             pnl_points=0.0,
@@ -144,11 +152,18 @@ class PaperTradingEngine:
 
                 # Check SL
                 if curr_spot <= pos.underlying_sl or pos.current_option_price <= pos.option_sl:
-                    reason = "Breakeven Trailed SL Hit" if pos.status == "TARGET_1" else "Stop-Loss Hit"
+                    is_breakeven = (pos.status == "TARGET_1")
+                    reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
                     pos.status = "STOPPED_OUT"
                     pos.exit_time = now_str
                     pos.exit_reason = reason
-                    pos.pnl_rupees = round(pos.pnl_points * pos.quantity, 2)
+                    if is_breakeven:
+                        pos.current_option_price = pos.option_entry
+                        pos.pnl_points = 0.0
+                        runner_pnl = 0.0
+                    else:
+                        runner_pnl = round(pos.pnl_points * pos.quantity, 2)
+                    pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
                     self._portfolio.closed_trades.append(pos)
                     continue
 
@@ -157,13 +172,23 @@ class PaperTradingEngine:
                     pos.status = "TARGET_2"
                     pos.exit_time = now_str
                     pos.exit_reason = "Target 2 (1:2.5) Hit"
-                    pos.pnl_rupees = round(pos.pnl_points * pos.quantity, 2)
+                    runner_pnl = round(pos.pnl_points * pos.quantity, 2)
+                    pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
                     self._portfolio.closed_trades.append(pos)
                     continue
 
                 # Check Target 1
                 elif curr_spot >= pos.underlying_target_1 and pos.status == "OPEN":
                     pos.status = "TARGET_1"
+                    # Partial booking: if lots >= 2, book 50%
+                    if pos.lots >= 2:
+                        book_lots = pos.lots // 2
+                        book_qty = book_lots * pos.lot_size
+                        book_pnl = round(pos.pnl_points * book_qty, 2)
+                        pos.booked_lots += book_lots
+                        pos.booked_pnl_rupees = round(pos.booked_pnl_rupees + book_pnl, 2)
+                        pos.lots -= book_lots
+                        pos.quantity -= book_qty
                     # Move SL to breakeven
                     pos.underlying_sl = pos.underlying_entry
                     pos.option_sl = pos.option_entry
@@ -176,11 +201,18 @@ class PaperTradingEngine:
 
                 # Check SL
                 if curr_spot >= pos.underlying_sl or pos.current_option_price <= pos.option_sl:
-                    reason = "Breakeven Trailed SL Hit" if pos.status == "TARGET_1" else "Stop-Loss Hit"
+                    is_breakeven = (pos.status == "TARGET_1")
+                    reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
                     pos.status = "STOPPED_OUT"
                     pos.exit_time = now_str
                     pos.exit_reason = reason
-                    pos.pnl_rupees = round(pos.pnl_points * pos.quantity, 2)
+                    if is_breakeven:
+                        pos.current_option_price = pos.option_entry
+                        pos.pnl_points = 0.0
+                        runner_pnl = 0.0
+                    else:
+                        runner_pnl = round(pos.pnl_points * pos.quantity, 2)
+                    pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
                     self._portfolio.closed_trades.append(pos)
                     continue
 
@@ -189,17 +221,29 @@ class PaperTradingEngine:
                     pos.status = "TARGET_2"
                     pos.exit_time = now_str
                     pos.exit_reason = "Target 2 (1:2.5) Hit"
-                    pos.pnl_rupees = round(pos.pnl_points * pos.quantity, 2)
+                    runner_pnl = round(pos.pnl_points * pos.quantity, 2)
+                    pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
                     self._portfolio.closed_trades.append(pos)
                     continue
 
                 # Check Target 1
                 elif curr_spot <= pos.underlying_target_1 and pos.status == "OPEN":
                     pos.status = "TARGET_1"
+                    # Partial booking: if lots >= 2, book 50%
+                    if pos.lots >= 2:
+                        book_lots = pos.lots // 2
+                        book_qty = book_lots * pos.lot_size
+                        book_pnl = round(pos.pnl_points * book_qty, 2)
+                        pos.booked_lots += book_lots
+                        pos.booked_pnl_rupees = round(pos.booked_pnl_rupees + book_pnl, 2)
+                        pos.lots -= book_lots
+                        pos.quantity -= book_qty
+                    # Move SL to breakeven
                     pos.underlying_sl = pos.underlying_entry
                     pos.option_sl = pos.option_entry
 
-            pos.pnl_rupees = round(pos.pnl_points * pos.quantity, 2)
+            runner_pnl = round(pos.pnl_points * pos.quantity, 2)
+            pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
             still_active.append(pos)
 
         self._portfolio.active_positions = still_active
@@ -211,7 +255,8 @@ class PaperTradingEngine:
                 pos.status = "CLOSED"
                 pos.exit_time = datetime.now().strftime("%H:%M:%S")
                 pos.exit_reason = reason
-                pos.pnl_rupees = round(pos.pnl_points * pos.quantity, 2)
+                runner_pnl = round(pos.pnl_points * pos.quantity, 2)
+                pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
                 closed = self._portfolio.active_positions.pop(i)
                 self._portfolio.closed_trades.append(closed)
                 self._recalculate_metrics()
@@ -219,8 +264,10 @@ class PaperTradingEngine:
         return None
 
     def _recalculate_metrics(self):
-        realized = sum(p.pnl_rupees for p in self._portfolio.closed_trades)
-        unrealized = sum(p.pnl_rupees for p in self._portfolio.active_positions)
+        closed_pnl = sum(p.pnl_rupees for p in self._portfolio.closed_trades)
+        active_booked_pnl = sum(p.booked_pnl_rupees for p in self._portfolio.active_positions)
+        realized = closed_pnl + active_booked_pnl
+        unrealized = sum(round(p.pnl_points * p.quantity, 2) for p in self._portfolio.active_positions)
         
         wins = sum(1 for p in self._portfolio.closed_trades if p.pnl_rupees > 0)
         losses = sum(1 for p in self._portfolio.closed_trades if p.pnl_rupees < 0)

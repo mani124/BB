@@ -95,6 +95,10 @@ export interface PaperPosition {
   status: 'OPEN' | 'TARGET_1' | 'TARGET_2' | 'STOPPED_OUT' | 'CLOSED';
   exit_time?: string;
   exit_reason?: string;
+  initial_lots?: number;
+  initial_quantity?: number;
+  booked_lots?: number;
+  booked_pnl_rupees?: number;
 }
 
 export interface PaperPortfolio {

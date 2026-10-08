@@ -102,7 +102,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <span className="font-semibold">Lot Multiplier:</span>
             <div className="flex bg-dark-900 border border-dark-700 rounded-lg p-1">
-              {[1, 2, 3, 5, 10].map((l) => (
+              {[2, 4, 6, 8, 10].map((l) => (
                 <button
                   key={l}
                   onClick={() => onChangeLots(l)}
@@ -136,7 +136,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
             Active Open Paper Positions ({portfolio.active_positions.length})
           </h3>
           <span className="text-[11px] text-cyan-400 font-mono">
-            Auto-trails SL at Breakeven after Target 1
+            Auto-books 50% at Target 1 & trails remainder at Breakeven
           </span>
         </div>
 
@@ -154,7 +154,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                   <th className="py-2.5 px-4">Qty (Lots)</th>
                   <th className="py-2.5 px-4">Option Entry</th>
                   <th className="py-2.5 px-4">Current LTP</th>
-                  <th className="py-2.5 px-4">Option SL / Target 1</th>
+                  <th className="py-2.5 px-4">Option SL / Target</th>
                   <th className="py-2.5 px-4">P&L (Pts)</th>
                   <th className="py-2.5 px-4">P&L (₹)</th>
                   <th className="py-2.5 px-4">Action</th>
@@ -164,6 +164,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                 {portfolio.active_positions.map((pos) => {
                   const isPos = pos.pnl_rupees >= 0;
                   const isCE = pos.option_type === 'CE';
+                  const isT1 = pos.status === 'TARGET_1';
 
                   return (
                     <tr key={pos.id} className="hover:bg-dark-700/30 transition">
@@ -185,6 +186,11 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
 
                       <td className="py-3 px-4 font-mono text-slate-300">
                         {pos.quantity} <span className="text-[10px] text-slate-500">({pos.lots}L × {pos.lot_size})</span>
+                        {isT1 && (
+                          <span className="block text-[10px] text-cyan-400 font-bold mt-0.5">
+                            ✓ 50% Booked (+₹{pos.booked_pnl_rupees?.toFixed(1) || '0'})
+                          </span>
+                        )}
                       </td>
 
                       <td className="py-3 px-4 font-mono text-slate-200">
@@ -196,8 +202,17 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                       </td>
 
                       <td className="py-3 px-4 font-mono text-[11px]">
-                        <span className="text-rose-400 block">SL: ₹{pos.option_sl.toFixed(1)}</span>
-                        <span className="text-emerald-400 block">T1: ₹{pos.option_target_1.toFixed(1)}</span>
+                        {isT1 ? (
+                          <>
+                            <span className="text-cyan-400 block font-semibold">Trailed SL (Cost): ₹{pos.option_sl.toFixed(1)}</span>
+                            <span className="text-emerald-400 block">T2 Target: ₹{pos.option_target_2.toFixed(1)}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-rose-400 block">SL: ₹{pos.option_sl.toFixed(1)}</span>
+                            <span className="text-emerald-400 block">T1: ₹{pos.option_target_1.toFixed(1)}</span>
+                          </>
+                        )}
                       </td>
 
                       <td className={`py-3 px-4 font-mono font-bold ${isPos ? 'text-emerald-400' : 'text-rose-400'}`}>
