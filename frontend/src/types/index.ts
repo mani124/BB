@@ -13,10 +13,20 @@ export interface OptionStrikeRecommendation {
   atm_strike: number;
   recommended_strike: number;
   strike_symbol: string;
+  lot_size: number;
+  // Spot levels
   risk: number;
   stop_loss: number;
   target_1: number;
   target_2: number;
+  // Option premium levels (Delta ~0.55)
+  estimated_option_entry: number;
+  option_sl_pts: number;
+  option_target_1_pts: number;
+  option_target_2_pts: number;
+  option_sl_price: number;
+  option_target_1_price: number;
+  option_target_2_price: number;
 }
 
 export interface Signal {
@@ -58,9 +68,53 @@ export interface IndexRadarItem {
   trend_state: 'BULLISH_WALK' | 'BEARISH_WALK' | 'SQUEEZE' | 'RANGE';
 }
 
+export interface PaperPosition {
+  id: string;
+  signal_id: string;
+  symbol: string;
+  option_type: OptionType;
+  strike_symbol: string;
+  timeframe: string;
+  setup_type: string;
+  entry_time: string;
+  underlying_entry: number;
+  underlying_sl: number;
+  underlying_target_1: number;
+  underlying_target_2: number;
+  option_entry: number;
+  option_sl: number;
+  option_target_1: number;
+  option_target_2: number;
+  lot_size: number;
+  lots: number;
+  quantity: number;
+  current_underlying: number;
+  current_option_price: number;
+  pnl_points: number;
+  pnl_rupees: number;
+  status: 'OPEN' | 'TARGET_1' | 'TARGET_2' | 'STOPPED_OUT' | 'CLOSED';
+  exit_time?: string;
+  exit_reason?: string;
+}
+
+export interface PaperPortfolio {
+  active_positions: PaperPosition[];
+  closed_trades: PaperPosition[];
+  auto_trade_enabled: boolean;
+  default_lots: number;
+  total_realized_pnl: number;
+  total_unrealized_pnl: number;
+  total_pnl: number;
+  win_rate_pct: number;
+  total_trades_count: number;
+  winning_trades_count: number;
+  losing_trades_count: number;
+}
+
 export interface ScannerState {
   signals: Signal[];
   radar: Record<string, IndexRadarItem>;
+  paper_portfolio?: PaperPortfolio;
   last_scan_time: string;
   scan_cycle_count: number;
   is_scanning: boolean;

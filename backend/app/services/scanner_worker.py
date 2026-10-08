@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 from app.core.config import settings
@@ -11,6 +11,7 @@ from app.services.universe_manager import UniverseManager, Instrument
 from app.services.dhan_client import DhanClient
 from app.services.indicators import calculate_indicators
 from app.services.strategy_engine import evaluate_signals, Signal
+from app.services.paper_trader import paper_trader, PaperPortfolio
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class IndexRadarItem(BaseModel):
 class ScannerState(BaseModel):
     signals: list[Signal] = []
     radar: dict[str, IndexRadarItem] = {}
+    paper_portfolio: PaperPortfolio = Field(default_factory=PaperPortfolio)
     last_scan_time: str = ""
     scan_cycle_count: int = 0
     is_scanning: bool = False
@@ -151,6 +153,8 @@ class ScannerWorker:
         mode = "live" if (client_id and access_token) else "demo"
         self._state.active_mode = mode
 
+        price_map: dict[str, float] = {}
+
         for idx, inst in enumerate(instruments):
             df = pd.DataFrame()
             if mode == "live" and client_id and access_token:
@@ -172,6 +176,8 @@ class ScannerWorker:
 
             # Compute Indicators
             ind_df = calculate_indicators(df)
+            if not ind_df.empty:
+                price_map[inst.symbol] = float(ind_df.iloc[-1]["close"])
             
             # If instrument is an index, update radar status
             if inst.instrument_type == "INDEX" and not ind_df.empty:
@@ -208,8 +214,13 @@ class ScannerWorker:
             # Update progress
             self._state.scan_progress = round(((idx + 1) / total_count) * 100.0, 1)
 
+        # Update paper trading engine with latest market prices and signals
+        paper_trader.update_market_prices(price_map)
+        paper_trader.on_signals_cycle(new_signals)
+
         self._state.signals = new_signals
         self._state.radar = new_radar
+        self._state.paper_portfolio = paper_trader.get_portfolio()
         self._state.last_scan_time = datetime.now().strftime("%H:%M:%S")
         self._state.scan_cycle_count += 1
         self._state.is_scanning = False

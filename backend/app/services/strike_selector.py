@@ -1,6 +1,51 @@
 from pydantic import BaseModel
 from typing import Literal
 
+DEFAULT_LOT_SIZES: dict[str, int] = {
+    "NIFTY 50": 65,
+    "NIFTY": 65,
+    "NIFTY BANK": 30,
+    "BANKNIFTY": 30,
+    "FINNIFTY": 65,
+    "NIFTY FINANCIAL SERVICES": 65,
+    "SENSEX": 20,
+    "MIDCPNIFTY": 120,
+    "RELIANCE": 500,
+    "HDFCBANK": 650,
+    "ICICIBANK": 700,
+    "SBIN": 750,
+    "AXISBANK": 625,
+    "KOTAKBANK": 400,
+    "INFY": 400,
+    "TCS": 175,
+    "HCLTECH": 350,
+    "TECHM": 600,
+    "TATAMOTORS": 550,
+    "MARUTI": 50,
+    "M&M": 350,
+    "BAJAJ-AUTO": 75,
+    "TATASTEEL": 5500,
+    "JSWSTEEL": 675,
+    "HINDALCO": 1400,
+    "COALINDIA": 2100,
+    "ONGC": 3850,
+    "LT": 150,
+    "ADANIENT": 300,
+    "ADANIPORTS": 400,
+    "BHARTIARTL": 475,
+    "ITC": 1600,
+    "TITAN": 175,
+    "SUNPHARMA": 350,
+    "CIPLA": 650,
+    "DRREDDY": 125,
+    "BAJFINANCE": 125,
+    "BAJAJFINSV": 500,
+}
+
+def get_lot_size(symbol: str) -> int:
+    clean = symbol.upper().strip()
+    return DEFAULT_LOT_SIZES.get(clean, 100)
+
 class OptionStrikeRecommendation(BaseModel):
     symbol: str
     underlying_price: float
@@ -8,10 +53,20 @@ class OptionStrikeRecommendation(BaseModel):
     atm_strike: int
     recommended_strike: int  # 1-strike ITM for best delta/gamma vs theta balance
     strike_symbol: str
+    lot_size: int
+    # Underlying spot levels
     risk: float
     stop_loss: float
     target_1: float  # 1:1.5 RR
     target_2: float  # 1:2.5 RR
+    # Option premium levels (Delta ~ 0.55)
+    estimated_option_entry: float
+    option_sl_pts: float
+    option_target_1_pts: float
+    option_target_2_pts: float
+    option_sl_price: float
+    option_target_1_price: float
+    option_target_2_price: float
 
 INDEX_STRIKE_STEPS: dict[str, int] = {
     "NIFTY 50": 50,
@@ -65,6 +120,21 @@ def get_strike_step(symbol: str, price: float) -> int:
     else:
         return 100
 
+def estimate_option_entry(symbol: str, underlying_price: float, step: int) -> float:
+    """Estimate realistic 1-strike ITM option entry premium based on underlying tier."""
+    clean = symbol.upper().strip()
+    if "NIFTY 50" in clean or clean == "NIFTY":
+        return 175.0
+    elif "BANK" in clean:
+        return 360.0
+    elif "FINNIFTY" in clean:
+        return 150.0
+    elif "SENSEX" in clean:
+        return 420.0
+    else:
+        # Stock options roughly 2.5% to 3.5% of stock price
+        return round(max(5.0, underlying_price * 0.03), 1)
+
 def recommend_strike(
     symbol: str,
     underlying_price: float,
@@ -72,6 +142,7 @@ def recommend_strike(
     stop_loss: float
 ) -> OptionStrikeRecommendation:
     step = get_strike_step(symbol, underlying_price)
+    lot_size = get_lot_size(symbol)
     
     # ATM strike
     atm_strike = int(round(underlying_price / step) * step)
@@ -93,6 +164,17 @@ def recommend_strike(
         target_1 = round(underlying_price - 1.5 * risk, 2)
         target_2 = round(underlying_price - 2.5 * risk, 2)
 
+    # Option premium calculations (Delta ~0.55)
+    delta = 0.55
+    est_entry = estimate_option_entry(symbol, underlying_price, step)
+    opt_sl_pts = round(risk * delta, 1)
+    opt_t1_pts = round(risk * delta * 1.5, 1)
+    opt_t2_pts = round(risk * delta * 2.5, 1)
+    
+    opt_sl_price = round(max(1.0, est_entry - opt_sl_pts), 1)
+    opt_t1_price = round(est_entry + opt_t1_pts, 1)
+    opt_t2_price = round(est_entry + opt_t2_pts, 1)
+
     return OptionStrikeRecommendation(
         symbol=symbol,
         underlying_price=round(underlying_price, 2),
@@ -100,8 +182,16 @@ def recommend_strike(
         atm_strike=atm_strike,
         recommended_strike=recommended_strike,
         strike_symbol=strike_symbol,
+        lot_size=lot_size,
         risk=risk,
         stop_loss=round(stop_loss, 2),
         target_1=target_1,
-        target_2=target_2
+        target_2=target_2,
+        estimated_option_entry=est_entry,
+        option_sl_pts=opt_sl_pts,
+        option_target_1_pts=opt_t1_pts,
+        option_target_2_pts=opt_t2_pts,
+        option_sl_price=opt_sl_price,
+        option_target_1_price=opt_t1_price,
+        option_target_2_price=opt_t2_price
     )

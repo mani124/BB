@@ -7,6 +7,7 @@ from app.services.scanner_worker import ScannerWorker
 from app.api.auth import router as auth_router
 from app.api.universe import router as universe_router
 from app.api.signals import router as signals_router
+from app.api.paper import router as paper_router
 
 universe_mgr = UniverseManager()
 worker = ScannerWorker(universe_mgr=universe_mgr)
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix=settings.API_PREFIX)
     app.include_router(universe_router, prefix=settings.API_PREFIX)
     app.include_router(signals_router, prefix=settings.API_PREFIX)
+    app.include_router(paper_router, prefix=settings.API_PREFIX)
 
     return app
 

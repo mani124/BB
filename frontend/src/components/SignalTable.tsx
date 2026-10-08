@@ -1,12 +1,13 @@
 import React from 'react';
 import { Signal } from '../types';
-import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, ShoppingCart } from 'lucide-react';
 
 interface SignalTableProps {
   signals: Signal[];
+  onPaperBuy?: (signal: Signal) => void;
 }
 
-export const SignalTable: React.FC<SignalTableProps> = ({ signals }) => {
+export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy }) => {
   if (signals.length === 0) {
     return (
       <div className="bg-dark-800 border border-dark-700 rounded-2xl p-12 text-center text-slate-400">
@@ -27,13 +28,13 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals }) => {
               <th className="py-3 px-4">Instrument</th>
               <th className="py-3 px-4">Setup</th>
               <th className="py-3 px-4">Direction</th>
-              <th className="py-3 px-4">Recommended Strike</th>
-              <th className="py-3 px-4">Trigger Price</th>
-              <th className="py-3 px-4">Stop-Loss</th>
-              <th className="py-3 px-4">Target 1 (1:1.5)</th>
-              <th className="py-3 px-4">Target 2 (1:2.5)</th>
-              <th className="py-3 px-4">RSI</th>
-              <th className="py-3 px-4">BandWidth</th>
+              <th className="py-3 px-4">Strike / Lot</th>
+              <th className="py-3 px-4">Spot Levels (Trigger / SL)</th>
+              <th className="py-3 px-4">Option Est. Entry</th>
+              <th className="py-3 px-4">Option SL (Pts)</th>
+              <th className="py-3 px-4">Option T1 (Pts)</th>
+              <th className="py-3 px-4">RSI / BW</th>
+              <th className="py-3 px-4">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-dark-700/60 text-slate-200">
@@ -71,42 +72,54 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals }) => {
                     </span>
                   </td>
 
-                  {/* Strike */}
+                  {/* Strike & Lot */}
                   <td className="py-3 px-4 font-mono font-bold text-cyan-300">
                     {rec.strike_symbol}
                     <span className="block text-[10px] font-normal text-slate-400">
-                      ATM: ₹{rec.atm_strike}
+                      Lot Size: {rec.lot_size} Qty
                     </span>
                   </td>
 
-                  {/* Trigger */}
-                  <td className="py-3 px-4 font-mono font-bold text-white">
-                    ₹{sig.entry_price}
+                  {/* Spot Levels */}
+                  <td className="py-3 px-4 font-mono">
+                    <span className="text-white block font-bold">₹{sig.entry_price}</span>
+                    <span className="text-rose-400 text-[10px] block">SL: ₹{sig.stop_loss}</span>
                   </td>
 
-                  {/* SL */}
-                  <td className="py-3 px-4 font-mono font-bold text-rose-400">
-                    ₹{sig.stop_loss}
+                  {/* Option Entry */}
+                  <td className="py-3 px-4 font-mono font-black text-cyan-300">
+                    ₹{rec.estimated_option_entry}
                   </td>
 
-                  {/* Target 1 */}
-                  <td className="py-3 px-4 font-mono font-bold text-emerald-400">
-                    ₹{sig.target_1}
+                  {/* Option SL */}
+                  <td className="py-3 px-4 font-mono text-rose-400">
+                    ₹{rec.option_sl_price}
+                    <span className="block text-[10px] text-slate-500">(-{rec.option_sl_pts}p)</span>
                   </td>
 
-                  {/* Target 2 */}
-                  <td className="py-3 px-4 font-mono font-bold text-emerald-300">
-                    ₹{sig.target_2}
+                  {/* Option T1 */}
+                  <td className="py-3 px-4 font-mono text-emerald-400">
+                    ₹{rec.option_target_1_price}
+                    <span className="block text-[10px] text-slate-500">(+{rec.option_target_1_pts}p)</span>
                   </td>
 
-                  {/* RSI */}
+                  {/* RSI / BW */}
                   <td className="py-3 px-4 font-mono text-slate-300">
-                    {ind.rsi.toFixed(1)}
+                    <div>RSI: {ind.rsi.toFixed(1)}</div>
+                    <div className="text-[10px] text-slate-400">BW: {ind.bandwidth.toFixed(2)}%</div>
                   </td>
 
-                  {/* BandWidth */}
-                  <td className="py-3 px-4 font-mono text-slate-300">
-                    {ind.bandwidth.toFixed(2)}%
+                  {/* Action */}
+                  <td className="py-3 px-4">
+                    {onPaperBuy && (
+                      <button
+                        onClick={() => onPaperBuy(sig)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold transition active:scale-95 whitespace-nowrap"
+                      >
+                        <ShoppingCart className="h-3.5 w-3.5" />
+                        Paper Buy
+                      </button>
+                    )}
                   </td>
                 </tr>
               );
