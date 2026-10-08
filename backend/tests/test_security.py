@@ -112,7 +112,67 @@ def test_redacting_filter_args_and_jwt():
     log_filter.filter(record_dict)
     assert record_dict.args["token"] == "[REDACTED]"
 
+def test_get_dhan_credentials_whitespace():
+    request = MagicMock()
+    # Both whitespace-only
+    request.headers = {"X-Dhan-Client-Id": "   ", "X-Dhan-Access-Token": "   "}
+    with pytest.raises(HTTPException) as exc_info:
+        get_dhan_credentials(request)
+    assert exc_info.value.status_code == 401
+
+    # Only client_id whitespace
+    request.headers = {"X-Dhan-Client-Id": "   ", "X-Dhan-Access-Token": "secret_token"}
+    with pytest.raises(HTTPException) as exc_info:
+        get_dhan_credentials(request)
+    assert exc_info.value.status_code == 401
+
+    # Only access_token whitespace
+    request.headers = {"X-Dhan-Client-Id": "1000000001", "X-Dhan-Access-Token": "   "}
+    with pytest.raises(HTTPException) as exc_info:
+        get_dhan_credentials(request)
+    assert exc_info.value.status_code == 401
+
+    # Optional credentials with whitespace
+    request.headers = {"X-Dhan-Client-Id": "   ", "X-Dhan-Access-Token": "   "}
+    cid, tok = get_optional_dhan_credentials(request)
+    assert cid is None
+    assert tok is None
+
+    request.headers = {"X-Dhan-Client-Id": "  1000000001 ", "X-Dhan-Access-Token": "   "}
+    cid, tok = get_optional_dhan_credentials(request)
+    assert cid == "1000000001"
+    assert tok is None
+
 def test_setup_security_logging():
     setup_security_logging()
     root_logger = logging.getLogger()
     assert any(isinstance(f, RedactingFilter) for f in root_logger.filters)
+
+def test_child_logger_redaction_via_record_factory():
+    setup_security_logging(patterns=["sensitive_key_999"])
+    
+    # Child logger in a sub-module
+    child_logger = logging.getLogger("app.services.submodule_child")
+    
+    # Custom capture handler attached to child logger
+    captured_records = []
+    class CaptureHandler(logging.Handler):
+        def emit(self, record):
+            captured_records.append(record)
+
+    handler = CaptureHandler()
+    child_logger.addHandler(handler)
+    try:
+        jwt_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"
+        child_logger.warning("Secret pattern %s and msg sensitive_key_999", jwt_token)
+        
+        assert len(captured_records) == 1
+        rec = captured_records[0]
+        # Verify message redaction
+        assert "sensitive_key_999" not in rec.msg
+        assert "[REDACTED]" in rec.msg
+        # Verify args redaction
+        assert "eyJ" not in rec.args[0]
+        assert rec.args[0] == "[REDACTED]"
+    finally:
+        child_logger.removeHandler(handler)

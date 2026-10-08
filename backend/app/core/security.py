@@ -20,21 +20,21 @@ def get_dhan_credentials(request: Request) -> tuple[str, str]:
         X-Dhan-Client-Id: User Client ID
         X-Dhan-Access-Token: 24h JWT Access Token
     """
-    client_id = request.headers.get("X-Dhan-Client-Id")
-    access_token = request.headers.get("X-Dhan-Access-Token")
+    client_id = (request.headers.get("X-Dhan-Client-Id") or "").strip()
+    access_token = (request.headers.get("X-Dhan-Access-Token") or "").strip()
     
     if not client_id or not access_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing Dhan authentication headers (X-Dhan-Client-Id, X-Dhan-Access-Token)"
         )
-    return client_id.strip(), access_token.strip()
+    return client_id, access_token
 
 def get_optional_dhan_credentials(request: Request) -> tuple[Optional[str], Optional[str]]:
     """Extract credentials if provided; return (None, None) if missing."""
-    client_id = request.headers.get("X-Dhan-Client-Id")
-    access_token = request.headers.get("X-Dhan-Access-Token")
-    return (client_id.strip() if client_id else None, access_token.strip() if access_token else None)
+    client_id = (request.headers.get("X-Dhan-Client-Id") or "").strip() or None
+    access_token = (request.headers.get("X-Dhan-Access-Token") or "").strip() or None
+    return client_id, access_token
 
 class RedactingFilter(logging.Filter):
     """Logging filter to mask sensitive Dhan tokens."""
@@ -68,10 +68,29 @@ class RedactingFilter(logging.Filter):
                 record.args = {k: (self._redact_text(v) if isinstance(v, str) else v) for k, v in record.args.items()}
         return True
 
-def setup_security_logging() -> None:
-    """Attach RedactingFilter to root logger and standard handlers."""
+_original_record_factory = None
+
+def setup_security_logging(patterns: list[str] | None = None) -> None:
+    """
+    Hook into logging.setLogRecordFactory and attach RedactingFilter
+    so all LogRecords created anywhere in the process are sanitized.
+    """
+    global _original_record_factory
+    filter_instance = RedactingFilter(patterns=patterns)
+
+    if _original_record_factory is None:
+        _original_record_factory = logging.getLogRecordFactory()
+
+    base_factory = _original_record_factory
+
+    def record_factory(*args, **kwargs):
+        record = base_factory(*args, **kwargs)
+        filter_instance.filter(record)
+        return record
+
+    logging.setLogRecordFactory(record_factory)
+
     root_logger = logging.getLogger()
-    redacting_filter = RedactingFilter()
-    root_logger.addFilter(redacting_filter)
+    root_logger.addFilter(filter_instance)
     for handler in root_logger.handlers:
-        handler.addFilter(redacting_filter)
+        handler.addFilter(filter_instance)
