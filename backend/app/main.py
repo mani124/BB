@@ -2,12 +2,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.core.security import setup_security_logging
 from app.services.universe_manager import UniverseManager
 from app.services.scanner_worker import ScannerWorker
 from app.api.auth import router as auth_router
 from app.api.universe import router as universe_router
 from app.api.signals import router as signals_router
 from app.api.paper import router as paper_router
+
+setup_security_logging()
 
 universe_mgr = UniverseManager()
 worker = ScannerWorker(universe_mgr=universe_mgr)
