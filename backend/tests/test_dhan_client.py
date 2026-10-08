@@ -219,3 +219,42 @@ async def test_fetch_intraday_candles_error_returns_empty():
         )
         assert df.empty
     await client.close()
+
+@pytest.mark.asyncio
+async def test_verify_credentials_fallback_error_reports_status_code():
+    client = DhanClient()
+    resp_profile = MagicMock(status_code=404)
+    resp_fund = MagicMock(status_code=502)
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.side_effect = [resp_profile, resp_fund]
+        res = await client.verify_credentials("1000000001", "valid_token")
+        assert res["valid"] is False
+        assert "HTTP 502" in res["error"]
+    await client.close()
+
+@pytest.mark.asyncio
+async def test_fetch_intraday_candles_corrupt_payload_returns_empty():
+    client = DhanClient(min_spacing=0.01)
+    mock_resp = MagicMock(status_code=200)
+    # Corrupt payload: mismatched array length causing DataFrame construction error
+    mock_resp.json.return_value = {
+        "open": [100.0, 101.0],
+        "high": [105.0],
+        "low": [99.0],
+        "close": [104.0, 105.0],
+        "volume": [1000],
+        "start_Time": [1710000000]
+    }
+
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value = mock_resp
+        df = await client.fetch_intraday_candles(
+            client_id="10001",
+            access_token="tok",
+            security_id="1333",
+            exchange_segment="NSE_EQ"
+        )
+        assert df.empty
+    await client.close()
+

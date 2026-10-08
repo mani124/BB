@@ -72,7 +72,8 @@ class DhanClient:
                     return {"valid": True, "data": resp2.json()}
                 elif resp2.status_code in [401, 403]:
                     return {"valid": False, "error": "Invalid or expired Dhan Access Token"}
-                return {"valid": False, "error": f"Dhan API returned HTTP {resp.status_code}"}
+                logger.warning(f"Dhan /fundlimit fallback returned HTTP {resp2.status_code}")
+                return {"valid": False, "error": f"Dhan API returned HTTP {resp2.status_code}"}
         except httpx.RequestError as exc:
             logger.error(f"Network error verifying Dhan credentials: {exc}")
             return {"valid": False, "error": f"Network error connecting to Dhan API: {str(exc)}"}
@@ -148,24 +149,28 @@ class DhanClient:
         if not isinstance(candles, dict) or "close" not in candles or not candles["close"]:
             return pd.DataFrame()
 
-        timestamps = (
-            candles.get("start_Time")
-            or candles.get("timestamp")
-            or candles.get("startTime")
-            or candles.get("time")
-            or []
-        )
-        parsed_ts = self._parse_dhan_timestamps(timestamps)
+        try:
+            timestamps = (
+                candles.get("start_Time")
+                or candles.get("timestamp")
+                or candles.get("startTime")
+                or candles.get("time")
+                or []
+            )
+            parsed_ts = self._parse_dhan_timestamps(timestamps)
 
-        volume = candles.get("volume") or [0] * len(candles["close"])
-        return pd.DataFrame({
-            "timestamp": parsed_ts,
-            "open": candles["open"],
-            "high": candles["high"],
-            "low": candles["low"],
-            "close": candles["close"],
-            "volume": volume
-        })
+            volume = candles.get("volume") or [0] * len(candles["close"])
+            return pd.DataFrame({
+                "timestamp": parsed_ts,
+                "open": candles["open"],
+                "high": candles["high"],
+                "low": candles["low"],
+                "close": candles["close"],
+                "volume": volume
+            })
+        except Exception as e:
+            logger.warning(f"Error assembling DataFrame from Dhan candles: {e}")
+            return pd.DataFrame()
 
     def _parse_dhan_timestamps(self, timestamps: list) -> pd.DatetimeIndex:
         """

@@ -52,8 +52,10 @@ class ScannerWorker:
     def set_session_credentials(self, client_id: Optional[str], access_token: Optional[str]):
         if client_id and access_token:
             self._session_credentials = (client_id, access_token)
+            self._state.active_mode = "live"
         else:
             self._session_credentials = None
+            self._state.active_mode = "demo"
 
     def get_state(self) -> ScannerState:
         return self._state
