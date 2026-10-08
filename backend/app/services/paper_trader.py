@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from typing import Literal, Optional
 from pydantic import BaseModel
@@ -76,7 +77,7 @@ class PaperTradingEngine:
         lot_size = signal.strike_recommendation.lot_size
         qty = lot_size * lots_to_trade
 
-        pos_id = f"POS_{signal.symbol}_{signal.option_type}_{int(datetime.now().timestamp())}"
+        pos_id = f"POS_{signal.symbol}_{signal.option_type}_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:6]}"
         rec = signal.strike_recommendation
 
         pos = PaperPosition(
@@ -143,9 +144,10 @@ class PaperTradingEngine:
 
                 # Check SL
                 if curr_spot <= pos.underlying_sl or pos.current_option_price <= pos.option_sl:
+                    reason = "Breakeven Trailed SL Hit" if pos.status == "TARGET_1" else "Stop-Loss Hit"
                     pos.status = "STOPPED_OUT"
                     pos.exit_time = now_str
-                    pos.exit_reason = "Stop-Loss Hit"
+                    pos.exit_reason = reason
                     pos.pnl_rupees = round(pos.pnl_points * pos.quantity, 2)
                     self._portfolio.closed_trades.append(pos)
                     continue
@@ -174,9 +176,10 @@ class PaperTradingEngine:
 
                 # Check SL
                 if curr_spot >= pos.underlying_sl or pos.current_option_price <= pos.option_sl:
+                    reason = "Breakeven Trailed SL Hit" if pos.status == "TARGET_1" else "Stop-Loss Hit"
                     pos.status = "STOPPED_OUT"
                     pos.exit_time = now_str
-                    pos.exit_reason = "Stop-Loss Hit"
+                    pos.exit_reason = reason
                     pos.pnl_rupees = round(pos.pnl_points * pos.quantity, 2)
                     self._portfolio.closed_trades.append(pos)
                     continue

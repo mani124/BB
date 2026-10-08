@@ -58,8 +58,12 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     avg_gain = gain.ewm(alpha=1.0 / 14.0, min_periods=14, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1.0 / 14.0, min_periods=14, adjust=False).mean()
 
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    res["rsi"] = (100.0 - (100.0 / (1.0 + rs))).fillna(50.0)
+    # Exact handling: if avg_loss == 0, RSI is 100.0 (or 50.0 if avg_gain is also 0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rs = avg_gain / avg_loss
+        rsi_calc = 100.0 - (100.0 / (1.0 + rs))
+        rsi_series = np.where(avg_loss == 0, np.where(avg_gain == 0, 50.0, 100.0), rsi_calc)
+    res["rsi"] = pd.Series(rsi_series, index=res.index).fillna(50.0)
 
     # 4. 9-period EMA
     res["ema_9"] = res["close"].ewm(span=9, adjust=False).mean()
@@ -78,19 +82,19 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
 
     atr14 = tr.ewm(alpha=1.0 / 14.0, min_periods=14, adjust=False).mean()
-    plus_di14 = (pd.Series(plus_dm).ewm(alpha=1.0 / 14.0, min_periods=14, adjust=False).mean() / atr14.replace(0, np.nan)) * 100.0
-    minus_di14 = (pd.Series(minus_dm).ewm(alpha=1.0 / 14.0, min_periods=14, adjust=False).mean() / atr14.replace(0, np.nan)) * 100.0
+    plus_di14 = (pd.Series(plus_dm, index=res.index).ewm(alpha=1.0 / 14.0, min_periods=14, adjust=False).mean() / atr14.replace(0, np.nan)) * 100.0
+    minus_di14 = (pd.Series(minus_dm, index=res.index).ewm(alpha=1.0 / 14.0, min_periods=14, adjust=False).mean() / atr14.replace(0, np.nan)) * 100.0
 
     dx = ((plus_di14 - minus_di14).abs() / (plus_di14 + minus_di14).replace(0, np.nan)) * 100.0
     res["adx"] = dx.ewm(alpha=1.0 / 14.0, min_periods=14, adjust=False).mean().fillna(20.0)
 
-    # 6. Opening Range (09:15 - 09:30 AM IST)
-    # Filter bars starting between 09:15 and 09:29:59
+    # 6. Opening Range (09:15 - 09:30 AM IST of the latest trading session)
+    latest_date = res["timestamp"].dt.date.max()
     time_series = res["timestamp"].dt.time
     t_start = pd.to_datetime("09:15:00").time()
     t_end = pd.to_datetime("09:30:00").time()
     
-    or_mask = (time_series >= t_start) & (time_series < t_end)
+    or_mask = (res["timestamp"].dt.date == latest_date) & (time_series >= t_start) & (time_series < t_end)
     or_high_val = res.loc[or_mask, "high"].max() if or_mask.any() else res["high"].iloc[:3].max()
     or_low_val = res.loc[or_mask, "low"].min() if or_mask.any() else res["low"].iloc[:3].min()
 

@@ -121,19 +121,15 @@ def get_strike_step(symbol: str, price: float) -> int:
         return 100
 
 def estimate_option_entry(symbol: str, underlying_price: float, step: int) -> float:
-    """Estimate realistic 1-strike ITM option entry premium based on underlying tier."""
+    """Estimate realistic 1-strike ITM option entry premium based on underlying tier and step."""
     clean = symbol.upper().strip()
-    if "NIFTY 50" in clean or clean == "NIFTY":
-        return 175.0
-    elif "BANK" in clean:
-        return 360.0
-    elif "FINNIFTY" in clean:
-        return 150.0
-    elif "SENSEX" in clean:
-        return 420.0
+    is_index = any(idx in clean for idx in ["NIFTY", "BANK", "FINNIFTY", "SENSEX", "MIDCP"])
+    if is_index:
+        # Intrinsic step value + ~0.5% extrinsic time value
+        return round(float(step) + (underlying_price * 0.005), 1)
     else:
-        # Stock options roughly 2.5% to 3.5% of stock price
-        return round(max(5.0, underlying_price * 0.03), 1)
+        # Stock options: step intrinsic + ~1.5% time value
+        return round(max(5.0, float(step) + (underlying_price * 0.015)), 1)
 
 def recommend_strike(
     symbol: str,
@@ -150,11 +146,24 @@ def recommend_strike(
     # 1-strike ITM for highest delta responsiveness (Delta ~0.55-0.60)
     if option_type == "CE":
         recommended_strike = atm_strike - step
+        # Mathematical guarantee: SL must strictly be below entry for Call buy
+        if stop_loss >= underlying_price:
+            stop_loss = round(underlying_price - max(step * 0.5, 5.0), 2)
     else:
         recommended_strike = atm_strike + step
+        # Mathematical guarantee: SL must strictly be above entry for Put buy
+        if stop_loss <= underlying_price:
+            stop_loss = round(underlying_price + max(step * 0.5, 5.0), 2)
 
     strike_symbol = f"{symbol} {recommended_strike} {option_type}"
     risk = round(abs(underlying_price - stop_loss), 2)
+    min_risk = max(step * 0.25, 2.0)
+    if risk < min_risk:
+        risk = round(min_risk, 2)
+        if option_type == "CE":
+            stop_loss = round(underlying_price - risk, 2)
+        else:
+            stop_loss = round(underlying_price + risk, 2)
     
     # Target calculations based on underlying price move
     if option_type == "CE":
@@ -167,7 +176,8 @@ def recommend_strike(
     # Option premium calculations (Delta ~0.55)
     delta = 0.55
     est_entry = estimate_option_entry(symbol, underlying_price, step)
-    opt_sl_pts = round(risk * delta, 1)
+    # Cap option points risk at max 70% of premium
+    opt_sl_pts = round(min(risk * delta, est_entry * 0.7), 1)
     opt_t1_pts = round(risk * delta * 1.5, 1)
     opt_t2_pts = round(risk * delta * 2.5, 1)
     

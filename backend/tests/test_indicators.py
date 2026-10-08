@@ -68,6 +68,32 @@ def test_vwap_and_rsi():
     valid_vwap = result["vwap"].dropna()
     assert (valid_vwap > 50).all() and (valid_vwap < 200).all()
 
+def test_rsi_extremes_all_gain_and_all_loss():
+    # Relentless rally: price goes strictly up on every bar
+    dates = pd.date_range("2026-10-08 09:15", periods=25, freq="5min")
+    df_rally = pd.DataFrame({
+        "timestamp": dates,
+        "open": [100.0 + i for i in range(25)],
+        "high": [101.0 + i for i in range(25)],
+        "low": [99.5 + i for i in range(25)],
+        "close": [100.5 + i for i in range(25)],
+        "volume": [1000] * 25
+    })
+    res_rally = calculate_indicators(df_rally)
+    assert res_rally["rsi"].iloc[-1] == 100.0
+
+    # Relentless selloff: price goes strictly down on every bar
+    df_drop = pd.DataFrame({
+        "timestamp": dates,
+        "open": [200.0 - i for i in range(25)],
+        "high": [200.5 - i for i in range(25)],
+        "low": [199.0 - i for i in range(25)],
+        "close": [199.5 - i for i in range(25)],
+        "volume": [1000] * 25
+    })
+    res_drop = calculate_indicators(df_drop)
+    assert res_drop["rsi"].iloc[-1] == 0.0
+
 def test_opening_range_calculation():
     df = generate_sample_candles(50)
     result = calculate_indicators(df)

@@ -75,3 +75,30 @@ def test_setup4_opening_range_breakout_ce():
     s4_signals = [s for s in signals if s.setup_type == SetupType.SETUP_4_ORB and s.option_type == "CE"]
     assert len(s4_signals) >= 1
     assert s4_signals[0].option_type == "CE"
+
+def test_setup4_opening_range_breakout_pe():
+    df = create_series_df(25, 100.0)
+    # Candle 24 at 11:15 simulates ORB breakdown below OR Low
+    df.loc[24, "open"] = 98.0
+    df.loc[24, "close"] = 88.0
+    df.loc[24, "low"] = 87.5
+    
+    ind_df = calculate_indicators(df)
+    signals = evaluate_signals("NIFTY 50", ind_df, timeframe="5m")
+    s4_signals = [s for s in signals if s.setup_type == SetupType.SETUP_4_ORB and s.option_type == "PE"]
+    assert len(s4_signals) >= 1
+    assert s4_signals[0].option_type == "PE"
+    assert s4_signals[0].stop_loss > s4_signals[0].entry_price
+
+def test_setup2_walking_bands_ce():
+    df = create_series_df(25, 100.0)
+    # Strong upward trend to create ADX > 23 and walk upper band
+    for i in range(15, 25):
+        df.loc[i, "close"] = 100.0 + (i - 15) * 2.0
+        df.loc[i, "high"] = df.loc[i, "close"] + 0.5
+        df.loc[i, "low"] = df.loc[i, "close"] - 0.5
+        df.loc[i, "open"] = df.loc[i, "close"] - 1.0
+
+    ind_df = calculate_indicators(df)
+    signals = evaluate_signals("NIFTY 50", ind_df, timeframe="5m")
+    assert isinstance(signals, list)

@@ -1,4 +1,5 @@
 import enum
+from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel
 import pandas as pd
@@ -52,7 +53,9 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
         "adx": round(float(curr.get("adx", 20.0)), 2),
     }
 
-    ts_str = str(curr.get("timestamp", ""))
+    ts_raw = curr.get("timestamp", last_idx)
+    ts_str = str(ts_raw)
+    ts_clean = ts_str.replace(":", "").replace("-", "").replace(" ", "_").replace(".", "")
 
     close = curr["close"]
     upper = curr["bb_upper"]
@@ -80,7 +83,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
             sl = round(max(mid, curr["low"] - 2.0), 2)
             strike_rec = recommend_strike(symbol, close, "CE", sl)
             signals.append(Signal(
-                id=f"{symbol}_{timeframe}_S1_CE_{last_idx}",
+                id=f"{symbol}_{timeframe}_S1_CE_{ts_clean}",
                 symbol=symbol,
                 timeframe=timeframe,
                 setup_type=SetupType.SETUP_1_SQUEEZE,
@@ -100,7 +103,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
             sl = round(min(mid, curr["high"] + 2.0), 2)
             strike_rec = recommend_strike(symbol, close, "PE", sl)
             signals.append(Signal(
-                id=f"{symbol}_{timeframe}_S1_PE_{last_idx}",
+                id=f"{symbol}_{timeframe}_S1_PE_{ts_clean}",
                 symbol=symbol,
                 timeframe=timeframe,
                 setup_type=SetupType.SETUP_1_SQUEEZE,
@@ -128,7 +131,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                 sl = round(ema_9 - (curr["high"] - curr["low"]) * 0.3, 2)
                 strike_rec = recommend_strike(symbol, close, "CE", sl)
                 signals.append(Signal(
-                    id=f"{symbol}_{timeframe}_S2_CE_{last_idx}",
+                    id=f"{symbol}_{timeframe}_S2_CE_{ts_clean}",
                     symbol=symbol,
                     timeframe=timeframe,
                     setup_type=SetupType.SETUP_2_WALKING,
@@ -151,7 +154,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                 sl = round(ema_9 + (curr["high"] - curr["low"]) * 0.3, 2)
                 strike_rec = recommend_strike(symbol, close, "PE", sl)
                 signals.append(Signal(
-                    id=f"{symbol}_{timeframe}_S2_PE_{last_idx}",
+                    id=f"{symbol}_{timeframe}_S2_PE_{ts_clean}",
                     symbol=symbol,
                     timeframe=timeframe,
                     setup_type=SetupType.SETUP_2_WALKING,
@@ -189,7 +192,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                         sl = round(min(row_min1["low"], row_min2["low"]) - 1.0, 2)
                         strike_rec = recommend_strike(symbol, close, "CE", sl)
                         signals.append(Signal(
-                            id=f"{symbol}_{timeframe}_S3_CE_{last_idx}",
+                            id=f"{symbol}_{timeframe}_S3_CE_{ts_clean}",
                             symbol=symbol,
                             timeframe=timeframe,
                             setup_type=SetupType.SETUP_3_REVERSAL,
@@ -220,7 +223,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                         sl = round(max(row_max1["high"], row_max2["high"]) + 1.0, 2)
                         strike_rec = recommend_strike(symbol, close, "PE", sl)
                         signals.append(Signal(
-                            id=f"{symbol}_{timeframe}_S3_PE_{last_idx}",
+                            id=f"{symbol}_{timeframe}_S3_PE_{ts_clean}",
                             symbol=symbol,
                             timeframe=timeframe,
                             setup_type=SetupType.SETUP_3_REVERSAL,
@@ -240,13 +243,20 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
     # =========================================================================
     or_high = curr.get("or_high")
     or_low = curr.get("or_low")
-    if or_high is not None and or_low is not None:
+
+    # Active strictly during the morning breakout window (09:30 - 11:30 AM IST)
+    is_orb_time = True
+    if isinstance(ts_raw, (pd.Timestamp, datetime)):
+        bar_t = ts_raw.time()
+        is_orb_time = (bar_t >= pd.to_datetime("09:30:00").time()) and (bar_t <= pd.to_datetime("11:30:00").time())
+
+    if is_orb_time and or_high is not None and or_low is not None:
         # CE ORB: Breaks above OR High, Above Upper BB, Above VWAP
         if close > or_high and close > upper and close > vwap:
             sl = round(max(mid, or_high * 0.997), 2)
             strike_rec = recommend_strike(symbol, close, "CE", sl)
             signals.append(Signal(
-                id=f"{symbol}_{timeframe}_S4_CE_{last_idx}",
+                id=f"{symbol}_{timeframe}_S4_CE_{ts_clean}",
                 symbol=symbol,
                 timeframe=timeframe,
                 setup_type=SetupType.SETUP_4_ORB,
@@ -266,7 +276,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
             sl = round(min(mid, or_low * 1.003), 2)
             strike_rec = recommend_strike(symbol, close, "PE", sl)
             signals.append(Signal(
-                id=f"{symbol}_{timeframe}_S4_PE_{last_idx}",
+                id=f"{symbol}_{timeframe}_S4_PE_{ts_clean}",
                 symbol=symbol,
                 timeframe=timeframe,
                 setup_type=SetupType.SETUP_4_ORB,

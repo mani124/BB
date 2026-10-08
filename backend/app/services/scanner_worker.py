@@ -182,9 +182,16 @@ class ScannerWorker:
             # If instrument is an index, update radar status
             if inst.instrument_type == "INDEX" and not ind_df.empty:
                 last_row = ind_df.iloc[-1]
-                first_row = ind_df.iloc[0]
+                # Scope to today's trading session to prevent multi-day Dhan history from distorting daily % change
+                today_mask = ind_df["timestamp"].dt.date == ind_df["timestamp"].dt.date.max()
+                today_df = ind_df[today_mask]
+                first_row = today_df.iloc[0] if not today_df.empty else ind_df.iloc[0]
                 chg = ((last_row["close"] - first_row["open"]) / first_row["open"] * 100.0) if first_row["open"] else 0.0
-                is_sq = last_row["bandwidth"] <= last_row.get("bandwidth_20_min", last_row["bandwidth"]) * 1.2
+                
+                bw_min = last_row.get("bandwidth_20_min", last_row["bandwidth"])
+                if pd.isna(bw_min) or bw_min <= 0:
+                    bw_min = last_row["bandwidth"]
+                is_sq = last_row["bandwidth"] <= bw_min * 1.2
                 vwap_b = "ABOVE_VWAP" if last_row["close"] >= last_row["vwap"] else "BELOW_VWAP"
                 
                 trend = "RANGE"

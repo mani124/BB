@@ -105,11 +105,23 @@ class DhanClient:
                 return pd.DataFrame()
 
             timestamps = data.get("start_Time") or data.get("timestamp") or []
+            parsed_ts = self._parse_dhan_timestamps(timestamps)
             return pd.DataFrame({
-                "timestamp": pd.to_datetime(timestamps, unit="s", errors="coerce"),
+                "timestamp": parsed_ts,
                 "open": data["open"],
                 "high": data["high"],
                 "low": data["low"],
                 "close": data["close"],
                 "volume": data["volume"]
             })
+
+    def _parse_dhan_timestamps(self, timestamps: list) -> pd.DatetimeIndex:
+        """Convert Dhan epoch seconds (UTC) to Indian Standard Time (IST) naive datetimes."""
+        if not timestamps:
+            return pd.DatetimeIndex([])
+        first = timestamps[0]
+        if isinstance(first, (int, float)) or (isinstance(first, str) and first.isdigit()):
+            dt_idx = pd.to_datetime(timestamps, unit="s", utc=True, errors="coerce")
+            return dt_idx.tz_convert("Asia/Kolkata").tz_localize(None)
+        else:
+            return pd.to_datetime(timestamps, errors="coerce")

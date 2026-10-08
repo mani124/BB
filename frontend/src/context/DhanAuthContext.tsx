@@ -17,12 +17,11 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Restore from sessionStorage on reload
+    // Restore and verify from sessionStorage on reload
     const savedId = sessionStorage.getItem('dhan_client_id');
     const savedToken = sessionStorage.getItem('dhan_access_token');
     if (savedId && savedToken) {
-      setClientId(savedId);
-      setAccessToken(savedToken);
+      connect(savedId, savedToken);
     }
   }, []);
 
