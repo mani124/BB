@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 router = APIRouter(prefix="/signals", tags=["signals"])
 
 @router.get("")
+@router.get("/snapshot")
 def get_signals_snapshot():
     from app.main import worker
     return worker.get_state().model_dump()
