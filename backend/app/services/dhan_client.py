@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timedelta
 from typing import Optional
 import httpx
 import pandas as pd
@@ -36,16 +37,18 @@ class DhanClient:
         }
         client = await self.get_client()
         async with self._semaphore:
-            resp = await client.get("/user/profile", headers=headers)
+            resp = await client.get("/profile", headers=headers)
             if resp.status_code == 200:
                 return {"valid": True, "data": resp.json()}
-            elif resp.status_code == 401:
+            elif resp.status_code in [401, 403]:
                 return {"valid": False, "error": "Invalid or expired Dhan Access Token"}
             else:
-                # Some accounts respond on fund-limit endpoint
-                resp2 = await client.get("/fund-limit", headers=headers)
+                # Fallback to fundlimit endpoint
+                resp2 = await client.get("/fundlimit", headers=headers)
                 if resp2.status_code == 200:
                     return {"valid": True, "data": resp2.json()}
+                elif resp2.status_code in [401, 403]:
+                    return {"valid": False, "error": "Invalid or expired Dhan Access Token"}
                 return {"valid": False, "error": f"Dhan API returned HTTP {resp.status_code}"}
 
     async def fetch_intraday_candles(
@@ -55,13 +58,22 @@ class DhanClient:
         security_id: str,
         exchange_segment: str,
         instrument_type: str = "EQUITY",
-        interval: int = 5
+        interval: int = 5,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None
     ) -> pd.DataFrame:
         """
         Fetch intraday historical candles from Dhan HQ API:
         POST /v2/charts/intraday
-        Body: {"securityId": str, "exchangeSegment": str, "instrument": str, "interval": int}
+        Body: {"securityId": str, "exchangeSegment": str, "instrument": str, "interval": int, "fromDate": str, "toDate": str}
         """
+        now = datetime.now()
+        if not to_date:
+            to_date = now.strftime("%Y-%m-%d")
+        if not from_date:
+            # Default to last 5 days to ensure ample intraday candles
+            from_date = (now - timedelta(days=5)).strftime("%Y-%m-%d")
+
         headers = {
             "client-id": client_id,
             "access-token": access_token,
@@ -71,7 +83,9 @@ class DhanClient:
             "securityId": str(security_id),
             "exchangeSegment": exchange_segment,
             "instrument": instrument_type,
-            "interval": interval
+            "interval": interval,
+            "fromDate": from_date,
+            "toDate": to_date
         }
 
         client = await self.get_client()
