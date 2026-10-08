@@ -233,3 +233,25 @@ def test_unsorted_timestamps():
     result = calculate_indicators(df_shuffled)
     assert result["timestamp"].is_monotonic_increasing
 
+def test_bandwidth_20_min_no_warmup_zero_pollution():
+    """Verify bandwidth_20_min is not polluted by 0.0 warmup values at bar 19 and bar 20."""
+    df = generate_sample_candles(25)
+    result = calculate_indicators(df)
+    
+    bw_19 = result["bandwidth"].iloc[19]
+    bw_20 = result["bandwidth"].iloc[20]
+    bw_min_20 = result["bandwidth_20_min"].iloc[20]
+    
+    assert bw_min_20 > 0.0
+    assert pytest.approx(bw_min_20, rel=1e-5) == min(bw_19, bw_20)
+
+def test_vwap_nan_volume_coercion():
+    """Verify session VWAP safely coerces NaN volumes to 0 without NaN propagation."""
+    df = generate_sample_candles(15)
+    df.loc[3, "volume"] = np.nan
+    df.loc[7, "volume"] = np.nan
+    result = calculate_indicators(df)
+    assert not result["vwap"].isna().any()
+    assert (result["vwap"] > 0).all()
+
+

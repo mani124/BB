@@ -71,11 +71,16 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
     # =========================================================================
     # SETUP 1: Volatility Squeeze & Expansion Breakout
     # =========================================================================
-    # Squeeze condition: BandWidth was recently at or near 20-period minimum
+    # Squeeze condition: BandWidth was recently at or near 20-period minimum, or in absolute squeeze (<= 5.0%)
     if bw_min <= 0.0001:
         is_squeeze = bw <= 5.0 or prev["bandwidth"] <= 5.0
     else:
-        is_squeeze = prev["bandwidth"] <= bw_min * 1.3 or bw <= bw_min * 1.3
+        is_squeeze = (
+            prev["bandwidth"] <= bw_min * 1.3
+            or bw <= bw_min * 1.3
+            or bw <= 5.0
+            or prev["bandwidth"] <= 5.0
+        )
 
     if is_squeeze:
         # CE Squeeze Breakout: Close > Upper Band, Close > VWAP, RSI > 60

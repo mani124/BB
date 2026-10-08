@@ -58,12 +58,11 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     # BandWidth = (Upper - Lower) / Middle * 100
     denom = res["bb_middle"].replace(0, np.nan)
-    res["bandwidth"] = ((res["bb_upper"] - res["bb_lower"]) / denom * 100.0).fillna(0.0)
-
-    # BandWidth 20-period rolling min (for squeeze detection)
+    raw_bw = (res["bb_upper"] - res["bb_lower"]) / denom * 100.0
     res["bandwidth_20_min"] = (
-        res["bandwidth"].rolling(window=window, min_periods=window).min()
+        raw_bw.rolling(window=window, min_periods=1).min().fillna(0.0)
     )
+    res["bandwidth"] = raw_bw.fillna(0.0)
 
     # Percent B = (Close - Lower) / (Upper - Lower)
     band_diff = (res["bb_upper"] - res["bb_lower"]).replace(0, np.nan)
@@ -74,7 +73,7 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     typical_price = (res["high"] + res["low"] + res["close"]) / 3.0
     res["session_date"] = res["timestamp"].dt.date
 
-    vol_clean = res["volume"].clip(lower=0)
+    vol_clean = res["volume"].fillna(0).clip(lower=0)
     tp_vol = typical_price * vol_clean
     cum_tp_vol = tp_vol.groupby(res["session_date"]).cumsum()
     cum_vol = vol_clean.groupby(res["session_date"]).cumsum()
