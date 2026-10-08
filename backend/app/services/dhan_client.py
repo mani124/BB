@@ -11,8 +11,11 @@ logger = logging.getLogger(__name__)
 class DhanClient:
     """Async HTTP client for Dhan HQ APIs with strict rate-limiting and zero-token storage."""
 
-    def __init__(self, rps_limit: int = settings.RATE_LIMIT_RPS):
+    def __init__(self, rps_limit: int = settings.RATE_LIMIT_RPS, min_spacing: float = 0.18):
         self._semaphore = asyncio.Semaphore(rps_limit)
+        self._pace_lock = asyncio.Lock()
+        self._min_spacing = min_spacing
+        self._last_request_time: float = 0.0
         self._base_url = settings.DHAN_API_BASE
         self._client: Optional[httpx.AsyncClient] = None
 
@@ -28,9 +31,23 @@ class DhanClient:
     async def close(self):
         if self._client and not self._client.is_closed:
             await self._client.aclose()
+            self._client = None
+
+    async def _throttle(self):
+        """Enforce smooth inter-request spacing (~0.18s) to prevent bursting and HTTP 429."""
+        async with self._pace_lock:
+            loop = asyncio.get_running_loop()
+            now = loop.time()
+            elapsed = now - self._last_request_time
+            if elapsed < self._min_spacing:
+                await asyncio.sleep(self._min_spacing - elapsed)
+            self._last_request_time = loop.time()
 
     async def verify_credentials(self, client_id: str, access_token: str) -> dict:
-        """Verify 24h Dhan access token by querying trader profile/fund limits."""
+        """
+        Verify 24h Dhan access token by querying trader profile.
+        Falls back to /fundlimit if /profile returns a non-200 non-auth status.
+        """
         headers = {
             "client-id": client_id,
             "access-token": access_token,
@@ -38,20 +55,30 @@ class DhanClient:
             "Accept": "application/json"
         }
         client = await self.get_client()
-        async with self._semaphore:
-            resp = await client.get("/profile", headers=headers)
-            if resp.status_code == 200:
-                return {"valid": True, "data": resp.json()}
-            elif resp.status_code in [401, 403]:
-                return {"valid": False, "error": "Invalid or expired Dhan Access Token"}
-            else:
-                # Fallback to fundlimit endpoint
+        try:
+            async with self._semaphore:
+                await self._throttle()
+                resp = await client.get("/profile", headers=headers)
+                if resp.status_code == 200:
+                    return {"valid": True, "data": resp.json()}
+                elif resp.status_code in [401, 403]:
+                    return {"valid": False, "error": "Invalid or expired Dhan Access Token"}
+                
+                # Fallback to fundlimit endpoint if /profile route is unavailable
+                logger.info(f"Dhan /profile returned HTTP {resp.status_code}, falling back to /fundlimit")
+                await self._throttle()
                 resp2 = await client.get("/fundlimit", headers=headers)
                 if resp2.status_code == 200:
                     return {"valid": True, "data": resp2.json()}
                 elif resp2.status_code in [401, 403]:
                     return {"valid": False, "error": "Invalid or expired Dhan Access Token"}
                 return {"valid": False, "error": f"Dhan API returned HTTP {resp.status_code}"}
+        except httpx.RequestError as exc:
+            logger.error(f"Network error verifying Dhan credentials: {exc}")
+            return {"valid": False, "error": f"Network error connecting to Dhan API: {str(exc)}"}
+        except Exception as exc:
+            logger.error(f"Unexpected error verifying Dhan credentials: {exc}")
+            return {"valid": False, "error": f"Unexpected verification error: {str(exc)}"}
 
     async def fetch_intraday_candles(
         self,
@@ -66,14 +93,14 @@ class DhanClient:
     ) -> pd.DataFrame:
         """
         Fetch intraday historical candles from Dhan HQ API:
-        POST /v2/charts/intraday
+        POST /charts/intraday
         Body: {"securityId": str, "exchangeSegment": str, "instrument": str, "interval": int, "fromDate": str, "toDate": str}
         """
         now = datetime.now()
         if not to_date:
             to_date = now.strftime("%Y-%m-%d")
         if not from_date:
-            # Default to last 5 days to ensure ample intraday candles
+            # Default to rolling 5 days to ensure ample intraday candles
             from_date = (now - timedelta(days=5)).strftime("%Y-%m-%d")
 
         headers = {
@@ -90,38 +117,81 @@ class DhanClient:
             "toDate": to_date
         }
 
-        client = await self.get_client()
-        async with self._semaphore:
-            await asyncio.sleep(0.18)  # ~5 req/sec smooth spacing
-            resp = await client.post("/charts/intraday", headers=headers, json=payload)
-            if resp.status_code != 200:
-                logger.warning(f"Dhan intraday chart error: HTTP {resp.status_code} for sec_id={security_id}")
-                return pd.DataFrame()
+        try:
+            client = await self.get_client()
+            async with self._semaphore:
+                await self._throttle()
+                resp = await client.post("/charts/intraday", headers=headers, json=payload)
+                
+                # Handle rate limiting with exponential backoff retry
+                if resp.status_code == 429:
+                    logger.warning(f"Dhan rate limit (429) hit for sec_id={security_id}. Retrying after backoff...")
+                    await asyncio.sleep(1.0)
+                    await self._throttle()
+                    resp = await client.post("/charts/intraday", headers=headers, json=payload)
 
-            data = resp.json()
-            # Dhan response format:
-            # {"open": [...], "high": [...], "low": [...], "close": [...], "volume": [...], "start_Time": [...]}
-            if not isinstance(data, dict) or "close" not in data or not data["close"]:
-                return pd.DataFrame()
+                if resp.status_code != 200:
+                    logger.warning(f"Dhan intraday chart error: HTTP {resp.status_code} for sec_id={security_id}")
+                    return pd.DataFrame()
 
-            timestamps = data.get("start_Time") or data.get("timestamp") or []
-            parsed_ts = self._parse_dhan_timestamps(timestamps)
-            return pd.DataFrame({
-                "timestamp": parsed_ts,
-                "open": data["open"],
-                "high": data["high"],
-                "low": data["low"],
-                "close": data["close"],
-                "volume": data["volume"]
-            })
+                data = resp.json()
+        except Exception as e:
+            logger.warning(f"Exception fetching intraday candles for sec_id={security_id}: {e}")
+            return pd.DataFrame()
+
+        if not isinstance(data, dict):
+            return pd.DataFrame()
+
+        # Handle potential nested 'data' key in Dhan API responses
+        candles = data.get("data") if isinstance(data.get("data"), dict) else data
+
+        if not isinstance(candles, dict) or "close" not in candles or not candles["close"]:
+            return pd.DataFrame()
+
+        timestamps = (
+            candles.get("start_Time")
+            or candles.get("timestamp")
+            or candles.get("startTime")
+            or candles.get("time")
+            or []
+        )
+        parsed_ts = self._parse_dhan_timestamps(timestamps)
+
+        volume = candles.get("volume") or [0] * len(candles["close"])
+        return pd.DataFrame({
+            "timestamp": parsed_ts,
+            "open": candles["open"],
+            "high": candles["high"],
+            "low": candles["low"],
+            "close": candles["close"],
+            "volume": volume
+        })
 
     def _parse_dhan_timestamps(self, timestamps: list) -> pd.DatetimeIndex:
-        """Convert Dhan epoch seconds (UTC) to Indian Standard Time (IST) naive datetimes."""
-        if not timestamps:
+        """
+        Convert Dhan timestamps (UTC epoch seconds or strings) to Indian Standard Time (IST) naive datetimes.
+        """
+        if not timestamps or len(timestamps) == 0:
             return pd.DatetimeIndex([])
+
         first = timestamps[0]
-        if isinstance(first, (int, float)) or (isinstance(first, str) and first.isdigit()):
-            dt_idx = pd.to_datetime(timestamps, unit="s", utc=True, errors="coerce")
+        is_epoch = False
+        try:
+            val = float(first)
+            is_epoch = True
+        except (ValueError, TypeError):
+            is_epoch = False
+
+        if is_epoch:
+            # Dhan epoch timestamps:
+            # Usually epoch seconds (10 digits, e.g. ~1.7e9). Milliseconds if > 1e11.
+            val = float(first)
+            unit = "ms" if val > 1e11 else "s"
+            numeric_ts = pd.to_numeric(timestamps, errors="coerce")
+            dt_idx = pd.to_datetime(numeric_ts, unit=unit, utc=True, errors="coerce")
             return dt_idx.tz_convert("Asia/Kolkata").tz_localize(None)
         else:
-            return pd.to_datetime(timestamps, errors="coerce")
+            dt_idx = pd.to_datetime(timestamps, errors="coerce")
+            if dt_idx.tz is not None:
+                return dt_idx.tz_convert("Asia/Kolkata").tz_localize(None)
+            return dt_idx

@@ -53,7 +53,7 @@ class UniverseManager:
     ]
 
     MOMENTUM_STOCKS: list[Instrument] = [
-        # Banking & Financials
+        # Banking & Financials (7)
         Instrument(symbol="HDFCBANK", name="HDFC Bank", security_id="1333", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Banking"),
         Instrument(symbol="ICICIBANK", name="ICICI Bank", security_id="4963", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Banking"),
         Instrument(symbol="SBIN", name="State Bank of India", security_id="3045", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Banking"),
@@ -61,33 +61,38 @@ class UniverseManager:
         Instrument(symbol="KOTAKBANK", name="Kotak Mahindra Bank", security_id="1922", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Banking"),
         Instrument(symbol="BAJFINANCE", name="Bajaj Finance", security_id="317", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Financials"),
         Instrument(symbol="BAJAJFINSV", name="Bajaj Finserv", security_id="16669", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Financials"),
-        # IT
+        # IT (5)
         Instrument(symbol="INFY", name="Infosys", security_id="1594", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="IT"),
         Instrument(symbol="TCS", name="Tata Consultancy Services", security_id="11536", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="IT"),
         Instrument(symbol="HCLTECH", name="HCL Technologies", security_id="7229", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="IT"),
         Instrument(symbol="TECHM", name="Tech Mahindra", security_id="13538", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="IT"),
-        # Auto & Mobility
+        Instrument(symbol="WIPRO", name="Wipro", security_id="3787", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="IT"),
+        # Auto & Mobility (5)
         Instrument(symbol="TATAMOTORS", name="Tata Motors", security_id="3456", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Auto"),
         Instrument(symbol="MARUTI", name="Maruti Suzuki", security_id="10999", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Auto"),
         Instrument(symbol="M&M", name="Mahindra & Mahindra", security_id="2031", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Auto"),
         Instrument(symbol="BAJAJ-AUTO", name="Bajaj Auto", security_id="16675", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Auto"),
-        # Energy, Metals & Infra
+        Instrument(symbol="EICHERMOT", name="Eicher Motors", security_id="910", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Auto"),
+        # Energy, Metals & Infra (10)
         Instrument(symbol="RELIANCE", name="Reliance Industries", security_id="2885", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Energy"),
         Instrument(symbol="TATASTEEL", name="Tata Steel", security_id="3499", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Metals"),
         Instrument(symbol="JSWSTEEL", name="JSW Steel", security_id="11723", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Metals"),
         Instrument(symbol="HINDALCO", name="Hindalco Industries", security_id="1363", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Metals"),
         Instrument(symbol="COALINDIA", name="Coal India", security_id="20374", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Energy"),
         Instrument(symbol="ONGC", name="Oil and Natural Gas Corp", security_id="2475", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Energy"),
+        Instrument(symbol="NTPC", name="NTPC Limited", security_id="11630", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Energy"),
         Instrument(symbol="LT", name="Larsen & Toubro", security_id="11483", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Infra"),
         Instrument(symbol="ADANIENT", name="Adani Enterprises", security_id="25", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Diversified"),
         Instrument(symbol="ADANIPORTS", name="Adani Ports", security_id="15083", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Infra"),
-        # Telecom, Consumer & Pharma
+        # Telecom, Consumer & Pharma (8)
         Instrument(symbol="BHARTIARTL", name="Bharti Airtel", security_id="10604", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Telecom"),
         Instrument(symbol="ITC", name="ITC Limited", security_id="1660", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="FMCG"),
         Instrument(symbol="TITAN", name="Titan Company", security_id="3506", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Consumer"),
+        Instrument(symbol="TRENT", name="Trent Limited", security_id="1964", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Consumer"),
         Instrument(symbol="SUNPHARMA", name="Sun Pharma", security_id="3351", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Pharma"),
         Instrument(symbol="CIPLA", name="Cipla", security_id="694", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Pharma"),
         Instrument(symbol="DRREDDY", name="Dr. Reddy's Laboratories", security_id="881", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="Pharma"),
+        Instrument(symbol="BEL", name="Bharat Electronics", security_id="383", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="15m", sector="PSU"),
     ]
 
     def get_indices(self) -> list[Instrument]:
@@ -98,3 +103,7 @@ class UniverseManager:
 
     def get_all_instruments(self) -> list[Instrument]:
         return self.INDICES + self.MOMENTUM_STOCKS
+
+    def get_universe(self) -> list[Instrument]:
+        """Returns the full curated universe (4 Indices + 35 Momentum Stocks)."""
+        return self.get_all_instruments()

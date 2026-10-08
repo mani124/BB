@@ -1,10 +1,10 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
+from typing import Optional
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field
-from typing import Optional
 
 from app.core.config import settings
 from app.services.universe_manager import UniverseManager, Instrument
@@ -38,12 +38,12 @@ class ScannerState(BaseModel):
     active_mode: str = "demo"  # "live" or "demo"
 
 class ScannerWorker:
-    """Cyclic scanner worker cycling every ~8 seconds through the 4 indices and ~30 momentum stocks."""
+    """Cyclic scanner worker cycling every ~8 seconds through the 4 indices and ~35 momentum stocks."""
 
     def __init__(self, universe_mgr: UniverseManager, dhan_client: Optional[DhanClient] = None):
         self.universe_mgr = universe_mgr
         self.dhan_client = dhan_client or DhanClient()
-        self._state = ScannerState(universe_count=len(universe_mgr.get_all_instruments()))
+        self._state = ScannerState(universe_count=len(universe_mgr.get_universe()))
         self._listeners: list[asyncio.Queue] = []
         self._running = False
         self._task: Optional[asyncio.Task] = None
@@ -56,6 +56,10 @@ class ScannerWorker:
             self._session_credentials = None
 
     def get_state(self) -> ScannerState:
+        return self._state
+
+    def get_latest_state(self) -> ScannerState:
+        """Alias for get_state returning the most recent scanner state snapshot."""
         return self._state
 
     def subscribe(self) -> asyncio.Queue:
@@ -85,7 +89,7 @@ class ScannerWorker:
     def generate_synthetic_candles(self, inst: Instrument, n: int = 40) -> pd.DataFrame:
         """
         Generate realistic simulated market candles for forward-testing
-        when outside trading hours or before entering live Dhan credentials.
+        when outside trading hours or in demo mode.
         """
         base_map = {
             "NIFTY 50": 25050.0,
@@ -101,29 +105,29 @@ class ScannerWorker:
         base_p = base_map.get(inst.symbol, 1500.0)
         start_time = datetime.now().replace(hour=9, minute=15, second=0, microsecond=0)
         minutes_step = 5 if inst.default_timeframe == "5m" else 15
-        
+
         records = []
         curr_p = base_p
-        
+
         # Seed by symbol name for reproducible realism
         seed_val = sum(ord(c) for c in inst.symbol)
         rng = np.random.default_rng(seed_val)
-        
+
         for i in range(n):
             ts = start_time + timedelta(minutes=minutes_step * i)
             # Create natural momentum waves
-            noise = rng.normal(0, base_p * 0.0015)
+            noise = float(rng.normal(0, base_p * 0.0015))
             open_p = curr_p
             close_p = open_p + noise
-            
+
             # Inject a squeeze + breakout setup on NIFTY & RELIANCE for live demonstration
             if inst.symbol in ["NIFTY 50", "RELIANCE"] and i >= n - 2:
                 close_p = open_p + abs(noise) * 2.5
-            
-            high_p = max(open_p, close_p) + abs(rng.normal(0, base_p * 0.0008))
-            low_p = min(open_p, close_p) - abs(rng.normal(0, base_p * 0.0008))
+
+            high_p = max(open_p, close_p) + abs(float(rng.normal(0, base_p * 0.0008)))
+            low_p = min(open_p, close_p) - abs(float(rng.normal(0, base_p * 0.0008)))
             vol = int(rng.uniform(5000, 25000))
-            
+
             records.append({
                 "timestamp": ts,
                 "open": round(open_p, 2),
@@ -133,7 +137,7 @@ class ScannerWorker:
                 "volume": vol
             })
             curr_p = close_p
-            
+
         return pd.DataFrame(records)
 
     async def run_single_scan_cycle(
@@ -141,27 +145,32 @@ class ScannerWorker:
         client_id: Optional[str] = None,
         access_token: Optional[str] = None
     ) -> ScannerState:
-        """Run a full cycle across all instruments."""
+        """Run a full cycle across all instruments in the universe."""
         self._state.is_scanning = True
         self._state.scan_progress = 0.0
-        
-        instruments = self.universe_mgr.get_all_instruments()
-        total_count = len(instruments)
-        new_signals: list[Signal] = []
-        new_radar: dict[str, IndexRadarItem] = {}
 
-        mode = "live" if (client_id and access_token) else "demo"
+        # Fallback to session credentials if not explicitly passed
+        cid = client_id or (self._session_credentials[0] if self._session_credentials else None)
+        tok = access_token or (self._session_credentials[1] if self._session_credentials else None)
+
+        mode = "live" if (cid and tok) else "demo"
         self._state.active_mode = mode
 
+        instruments = self.universe_mgr.get_universe()
+        total_count = len(instruments)
+        self._state.universe_count = total_count
+
+        new_signals: list[Signal] = []
+        new_radar: dict[str, IndexRadarItem] = {}
         price_map: dict[str, float] = {}
 
         for idx, inst in enumerate(instruments):
             df = pd.DataFrame()
-            if mode == "live" and client_id and access_token:
+            if mode == "live" and cid and tok:
                 try:
                     df = await self.dhan_client.fetch_intraday_candles(
-                        client_id=client_id,
-                        access_token=access_token,
+                        client_id=cid,
+                        access_token=tok,
                         security_id=inst.security_id,
                         exchange_segment=inst.exchange_segment,
                         instrument_type=inst.instrument_type,
@@ -170,7 +179,7 @@ class ScannerWorker:
                 except Exception as e:
                     logger.warning(f"Error fetching candles for {inst.symbol}: {e}")
 
-            # Fallback to demo generator if df is empty (outside market hours or demo mode)
+            # Fallback to demo generator if df is empty (outside market hours, demo mode, or fetch error)
             if df.empty or len(df) < 15:
                 df = self.generate_synthetic_candles(inst)
 
@@ -178,36 +187,44 @@ class ScannerWorker:
             ind_df = calculate_indicators(df)
             if not ind_df.empty:
                 price_map[inst.symbol] = float(ind_df.iloc[-1]["close"])
-            
+
             # If instrument is an index, update radar status
             if inst.instrument_type == "INDEX" and not ind_df.empty:
                 last_row = ind_df.iloc[-1]
-                # Scope to today's trading session to prevent multi-day Dhan history from distorting daily % change
+                # Scope to today's trading session to strictly measure intraday % change from today's opening bar
                 today_mask = ind_df["timestamp"].dt.date == ind_df["timestamp"].dt.date.max()
                 today_df = ind_df[today_mask]
                 first_row = today_df.iloc[0] if not today_df.empty else ind_df.iloc[0]
-                chg = ((last_row["close"] - first_row["open"]) / first_row["open"] * 100.0) if first_row["open"] else 0.0
-                
-                bw_min = last_row.get("bandwidth_20_min", last_row["bandwidth"])
+
+                open_price = float(first_row["open"]) if float(first_row["open"]) > 0 else 1.0
+                close_price = float(last_row["close"])
+                chg = ((close_price - open_price) / open_price) * 100.0
+
+                bw_val = float(last_row["bandwidth"])
+                bw_min = float(last_row.get("bandwidth_20_min", bw_val))
                 if pd.isna(bw_min) or bw_min <= 0:
-                    bw_min = last_row["bandwidth"]
-                is_sq = last_row["bandwidth"] <= bw_min * 1.2
-                vwap_b = "ABOVE_VWAP" if last_row["close"] >= last_row["vwap"] else "BELOW_VWAP"
-                
+                    bw_min = bw_val
+
+                is_sq = (bw_val <= bw_min * 1.25) or (bw_val <= 5.0)
+                vwap_b = "ABOVE_VWAP" if close_price >= float(last_row["vwap"]) else "BELOW_VWAP"
+
+                percent_b_val = float(last_row["percent_b"])
+                adx_val = float(last_row["adx"])
+
                 trend = "RANGE"
-                if last_row["percent_b"] > 0.9 and last_row["adx"] > 25:
+                if percent_b_val > 0.9 and adx_val > 25.0:
                     trend = "BULLISH_WALK"
-                elif last_row["percent_b"] < 0.1 and last_row["adx"] > 25:
+                elif percent_b_val < 0.1 and adx_val > 25.0:
                     trend = "BEARISH_WALK"
                 elif is_sq:
                     trend = "SQUEEZE"
 
                 new_radar[inst.symbol] = IndexRadarItem(
                     symbol=inst.symbol,
-                    close=round(float(last_row["close"]), 2),
-                    change_pct=round(float(chg), 2),
-                    percent_b=round(float(last_row["percent_b"]), 2),
-                    bandwidth=round(float(last_row["bandwidth"]), 2),
+                    close=round(close_price, 2),
+                    change_pct=round(chg, 2),
+                    percent_b=round(percent_b_val, 2),
+                    bandwidth=round(bw_val, 2),
                     is_squeeze=bool(is_sq),
                     vwap_bias=vwap_b,
                     rsi=round(float(last_row["rsi"]), 2),
@@ -240,8 +257,7 @@ class ScannerWorker:
     async def _loop(self):
         while self._running:
             try:
-                cid, tok = self._session_credentials if self._session_credentials else (None, None)
-                await self.run_single_scan_cycle(client_id=cid, access_token=tok)
+                await self.run_single_scan_cycle()
             except Exception as e:
                 logger.error(f"Error in scanner worker loop: {e}")
             await asyncio.sleep(settings.SCAN_INTERVAL_SECONDS)

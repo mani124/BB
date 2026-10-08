@@ -40,6 +40,11 @@ DEFAULT_LOT_SIZES: dict[str, int] = {
     "DRREDDY": 125,
     "BAJFINANCE": 125,
     "BAJAJFINSV": 500,
+    "WIPRO": 1500,
+    "EICHERMOT": 150,
+    "NTPC": 1500,
+    "TRENT": 100,
+    "BEL": 2700,
 }
 
 def clean_symbol_key(symbol: str) -> str:
