@@ -67,7 +67,7 @@ trap cleanup SIGINT SIGTERM EXIT
 # 3. Start Backend
 echo -e "${CYAN}Starting FastAPI Backend on http://localhost:8001...${NC}"
 cd "${BACKEND_DIR}"
-${PYTHON_EXEC} -m uvicorn app.main:app --host 0.0.0.0 --port 8001 &
+${PYTHON_EXEC} -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload &
 BACKEND_PID=$!
 
 # Wait for backend health

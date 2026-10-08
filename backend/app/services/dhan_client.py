@@ -33,7 +33,9 @@ class DhanClient:
         """Verify 24h Dhan access token by querying trader profile/fund limits."""
         headers = {
             "client-id": client_id,
-            "access-token": access_token
+            "access-token": access_token,
+            "Content-Type": "application/json",
+            "Accept": "application/json"
         }
         client = await self.get_client()
         async with self._semaphore:
