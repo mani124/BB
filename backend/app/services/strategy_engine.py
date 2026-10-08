@@ -58,6 +58,12 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
     ts_str = str(ts_raw)
     ts_clean = ts_str.replace(":", "").replace("-", "").replace(" ", "_").replace(".", "")
 
+    # Intraday fresh entry cutoff: Do not enter new positions after 15:15:00 IST
+    if isinstance(ts_raw, (pd.Timestamp, datetime)):
+        bar_t = ts_raw.time()
+        if bar_t > pd.to_datetime("15:15:00").time():
+            return signals
+
     close = curr["close"]
     upper = curr["bb_upper"]
     lower = curr["bb_lower"]
@@ -129,9 +135,9 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
     # =========================================================================
     if len(df) >= 22 and adx >= 23.0:
         prev2 = df.iloc[last_idx - 2]
-        # CE Walking: Prior 2 candles had strong closes near or above upper band
+        # CE Walking: Prior 2 candles had strong closes near or above upper band AND trading above session VWAP
         prior_bull = (prev["close"] >= prev["bb_upper"] * 0.998) or (prev2["close"] >= prev2["bb_upper"] * 0.998)
-        if prior_bull and ema_9 > mid and close > ema_9:
+        if prior_bull and ema_9 > mid and close > ema_9 and close > vwap:
             # Low retested near 9 EMA and closed green
             if curr["low"] <= max(ema_9 * 1.004, ema_9 + 0.5) and curr["close"] >= curr["open"]:
                 sl = round(ema_9 - (curr["high"] - curr["low"]) * 0.3, 2)
@@ -152,9 +158,9 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                     rationale="Bullish momentum trend riding Upper Band with 9 EMA support bounce"
                 ))
 
-        # PE Walking: Prior 2 candles had strong closes near or below lower band
+        # PE Walking: Prior 2 candles had strong closes near or below lower band AND trading below session VWAP
         prior_bear = (prev["close"] <= prev["bb_lower"] * 1.002) or (prev2["close"] <= prev2["bb_lower"] * 1.002)
-        if prior_bear and ema_9 < mid and close < ema_9:
+        if prior_bear and ema_9 < mid and close < ema_9 and close < vwap:
             # High retested near 9 EMA and closed red
             if curr["high"] >= min(ema_9 * 0.996, ema_9 - 0.5) and curr["close"] <= curr["open"]:
                 sl = round(ema_9 + (curr["high"] - curr["low"]) * 0.3, 2)

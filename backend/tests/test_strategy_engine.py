@@ -312,3 +312,110 @@ def test_edge_cases_handling():
     # Missing indicator columns
     df_missing_cols = pd.DataFrame([{"open": 100.0, "close": 101.0, "timestamp": datetime.now()}] * 25)
     assert evaluate_signals("NIFTY 50", df_missing_cols) == []
+
+def test_setup2_ce_rejected_when_below_vwap():
+    records = []
+    start_t = datetime(2026, 10, 8, 9, 15)
+    p = 100.0
+    for i in range(20):
+        ts = start_t + timedelta(minutes=5 * i)
+        p += 0.5
+        records.append({
+            "timestamp": ts,
+            "open": p - 0.5,
+            "high": p + 0.5,
+            "low": p - 0.5,
+            "close": p,
+            "volume": 2000
+        })
+    for i in range(20, 26):
+        ts = start_t + timedelta(minutes=5 * i)
+        p += 3.0
+        records.append({
+            "timestamp": ts,
+            "open": p - 2.5,
+            "high": p + 0.5,
+            "low": p - 2.5,
+            "close": p,
+            "volume": 5000
+        })
+    ts = start_t + timedelta(minutes=5 * 26)
+    records.append({
+        "timestamp": ts,
+        "open": 123.0,
+        "high": 126.0,
+        "low": 120.0,
+        "close": 125.0,
+        "volume": 4000
+    })
+    df = pd.DataFrame(records)
+    ind_df = calculate_indicators(df)
+    
+    # Simulate a down-day where session VWAP is 150.0 (well above current close 125.0)
+    ind_df["vwap"] = 150.0
+    signals = evaluate_signals("NIFTY 50", ind_df, timeframe="5m")
+    s2_ce = [s for s in signals if s.setup_type == SetupType.SETUP_2_WALKING and s.option_type == "CE"]
+    assert len(s2_ce) == 0, "CE buy must be rejected when price is below session VWAP"
+
+def test_setup2_pe_rejected_when_above_vwap():
+    records = []
+    start_t = datetime(2026, 10, 8, 9, 15)
+    p = 200.0
+    for i in range(20):
+        ts = start_t + timedelta(minutes=5 * i)
+        p -= 0.5
+        records.append({
+            "timestamp": ts,
+            "open": p + 0.5,
+            "high": p + 0.5,
+            "low": p - 0.5,
+            "close": p,
+            "volume": 2000
+        })
+    for i in range(20, 26):
+        ts = start_t + timedelta(minutes=5 * i)
+        p -= 3.0
+        records.append({
+            "timestamp": ts,
+            "open": p + 2.5,
+            "high": p + 0.5,
+            "low": p - 2.5,
+            "close": p,
+            "volume": 5000
+        })
+    ts = start_t + timedelta(minutes=5 * 26)
+    records.append({
+        "timestamp": ts,
+        "open": 177.0,
+        "high": 180.0,
+        "low": 174.0,
+        "close": 175.0,
+        "volume": 4000
+    })
+    df = pd.DataFrame(records)
+    ind_df = calculate_indicators(df)
+    
+    # Simulate an up-day where session VWAP is 160.0 (below current close 175.0)
+    ind_df["vwap"] = 160.0
+    signals = evaluate_signals("NIFTY 50", ind_df, timeframe="5m")
+    s2_pe = [s for s in signals if s.setup_type == SetupType.SETUP_2_WALKING and s.option_type == "PE"]
+    assert len(s2_pe) == 0, "PE buy must be rejected when price is above session VWAP"
+
+def test_intraday_cutoff_rejects_entries_after_15_15():
+    # Construct a breakout at 15:25 (after 15:15 cutoff)
+    start_late = datetime(2026, 10, 8, 13, 25)
+    # 25 bars * 5m = 120 minutes -> bar 24 is at 15:25:00
+    df = create_series_df(25, 100.0, start_time=start_late)
+    df.loc[22, "close"] = 102.0
+    df.loc[23, "close"] = 104.0
+    df.loc[24, "open"] = 104.0
+    df.loc[24, "close"] = 108.0
+    df.loc[24, "high"] = 108.5
+    df.loc[24, "volume"] = 10000
+    
+    ind_df = calculate_indicators(df)
+    assert ind_df.iloc[-1]["timestamp"].time() == datetime.strptime("15:25:00", "%H:%M:%S").time()
+    
+    signals = evaluate_signals("NIFTY 50", ind_df, timeframe="5m")
+    assert len(signals) == 0, "No fresh entry signals should be generated after 15:15:00 IST"
+
