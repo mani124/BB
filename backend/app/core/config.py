@@ -10,5 +10,7 @@ class Settings(BaseModel):
     DHAN_API_BASE: str = "https://api.dhan.co/v2"
     RATE_LIMIT_RPS: int = 5
     SCAN_INTERVAL_SECONDS: float = 8.0
+    DATA_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
+    DB_PATH: str = os.path.join(DATA_DIR, "trades.db")
 
 settings = Settings()

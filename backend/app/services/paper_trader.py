@@ -53,9 +53,34 @@ class PaperPortfolio(BaseModel):
 class PaperTradingEngine:
     """Manages paper trading execution, position monitoring, and analytics."""
 
-    def __init__(self):
+    def __init__(self, db_path: Optional[str] = None):
         self._portfolio = PaperPortfolio()
         self._processed_signal_ids: set[str] = set()
+        self.storage = None
+        if db_path is not None:
+            from app.services.paper_storage import PaperStorage
+            self.storage = PaperStorage(db_path)
+            self._load_from_storage()
+
+    def _load_from_storage(self):
+        if not self.storage:
+            return
+        active, closed = self.storage.load_all_positions()
+        self._portfolio.active_positions = active
+        self._portfolio.closed_trades = closed
+        self._processed_signal_ids = self.storage.load_processed_signals()
+
+        saved_auto = self.storage.load_setting("auto_trade_enabled")
+        if saved_auto is not None:
+            self._portfolio.auto_trade_enabled = (saved_auto.lower() == "true")
+
+        saved_lots = self.storage.load_setting("default_lots")
+        if saved_lots is not None:
+            try:
+                self._portfolio.default_lots = int(saved_lots)
+            except ValueError:
+                pass
+        self._recalculate_metrics()
 
     def get_portfolio(self) -> PaperPortfolio:
         self._recalculate_metrics()
@@ -63,13 +88,19 @@ class PaperTradingEngine:
 
     def set_auto_trade(self, enabled: bool):
         self._portfolio.auto_trade_enabled = enabled
+        if self.storage:
+            self.storage.save_setting("auto_trade_enabled", str(enabled))
 
     def set_default_lots(self, lots: int):
         self._portfolio.default_lots = max(1, lots)
+        if self.storage:
+            self.storage.save_setting("default_lots", str(self._portfolio.default_lots))
 
     def reset(self):
         self._portfolio = PaperPortfolio()
         self._processed_signal_ids.clear()
+        if self.storage:
+            self.storage.clear_all()
 
     def open_position_from_signal(self, signal: Signal, lots: Optional[int] = None) -> Optional[PaperPosition]:
         # Avoid duplicate trades on same signal ID
@@ -117,6 +148,9 @@ class PaperTradingEngine:
 
         self._portfolio.active_positions.append(pos)
         self._recalculate_metrics()
+        if self.storage:
+            self.storage.upsert_position(pos)
+            self.storage.add_processed_signal(signal.id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         return pos
 
     def on_signals_cycle(self, signals: list[Signal]):
@@ -165,6 +199,8 @@ class PaperTradingEngine:
                         runner_pnl = round(pos.pnl_points * pos.quantity, 2)
                     pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
                     self._portfolio.closed_trades.append(pos)
+                    if self.storage:
+                        self.storage.upsert_position(pos)
                     continue
 
                 # Check Target 2
@@ -175,6 +211,8 @@ class PaperTradingEngine:
                     runner_pnl = round(pos.pnl_points * pos.quantity, 2)
                     pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
                     self._portfolio.closed_trades.append(pos)
+                    if self.storage:
+                        self.storage.upsert_position(pos)
                     continue
 
                 # Check Target 1
@@ -214,6 +252,8 @@ class PaperTradingEngine:
                         runner_pnl = round(pos.pnl_points * pos.quantity, 2)
                     pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
                     self._portfolio.closed_trades.append(pos)
+                    if self.storage:
+                        self.storage.upsert_position(pos)
                     continue
 
                 # Check Target 2
@@ -224,6 +264,8 @@ class PaperTradingEngine:
                     runner_pnl = round(pos.pnl_points * pos.quantity, 2)
                     pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
                     self._portfolio.closed_trades.append(pos)
+                    if self.storage:
+                        self.storage.upsert_position(pos)
                     continue
 
                 # Check Target 1
@@ -248,6 +290,9 @@ class PaperTradingEngine:
 
         self._portfolio.active_positions = still_active
         self._recalculate_metrics()
+        if self.storage:
+            for p in still_active:
+                self.storage.upsert_position(p)
 
     def close_position(self, position_id: str, reason: str = "MANUAL_EXIT") -> Optional[PaperPosition]:
         for i, pos in enumerate(self._portfolio.active_positions):
@@ -260,6 +305,8 @@ class PaperTradingEngine:
                 closed = self._portfolio.active_positions.pop(i)
                 self._portfolio.closed_trades.append(closed)
                 self._recalculate_metrics()
+                if self.storage:
+                    self.storage.upsert_position(closed)
                 return closed
         return None
 
@@ -281,4 +328,5 @@ class PaperTradingEngine:
         self._portfolio.total_trades_count = total_closed
         self._portfolio.win_rate_pct = round((wins / total_closed * 100.0) if total_closed > 0 else 0.0, 1)
 
-paper_trader = PaperTradingEngine()
+from app.core.config import settings
+paper_trader = PaperTradingEngine(db_path=settings.DB_PATH)
