@@ -1,5 +1,5 @@
+from typing import Literal, Optional
 from pydantic import BaseModel
-from typing import Literal
 
 DEFAULT_LOT_SIZES: dict[str, int] = {
     "NIFTY 50": 65,
@@ -42,8 +42,15 @@ DEFAULT_LOT_SIZES: dict[str, int] = {
     "BAJAJFINSV": 500,
 }
 
+def clean_symbol_key(symbol: str) -> str:
+    s = symbol.upper().strip()
+    for prefix in ("NSE:", "BSE:"):
+        if s.startswith(prefix):
+            s = s[len(prefix):].strip()
+    return s
+
 def get_lot_size(symbol: str) -> int:
-    clean = symbol.upper().strip()
+    clean = clean_symbol_key(symbol)
     return DEFAULT_LOT_SIZES.get(clean, 100)
 
 class OptionStrikeRecommendation(BaseModel):
@@ -51,7 +58,7 @@ class OptionStrikeRecommendation(BaseModel):
     underlying_price: float
     option_type: Literal["CE", "PE"]
     atm_strike: int
-    recommended_strike: int  # 1-strike ITM for best delta/gamma vs theta balance
+    recommended_strike: int  # 1-strike ITM for best delta/gamma balance
     strike_symbol: str
     lot_size: int
     # Underlying spot levels
@@ -67,6 +74,9 @@ class OptionStrikeRecommendation(BaseModel):
     option_sl_price: float
     option_target_1_price: float
     option_target_2_price: float
+
+# Backwards-compatible alias
+OptionStrike = OptionStrikeRecommendation
 
 INDEX_STRIKE_STEPS: dict[str, int] = {
     "NIFTY 50": 50,
@@ -102,7 +112,7 @@ STOCK_STRIKE_STEPS: dict[str, int] = {
 }
 
 def get_strike_step(symbol: str, price: float) -> int:
-    clean_sym = symbol.upper().strip()
+    clean_sym = clean_symbol_key(symbol)
     if clean_sym in INDEX_STRIKE_STEPS:
         return INDEX_STRIKE_STEPS[clean_sym]
     if clean_sym in STOCK_STRIKE_STEPS:
@@ -122,7 +132,7 @@ def get_strike_step(symbol: str, price: float) -> int:
 
 def estimate_option_entry(symbol: str, underlying_price: float, step: int) -> float:
     """Estimate realistic 1-strike ITM option entry premium based on underlying tier and step."""
-    clean = symbol.upper().strip()
+    clean = clean_symbol_key(symbol)
     is_index = any(idx in clean for idx in ["NIFTY", "BANK", "FINNIFTY", "SENSEX", "MIDCP"])
     if is_index:
         # Intrinsic step value + ~0.5% extrinsic time value
@@ -135,37 +145,40 @@ def recommend_strike(
     symbol: str,
     underlying_price: float,
     option_type: Literal["CE", "PE"],
-    stop_loss: float
+    stop_loss: Optional[float] = None
 ) -> OptionStrikeRecommendation:
     step = get_strike_step(symbol, underlying_price)
     lot_size = get_lot_size(symbol)
+    min_risk = max(step * 0.25, 2.0)
     
     # ATM strike
     atm_strike = int(round(underlying_price / step) * step)
     
-    # 1-strike ITM for highest delta responsiveness (Delta ~0.55-0.60)
+    # 1-strike ITM selection and mathematical SL guarantees
     if option_type == "CE":
         recommended_strike = atm_strike - step
-        # Mathematical guarantee: SL must strictly be below entry for Call buy
-        if stop_loss >= underlying_price:
-            stop_loss = round(underlying_price - max(step * 0.5, 5.0), 2)
+        # Mathematical guarantee: SL must strictly be < entry for CE
+        if stop_loss is None or stop_loss >= underlying_price:
+            stop_loss = underlying_price - max(step * 0.5, min_risk)
+        risk = underlying_price - stop_loss
+        if risk < min_risk:
+            risk = min_risk
+            stop_loss = underlying_price - risk
     else:
         recommended_strike = atm_strike + step
-        # Mathematical guarantee: SL must strictly be above entry for Put buy
-        if stop_loss <= underlying_price:
-            stop_loss = round(underlying_price + max(step * 0.5, 5.0), 2)
+        # Mathematical guarantee: SL must strictly be > entry for PE
+        if stop_loss is None or stop_loss <= underlying_price:
+            stop_loss = underlying_price + max(step * 0.5, min_risk)
+        risk = stop_loss - underlying_price
+        if risk < min_risk:
+            risk = min_risk
+            stop_loss = underlying_price + risk
 
+    risk = round(risk, 2)
+    stop_loss = round(stop_loss, 2)
     strike_symbol = f"{symbol} {recommended_strike} {option_type}"
-    risk = round(abs(underlying_price - stop_loss), 2)
-    min_risk = max(step * 0.25, 2.0)
-    if risk < min_risk:
-        risk = round(min_risk, 2)
-        if option_type == "CE":
-            stop_loss = round(underlying_price - risk, 2)
-        else:
-            stop_loss = round(underlying_price + risk, 2)
     
-    # Target calculations based on underlying price move
+    # Dual Risk/Reward target calculations on underlying price
     if option_type == "CE":
         target_1 = round(underlying_price + 1.5 * risk, 2)
         target_2 = round(underlying_price + 2.5 * risk, 2)
@@ -173,7 +186,7 @@ def recommend_strike(
         target_1 = round(underlying_price - 1.5 * risk, 2)
         target_2 = round(underlying_price - 2.5 * risk, 2)
 
-    # Option premium calculations (Delta ~0.55)
+    # Option premium levels (Delta ~0.55)
     delta = 0.55
     est_entry = estimate_option_entry(symbol, underlying_price, step)
     # Cap option points risk at max 70% of premium
@@ -194,7 +207,7 @@ def recommend_strike(
         strike_symbol=strike_symbol,
         lot_size=lot_size,
         risk=risk,
-        stop_loss=round(stop_loss, 2),
+        stop_loss=stop_loss,
         target_1=target_1,
         target_2=target_2,
         estimated_option_entry=est_entry,

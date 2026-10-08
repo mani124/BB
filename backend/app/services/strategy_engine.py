@@ -32,7 +32,8 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
     Returns list of active signals.
     """
     signals: list[Signal] = []
-    if df.empty or len(df) < 20:
+    required_cols = {"close", "bb_upper", "bb_middle", "bb_lower", "bandwidth", "vwap", "rsi", "ema_9", "adx"}
+    if df.empty or len(df) < 20 or not required_cols.issubset(df.columns):
         return signals
 
     last_idx = len(df) - 1
@@ -83,7 +84,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
         )
 
     if is_squeeze:
-        # CE Squeeze Breakout: Close > Upper Band, Close > VWAP, RSI > 60
+        # CE Squeeze Breakout: Close > Upper Band, Close > VWAP, RSI >= 58
         if close > upper and close > vwap and rsi >= 58.0:
             sl = round(max(mid, curr["low"] - 2.0), 2)
             strike_rec = recommend_strike(symbol, close, "CE", sl)
@@ -95,7 +96,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                 option_type="CE",
                 timestamp=ts_str,
                 entry_price=round(close, 2),
-                stop_loss=sl,
+                stop_loss=strike_rec.stop_loss,
                 target_1=strike_rec.target_1,
                 target_2=strike_rec.target_2,
                 strike_recommendation=strike_rec,
@@ -103,7 +104,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                 rationale="Squeeze expansion above Upper BB with VWAP & RSI confirmation"
             ))
 
-        # PE Squeeze Breakdown: Close < Lower Band, Close < VWAP, RSI < 42
+        # PE Squeeze Breakdown: Close < Lower Band, Close < VWAP, RSI <= 42
         elif close < lower and close < vwap and rsi <= 42.0:
             sl = round(min(mid, curr["high"] + 2.0), 2)
             strike_rec = recommend_strike(symbol, close, "PE", sl)
@@ -115,7 +116,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                 option_type="PE",
                 timestamp=ts_str,
                 entry_price=round(close, 2),
-                stop_loss=sl,
+                stop_loss=strike_rec.stop_loss,
                 target_1=strike_rec.target_1,
                 target_2=strike_rec.target_2,
                 strike_recommendation=strike_rec,
@@ -132,7 +133,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
         prior_bull = (prev["close"] >= prev["bb_upper"] * 0.998) or (prev2["close"] >= prev2["bb_upper"] * 0.998)
         if prior_bull and ema_9 > mid and close > ema_9:
             # Low retested near 9 EMA and closed green
-            if curr["low"] <= ema_9 * 1.004 and curr["close"] >= curr["open"]:
+            if curr["low"] <= max(ema_9 * 1.004, ema_9 + 0.5) and curr["close"] >= curr["open"]:
                 sl = round(ema_9 - (curr["high"] - curr["low"]) * 0.3, 2)
                 strike_rec = recommend_strike(symbol, close, "CE", sl)
                 signals.append(Signal(
@@ -143,7 +144,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                     option_type="CE",
                     timestamp=ts_str,
                     entry_price=round(close, 2),
-                    stop_loss=sl,
+                    stop_loss=strike_rec.stop_loss,
                     target_1=strike_rec.target_1,
                     target_2=strike_rec.target_2,
                     strike_recommendation=strike_rec,
@@ -155,7 +156,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
         prior_bear = (prev["close"] <= prev["bb_lower"] * 1.002) or (prev2["close"] <= prev2["bb_lower"] * 1.002)
         if prior_bear and ema_9 < mid and close < ema_9:
             # High retested near 9 EMA and closed red
-            if curr["high"] >= ema_9 * 0.996 and curr["close"] <= curr["open"]:
+            if curr["high"] >= min(ema_9 * 0.996, ema_9 - 0.5) and curr["close"] <= curr["open"]:
                 sl = round(ema_9 + (curr["high"] - curr["low"]) * 0.3, 2)
                 strike_rec = recommend_strike(symbol, close, "PE", sl)
                 signals.append(Signal(
@@ -166,7 +167,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                     option_type="PE",
                     timestamp=ts_str,
                     entry_price=round(close, 2),
-                    stop_loss=sl,
+                    stop_loss=strike_rec.stop_loss,
                     target_1=strike_rec.target_1,
                     target_2=strike_rec.target_2,
                     strike_recommendation=strike_rec,
@@ -178,18 +179,17 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
     # SETUP 3: W-Bottom (CE) & M-Top (PE) Reversals
     # =========================================================================
     if len(df) >= 15:
-        # Search backward for trough 1 and trough 2 (W-bottom)
         recent_window = df.iloc[-12:]
         # W-Bottom:
         # Look for a trough outside lower band, intermediate bounce, second trough inside lower band
         min1_idx = recent_window["low"].iloc[:6].idxmin()
         min2_idx = recent_window["low"].iloc[6:].idxmin()
-        if min1_idx != min2_idx and min2_idx > min1_idx:
+        if min1_idx != min2_idx and min2_idx > min1_idx and min2_idx < last_idx:
             row_min1 = df.loc[min1_idx]
             row_min2 = df.loc[min2_idx]
             # Low 1 was outside lower band
             if row_min1["low"] < row_min1["bb_lower"]:
-                # Low 2 was strictly inside lower band
+                # Low 2 was strictly inside lower band and RSI had bullish divergence
                 if row_min2["close"] > row_min2["bb_lower"] and row_min2["rsi"] > row_min1["rsi"]:
                     # Neckline is max high between the two troughs
                     neckline = df.loc[min1_idx:min2_idx, "high"].max()
@@ -204,7 +204,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                             option_type="CE",
                             timestamp=ts_str,
                             entry_price=round(close, 2),
-                            stop_loss=sl,
+                            stop_loss=strike_rec.stop_loss,
                             target_1=strike_rec.target_1,
                             target_2=strike_rec.target_2,
                             strike_recommendation=strike_rec,
@@ -215,12 +215,12 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
         # M-Top:
         max1_idx = recent_window["high"].iloc[:6].idxmax()
         max2_idx = recent_window["high"].iloc[6:].idxmax()
-        if max1_idx != max2_idx and max2_idx > max1_idx:
+        if max1_idx != max2_idx and max2_idx > max1_idx and max2_idx < last_idx:
             row_max1 = df.loc[max1_idx]
             row_max2 = df.loc[max2_idx]
             # High 1 was outside upper band
             if row_max1["high"] > row_max1["bb_upper"]:
-                # High 2 was inside upper band
+                # High 2 was inside upper band and RSI had bearish divergence
                 if row_max2["close"] < row_max2["bb_upper"] and row_max2["rsi"] < row_max1["rsi"]:
                     # Neckline is min low between the two peaks
                     neckline = df.loc[max1_idx:max2_idx, "low"].min()
@@ -235,7 +235,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                             option_type="PE",
                             timestamp=ts_str,
                             entry_price=round(close, 2),
-                            stop_loss=sl,
+                            stop_loss=strike_rec.stop_loss,
                             target_1=strike_rec.target_1,
                             target_2=strike_rec.target_2,
                             strike_recommendation=strike_rec,
@@ -251,11 +251,15 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
 
     # Active strictly during the morning breakout window (09:30 - 11:30 AM IST)
     is_orb_time = True
-    if isinstance(ts_raw, (pd.Timestamp, datetime)):
-        bar_t = ts_raw.time()
-        is_orb_time = (bar_t >= pd.to_datetime("09:30:00").time()) and (bar_t <= pd.to_datetime("11:30:00").time())
+    if ts_raw is not None:
+        try:
+            t_obj = pd.to_datetime(ts_raw)
+            bar_t = t_obj.time()
+            is_orb_time = (bar_t >= pd.to_datetime("09:30:00").time()) and (bar_t <= pd.to_datetime("11:30:00").time())
+        except Exception:
+            is_orb_time = True
 
-    if is_orb_time and or_high is not None and or_low is not None:
+    if is_orb_time and pd.notna(or_high) and pd.notna(or_low):
         # CE ORB: Breaks above OR High, Above Upper BB, Above VWAP
         if close > or_high and close > upper and close > vwap:
             sl = round(max(mid, or_high * 0.997), 2)
@@ -268,7 +272,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                 option_type="CE",
                 timestamp=ts_str,
                 entry_price=round(close, 2),
-                stop_loss=sl,
+                stop_loss=strike_rec.stop_loss,
                 target_1=strike_rec.target_1,
                 target_2=strike_rec.target_2,
                 strike_recommendation=strike_rec,
@@ -288,7 +292,7 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                 option_type="PE",
                 timestamp=ts_str,
                 entry_price=round(close, 2),
-                stop_loss=sl,
+                stop_loss=strike_rec.stop_loss,
                 target_1=strike_rec.target_1,
                 target_2=strike_rec.target_2,
                 strike_recommendation=strike_rec,
