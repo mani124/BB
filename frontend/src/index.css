@@ -3,8 +3,14 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    color-scheme: light;
+  }
+  :root.dark {
+    color-scheme: dark;
+  }
   body {
-    @apply bg-[#0B0E14] text-slate-100 selection:bg-cyan-500 selection:text-white font-sans;
+    @apply bg-slate-100 text-slate-800 dark:bg-[#0B0E14] dark:text-slate-100 selection:bg-cyan-500 selection:text-white font-sans transition-colors duration-150;
   }
 }
 
@@ -14,12 +20,12 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #151922;
+  @apply bg-slate-200 dark:bg-[#151922];
 }
 ::-webkit-scrollbar-thumb {
-  background: #2A3142;
+  @apply bg-slate-400 dark:bg-[#2A3142];
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3E485F;
+  @apply bg-slate-500 dark:bg-[#3E485F];
 }

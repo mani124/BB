@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Activity, ShieldCheck, Key, RefreshCw, LogOut, Radio, Zap } from 'lucide-react';
+import { Activity, ShieldCheck, Key, RefreshCw, LogOut, Radio, Zap, Sun, Moon } from 'lucide-react';
 import { useDhanAuth } from '../context/DhanAuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 interface HeaderProps {
   activeMode: 'live' | 'demo';
@@ -20,6 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   onScanNow,
 }) => {
   const { isLoggedIn, clientId, connect, disconnect, error } = useDhanAuth();
+  const { theme, toggleTheme } = useTheme();
   const [modalOpen, setModalOpen] = useState(false);
   const [inputClientId, setInputClientId] = useState('');
   const [inputToken, setInputToken] = useState('');
@@ -39,7 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="border-b border-dark-700 bg-dark-800/80 backdrop-blur sticky top-0 z-40 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
+      <header className="border-b border-slate-200 dark:border-dark-700 bg-white/90 dark:bg-dark-800/80 backdrop-blur sticky top-0 z-40 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-sm dark:shadow-none transition-colors">
         {/* Brand */}
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
@@ -47,44 +49,44 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-cyan-400 bg-clip-text text-transparent">
+              <span className="font-extrabold text-lg tracking-tight text-slate-900 dark:bg-gradient-to-r dark:from-white dark:via-slate-200 dark:to-cyan-400 dark:bg-clip-text dark:text-transparent">
                 BB Options Trading PRO
               </span>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-cyan-950/70 border border-cyan-800 text-cyan-400">
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-950/70 border border-cyan-300 dark:border-cyan-800 text-cyan-800 dark:text-cyan-400">
                 NSE Derivatives
               </span>
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               High-Velocity Bollinger Band Setups (Setups 1, 3, 2, 4) • Zero-Token Persistence
             </p>
           </div>
         </div>
 
         {/* Center Heartbeat & Progress */}
-        <div className="flex items-center gap-3 bg-dark-900/80 border border-dark-700 rounded-xl px-4 py-2">
+        <div className="flex items-center gap-3 bg-slate-100 dark:bg-dark-900/80 border border-slate-200 dark:border-dark-700 rounded-xl px-4 py-2">
           <div className="flex items-center gap-2">
-            <Radio className={`h-4 w-4 ${isScanning ? 'text-cyan-400 animate-pulse' : 'text-slate-500'}`} />
-            <span className="text-xs font-semibold text-slate-300">
+            <Radio className={`h-4 w-4 ${isScanning ? 'text-cyan-600 dark:text-cyan-400 animate-pulse' : 'text-slate-500'}`} />
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
               Cycle #{scanCycleCount}
             </span>
           </div>
 
-          <div className="h-3 w-[1px] bg-dark-600" />
+          <div className="h-3 w-[1px] bg-slate-300 dark:bg-dark-600" />
 
-          <span className="text-xs text-slate-400">
-            Last: <strong className="text-slate-200 font-mono">{lastScanTime || 'Ready'}</strong>
+          <span className="text-xs text-slate-600 dark:text-slate-400">
+            Last: <strong className="text-slate-800 dark:text-slate-200 font-mono">{lastScanTime || 'Ready'}</strong>
           </span>
 
-          <div className="h-3 w-[1px] bg-dark-600" />
+          <div className="h-3 w-[1px] bg-slate-300 dark:bg-dark-600" />
 
           {/* Mode Badge */}
           {activeMode === 'live' ? (
-            <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-700 text-emerald-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
+            <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
               Live Market Feed
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-950/80 border border-amber-700 text-amber-400">
+            <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-400">
               <Zap className="h-3 w-3" />
               Simulated / Demo Feed
             </span>
@@ -93,27 +95,41 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onScanNow}
             disabled={isScanning}
-            className="ml-2 p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-dark-800 rounded-lg transition"
+            className="ml-2 p-1.5 text-slate-500 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-slate-200 dark:hover:bg-dark-800 rounded-lg transition"
             title="Scan Now"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isScanning ? 'animate-spin text-cyan-400' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${isScanning ? 'animate-spin text-cyan-500 dark:text-cyan-400' : ''}`} />
           </button>
         </div>
 
-        {/* Auth CTA */}
+        {/* Right Actions: Theme Toggle & Auth CTA */}
         <div className="flex items-center gap-3">
+          {/* Theme Toggle Button */}
+          <button
+            onClick={toggleTheme}
+            className="p-2.5 rounded-xl border border-slate-200 dark:border-dark-700 bg-slate-100 dark:bg-dark-900 text-slate-700 dark:text-slate-300 hover:text-cyan-600 dark:hover:text-cyan-400 hover:border-cyan-400 dark:hover:border-cyan-600 shadow-sm transition flex items-center justify-center"
+            title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+            aria-label="Toggle theme"
+          >
+            {theme === 'light' ? (
+              <Moon className="h-4 w-4 text-slate-700" />
+            ) : (
+              <Sun className="h-4 w-4 text-amber-400" />
+            )}
+          </button>
+
           {isLoggedIn ? (
-            <div className="flex items-center gap-2 bg-emerald-950/40 border border-emerald-800/80 rounded-xl px-3 py-1.5">
-              <ShieldCheck className="h-4 w-4 text-emerald-400" />
+            <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/80 rounded-xl px-3 py-1.5">
+              <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
               <div className="text-left">
-                <span className="block text-[11px] font-semibold text-emerald-300">
+                <span className="block text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">
                   Dhan Active: {clientId}
                 </span>
-                <span className="block text-[10px] text-emerald-500">Session Secure</span>
+                <span className="block text-[10px] text-emerald-600 dark:text-emerald-500">Session Secure</span>
               </div>
               <button
                 onClick={disconnect}
-                className="ml-2 text-slate-400 hover:text-rose-400 transition"
+                className="ml-2 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
                 title="Disconnect Token"
               >
                 <LogOut className="h-4 w-4" />
