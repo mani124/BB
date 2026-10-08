@@ -41,8 +41,8 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
             {isNetPositive ? '+' : ''}₹{portfolio.total_pnl.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </div>
           <div className="flex justify-between text-[11px] text-slate-400 mt-2">
-            <span>Realized: <strong className={portfolio.total_realized_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>₹{portfolio.total_realized_pnl.toFixed(1)}</strong></span>
-            <span>Floating: <strong className={portfolio.total_unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>₹{portfolio.total_unrealized_pnl.toFixed(1)}</strong></span>
+            <span>Realized: <strong className={portfolio.total_realized_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>₹{portfolio.total_realized_pnl.toFixed(2)}</strong></span>
+            <span>Floating: <strong className={portfolio.total_unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>₹{portfolio.total_unrealized_pnl.toFixed(2)}</strong></span>
           </div>
         </div>
 
@@ -98,11 +98,11 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
             </button>
           </div>
 
-          {/* Lots Selector */}
+          {/* Lot Multiplier Selector */}
           <div className="flex items-center gap-2 text-xs text-slate-400">
-            <span className="font-semibold">Lots per Trade:</span>
+            <span className="font-semibold">Lot Multiplier:</span>
             <div className="flex bg-dark-900 border border-dark-700 rounded-lg p-1">
-              {[1, 2, 3, 5].map((l) => (
+              {[1, 2, 3, 5, 10].map((l) => (
                 <button
                   key={l}
                   onClick={() => onChangeLots(l)}
@@ -112,7 +112,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  {l}
+                  {l}x
                 </button>
               ))}
             </div>

@@ -28,10 +28,24 @@ const DashboardContent: React.FC = () => {
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
 
-  // Connect to SSE stream on mount
+  // Fetch initial snapshot and connect to SSE stream on mount
   useEffect(() => {
     let eventSource: EventSource | null = null;
     let reconnectTimeout: any = null;
+
+    // Fast initial fetch so UI renders immediately
+    const fetchSnapshot = async () => {
+      try {
+        const res = await fetch('/api/signals');
+        if (res.ok) {
+          const data = await res.json();
+          setState((prev) => ({ ...prev, ...data }));
+        }
+      } catch (e) {
+        // SSE will hydrate state
+      }
+    };
+    fetchSnapshot();
 
     const connectSSE = () => {
       eventSource = new EventSource('/api/signals/stream');
@@ -160,6 +174,10 @@ const DashboardContent: React.FC = () => {
 
   const activePositionsCount = state.paper_portfolio?.active_positions?.length || 0;
 
+  const activeSignalIds = React.useMemo(() => {
+    return new Set(state.paper_portfolio?.active_positions?.map((p) => p.signal_id) || []);
+  }, [state.paper_portfolio?.active_positions]);
+
   return (
     <div className="min-h-screen flex flex-col bg-[#0B0E14] text-slate-100">
       <Header
@@ -242,6 +260,8 @@ const DashboardContent: React.FC = () => {
               selectedTimeframe={selectedTimeframe}
               onSelectTimeframe={setSelectedTimeframe}
               totalSignals={filteredSignals.length}
+              viewMode={viewMode}
+              onSelectViewMode={setViewMode}
             />
 
             {/* Section 3: Signals Header & View Switcher */}
@@ -282,7 +302,12 @@ const DashboardContent: React.FC = () => {
               filteredSignals.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                   {filteredSignals.map((sig) => (
-                    <SignalCard key={sig.id} signal={sig} onPaperBuy={handlePaperBuy} />
+                    <SignalCard
+                      key={sig.id}
+                      signal={sig}
+                      onPaperBuy={handlePaperBuy}
+                      isBought={activeSignalIds.has(sig.id)}
+                    />
                   ))}
                 </div>
               ) : (
@@ -294,7 +319,11 @@ const DashboardContent: React.FC = () => {
                 </div>
               )
             ) : (
-              <SignalTable signals={filteredSignals} onPaperBuy={handlePaperBuy} />
+              <SignalTable
+                signals={filteredSignals}
+                onPaperBuy={handlePaperBuy}
+                activeSignalIds={activeSignalIds}
+              />
             )}
           </>
         ) : (

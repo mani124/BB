@@ -1,13 +1,14 @@
 import React from 'react';
 import { Signal } from '../types';
-import { ArrowUpRight, ArrowDownRight, ShoppingCart } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, ShoppingCart, CheckCircle2 } from 'lucide-react';
 
 interface SignalTableProps {
   signals: Signal[];
   onPaperBuy?: (signal: Signal) => void;
+  activeSignalIds?: Set<string>;
 }
 
-export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy }) => {
+export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, activeSignalIds }) => {
   if (signals.length === 0) {
     return (
       <div className="bg-dark-800 border border-dark-700 rounded-2xl p-12 text-center text-slate-400">
@@ -29,7 +30,7 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy })
               <th className="py-3 px-4">Setup</th>
               <th className="py-3 px-4">Direction</th>
               <th className="py-3 px-4">Strike / Lot</th>
-              <th className="py-3 px-4">Spot Levels (Trigger / SL)</th>
+              <th className="py-3 px-4">Spot Levels (Trigger / SL / T1)</th>
               <th className="py-3 px-4">Option Est. Entry</th>
               <th className="py-3 px-4">Option SL (Pts)</th>
               <th className="py-3 px-4">Option T1 (Pts)</th>
@@ -42,6 +43,7 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy })
               const isCE = sig.option_type === 'CE';
               const rec = sig.strike_recommendation;
               const ind = sig.indicators_snapshot;
+              const isBought = activeSignalIds?.has(sig.id) || false;
 
               return (
                 <tr key={sig.id} className="hover:bg-dark-700/40 transition">
@@ -82,8 +84,12 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy })
 
                   {/* Spot Levels */}
                   <td className="py-3 px-4 font-mono">
-                    <span className="text-white block font-bold">₹{sig.entry_price}</span>
-                    <span className="text-rose-400 text-[10px] block">SL: ₹{sig.stop_loss}</span>
+                    <span className="text-white block font-bold">Trigger: ₹{sig.entry_price}</span>
+                    <div className="flex items-center gap-2 text-[10px] mt-0.5">
+                      <span className="text-rose-400">SL: ₹{sig.stop_loss}</span>
+                      <span className="text-emerald-400">T1: ₹{sig.target_1}</span>
+                      <span className="text-emerald-400/80">T2: ₹{sig.target_2}</span>
+                    </div>
                   </td>
 
                   {/* Option Entry */}
@@ -94,13 +100,13 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy })
                   {/* Option SL */}
                   <td className="py-3 px-4 font-mono text-rose-400">
                     ₹{rec.option_sl_price}
-                    <span className="block text-[10px] text-slate-500">(-{rec.option_sl_pts}p)</span>
+                    <span className="block text-[10px] text-slate-500">(-{rec.option_sl_pts}p risk)</span>
                   </td>
 
                   {/* Option T1 */}
                   <td className="py-3 px-4 font-mono text-emerald-400">
                     ₹{rec.option_target_1_price}
-                    <span className="block text-[10px] text-slate-500">(+{rec.option_target_1_pts}p)</span>
+                    <span className="block text-[10px] text-slate-500">(+{rec.option_target_1_pts}p gain)</span>
                   </td>
 
                   {/* RSI / BW */}
@@ -112,13 +118,20 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy })
                   {/* Action */}
                   <td className="py-3 px-4">
                     {onPaperBuy && (
-                      <button
-                        onClick={() => onPaperBuy(sig)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold transition active:scale-95 whitespace-nowrap"
-                      >
-                        <ShoppingCart className="h-3.5 w-3.5" />
-                        Paper Buy
-                      </button>
+                      isBought ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-700 text-emerald-300 font-bold text-xs whitespace-nowrap">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                          In Portfolio
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => onPaperBuy(sig)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold transition active:scale-95 whitespace-nowrap shadow-sm shadow-cyan-600/20"
+                        >
+                          <ShoppingCart className="h-3.5 w-3.5" />
+                          Paper Buy
+                        </button>
+                      )
                     )}
                   </td>
                 </tr>

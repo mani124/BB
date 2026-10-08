@@ -1,6 +1,6 @@
 import React from 'react';
 import { SetupType, OptionType } from '../types';
-import { Filter, Flame, Compass, RefreshCw, Clock } from 'lucide-react';
+import { Filter, Flame, Compass, RefreshCw, Clock, LayoutGrid, Table } from 'lucide-react';
 
 interface SetupFilterTabsProps {
   selectedSetup: string;
@@ -12,6 +12,8 @@ interface SetupFilterTabsProps {
   selectedTimeframe: string;
   onSelectTimeframe: (tf: string) => void;
   totalSignals: number;
+  viewMode?: 'grid' | 'table';
+  onSelectViewMode?: (mode: 'grid' | 'table') => void;
 }
 
 export const SetupFilterTabs: React.FC<SetupFilterTabsProps> = ({
@@ -24,12 +26,14 @@ export const SetupFilterTabs: React.FC<SetupFilterTabsProps> = ({
   selectedTimeframe,
   onSelectTimeframe,
   totalSignals,
+  viewMode = 'grid',
+  onSelectViewMode,
 }) => {
   const setups: { key: string; label: string; icon: any }[] = [
     { key: 'ALL', label: 'All Setups', icon: Filter },
     { key: 'Setup 1: BB Squeeze Breakout', label: 'Setup 1: Squeeze Breakout', icon: Flame },
-    { key: 'Setup 3: W/M Reversal', label: 'Setup 3: W/M Reversal', icon: Compass },
     { key: 'Setup 2: Walking the Bands (9 EMA)', label: 'Setup 2: Walking Bands (9 EMA)', icon: RefreshCw },
+    { key: 'Setup 3: W/M Reversal', label: 'Setup 3: W/M Reversal', icon: Compass },
     { key: 'Setup 4: 9:30 AM Opening Range Breakout', label: 'Setup 4: 9:30 AM ORB', icon: Clock },
   ];
 
@@ -128,9 +132,34 @@ export const SetupFilterTabs: React.FC<SetupFilterTabsProps> = ({
           </div>
         </div>
 
-        {/* Signal counter */}
-        <div className="text-xs font-bold text-slate-300 bg-dark-900/80 px-3 py-1.5 rounded-xl border border-dark-700">
-          Filtered Signals: <span className="text-cyan-400 font-mono text-sm">{totalSignals}</span>
+        {/* Signal counter & View Switch */}
+        <div className="flex items-center gap-3">
+          <div className="text-xs font-bold text-slate-300 bg-dark-900/80 px-3 py-1.5 rounded-xl border border-dark-700">
+            Filtered Signals: <span className="text-cyan-400 font-mono text-sm">{totalSignals}</span>
+          </div>
+
+          {onSelectViewMode && (
+            <div className="flex items-center gap-1 bg-dark-900 border border-dark-700 rounded-xl p-1">
+              <button
+                onClick={() => onSelectViewMode('grid')}
+                className={`p-1.5 rounded-lg transition ${
+                  viewMode === 'grid' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Card Grid View"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => onSelectViewMode('table')}
+                className={`p-1.5 rounded-lg transition ${
+                  viewMode === 'table' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Table View"
+              >
+                <Table className="h-4 w-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
