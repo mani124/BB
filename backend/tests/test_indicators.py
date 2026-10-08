@@ -123,3 +123,113 @@ def test_handles_zero_volume_and_flat_data():
     df = pd.DataFrame(records)
     result = calculate_indicators(df)
     assert not result["bandwidth"].isna().all()
+    # On completely flat data, percent_b should be neutral 0.5
+    assert result["percent_b"].iloc[-1] == 0.5
+    assert result["bandwidth"].iloc[-1] == 0.0
+    assert result["rsi"].iloc[-1] == 50.0
+    assert result["vwap"].iloc[-1] == 100.0
+
+def test_empty_dataframe():
+    """Verify empty DataFrame returns all required indicator columns without crashing."""
+    df = pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+    result = calculate_indicators(df)
+    expected_cols = [
+        "bb_middle", "bb_std", "bb_upper", "bb_lower",
+        "bandwidth", "bandwidth_20_min", "percent_b",
+        "vwap", "rsi", "ema_9", "adx", "or_high", "or_low"
+    ]
+    for col in expected_cols:
+        assert col in result.columns
+
+def test_short_dataframe_under_5_rows():
+    """Verify DataFrame with < 5 rows returns all indicator columns and valid values."""
+    dates = pd.date_range("2026-10-08 09:15", periods=3, freq="5min")
+    df = pd.DataFrame({
+        "timestamp": dates,
+        "open": [100.0, 101.0, 102.0],
+        "high": [101.5, 102.5, 103.5],
+        "low": [99.5, 100.5, 101.5],
+        "close": [101.0, 102.0, 103.0],
+        "volume": [1000, 1500, 2000]
+    })
+    result = calculate_indicators(df)
+    assert len(result) == 3
+    assert "percent_b" in result.columns
+    assert "vwap" in result.columns
+    assert "or_high" in result.columns
+    assert result["or_high"].iloc[0] == 103.5
+    assert result["or_low"].iloc[0] == 99.5
+
+def test_timezone_aware_timestamps():
+    """Verify tz-aware UTC timestamps are converted to IST and don't trigger numpy type errors."""
+    # 03:45 UTC is 09:15 IST
+    dates_utc = pd.date_range("2026-10-08 03:45", periods=10, freq="5min", tz="UTC")
+    df = pd.DataFrame({
+        "timestamp": dates_utc,
+        "open": [100.0 + i for i in range(10)],
+        "high": [101.0 + i for i in range(10)],
+        "low": [99.0 + i for i in range(10)],
+        "close": [100.5 + i for i in range(10)],
+        "volume": [1000] * 10
+    })
+    result = calculate_indicators(df)
+    # The first 3 bars (09:15, 09:20, 09:25 IST) determine ORB
+    assert result["or_high"].iloc[0] == 103.0  # max high of bars 0, 1, 2
+    assert result["or_low"].iloc[0] == 99.0   # min low of bars 0, 1, 2
+
+def test_multi_day_session_vwap_reset():
+    """Verify VWAP resets per session date."""
+    d1 = pd.date_range("2026-10-07 09:15", periods=5, freq="5min")
+    d2 = pd.date_range("2026-10-08 09:15", periods=5, freq="5min")
+    df = pd.DataFrame({
+        "timestamp": list(d1) + list(d2),
+        "open": [100.0] * 5 + [200.0] * 5,
+        "high": [100.0] * 5 + [200.0] * 5,
+        "low": [100.0] * 5 + [200.0] * 5,
+        "close": [100.0] * 5 + [200.0] * 5,
+        "volume": [1000] * 10
+    })
+    result = calculate_indicators(df)
+    # Day 1 VWAP should be 100.0
+    assert result["vwap"].iloc[0] == 100.0
+    assert result["vwap"].iloc[4] == 100.0
+    # Day 2 VWAP should reset immediately to 200.0
+    assert result["vwap"].iloc[5] == 200.0
+    assert result["vwap"].iloc[9] == 200.0
+
+def test_percent_b_breakouts():
+    """Verify %B > 1.0 above upper band and %B < 0.0 below lower band."""
+    df = generate_sample_candles(30)
+    # Massive breakout candle
+    df.loc[29, "close"] = df["close"].iloc[10:29].max() + 50.0
+    df.loc[29, "high"] = df.loc[29, "close"] + 1.0
+    result = calculate_indicators(df)
+    assert result["percent_b"].iloc[29] > 1.0
+
+    # Massive breakdown candle
+    df.loc[29, "close"] = df["close"].iloc[10:29].min() - 50.0
+    df.loc[29, "low"] = df.loc[29, "close"] - 1.0
+    result_down = calculate_indicators(df)
+    assert result_down["percent_b"].iloc[29] < 0.0
+
+def test_adx_responsive_trend():
+    """Verify that a sustained 25-candle trend generates ADX > 25."""
+    dates = pd.date_range("2026-10-08 09:15", periods=25, freq="5min")
+    df = pd.DataFrame({
+        "timestamp": dates,
+        "open": [100.0 + i * 2.0 for i in range(25)],
+        "high": [101.5 + i * 2.0 for i in range(25)],
+        "low": [99.5 + i * 2.0 for i in range(25)],
+        "close": [101.0 + i * 2.0 for i in range(25)],
+        "volume": [5000] * 25
+    })
+    result = calculate_indicators(df)
+    assert result["adx"].iloc[-1] > 25.0
+
+def test_unsorted_timestamps():
+    """Verify calculate_indicators sorts timestamps chronologically."""
+    df = generate_sample_candles(25)
+    df_shuffled = df.sample(frac=1.0, random_state=42)
+    result = calculate_indicators(df_shuffled)
+    assert result["timestamp"].is_monotonic_increasing
+
