@@ -23,13 +23,15 @@ def test_universe_manager_curation():
     assert len(stocks) == 35
     assert len(all_inst) == 39
     assert len(universe) == 39
-    # Verify timeframes
+    # Verify timeframes: stocks unified to 5m for responsive momentum scalps
     assert all(i.default_timeframe == "5m" for i in indices)
-    assert all(s.default_timeframe == "15m" for s in stocks)
+    assert all(s.default_timeframe == "5m" for s in stocks)
 
 @pytest.mark.asyncio
 async def test_scanner_worker_demo_cycle():
     worker = ScannerWorker(universe_mgr=UniverseManager())
+    worker._session_credentials = None
+    worker._state.active_mode = "demo"
     # Execute one full scan cycle in demo/synthetic mode
     state = await worker.run_single_scan_cycle(client_id=None, access_token=None)
 
@@ -124,3 +126,27 @@ async def test_scanner_worker_start_and_stop():
     await worker.stop()
     assert worker._running is False
     assert worker._task is None
+
+@pytest.mark.asyncio
+async def test_scanner_worker_momentum_ranking_and_bias():
+    mock_dhan = MagicMock()
+    mock_dhan.fetch_marketfeed_quotes = AsyncMock(return_value={
+        "IDX_I": {
+            "13": {"last_price": 25100.0, "average_price": 25000.0, "ohlc": {"open": 25000.0, "high": 25120.0, "low": 24980.0, "close": 24950.0}} # Nifty > VWAP -> BULLISH
+        },
+        "NSE_EQ": {
+            "3499": {"last_price": 160.0, "average_price": 155.0, "ohlc": {"open": 152.0, "high": 161.0, "low": 151.0, "close": 150.0}}, # TATASTEEL: +6.67%, high range pos -> BULLISH
+            "2885": {"last_price": 2400.0, "average_price": 2450.0, "ohlc": {"open": 2450.0, "high": 2460.0, "low": 2390.0, "close": 2480.0}} # RELIANCE: -3.2%, low range pos -> BEARISH
+        }
+    })
+    mock_dhan.close = AsyncMock()
+
+    worker = ScannerWorker(universe_mgr=UniverseManager(), dhan_client=mock_dhan)
+    worker.set_session_credentials("TEST_CID", "TEST_TOKEN")
+    state = await worker.run_single_scan_cycle()
+
+    assert state.market_bias == "BULLISH"
+    assert "TATASTEEL" in state.top_bullish
+    assert "RELIANCE" in state.top_bearish
+    await worker.stop()
+

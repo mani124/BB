@@ -419,3 +419,43 @@ def test_intraday_cutoff_rejects_entries_after_15_15():
     signals = evaluate_signals("NIFTY 50", ind_df, timeframe="5m")
     assert len(signals) == 0, "No fresh entry signals should be generated after 15:15:00 IST"
 
+
+def test_stock_momentum_ranking_and_market_bias_filtering():
+    # Setup 1 Squeeze CE breakout for a stock
+    df = create_series_df(30, 2500.0)
+    for i in range(25):
+        df.loc[i, "close"] = 2500.0 + (i % 2) * 0.5
+        df.loc[i, "high"] = df.loc[i, "close"] + 0.8
+        df.loc[i, "low"] = df.loc[i, "close"] - 0.8
+        df.loc[i, "open"] = df.loc[i, "close"]
+    # Breakout bar
+    df.loc[29, "open"] = 2501.0
+    df.loc[29, "close"] = 2530.0
+    df.loc[29, "high"] = 2532.0
+    df.loc[29, "low"] = 2500.5
+    df.loc[29, "volume"] = 25000
+
+    ind_df = calculate_indicators(df)
+
+    # 1. Stock with NO momentum ranking (or NEUTRAL) -> NO signals generated!
+    neutral_signals = evaluate_signals("RELIANCE", ind_df, timeframe="5m", stock_bias="NEUTRAL")
+    assert len(neutral_signals) == 0, "Stocks with NEUTRAL momentum must not generate signals"
+
+    # 2. Stock with BULLISH ranking -> CE signal allowed!
+    bullish_signals = evaluate_signals("RELIANCE", ind_df, timeframe="5m", stock_bias="BULLISH", market_bias="BULLISH")
+    assert len(bullish_signals) >= 1
+    assert all(s.option_type == "CE" for s in bullish_signals)
+
+    # 3. Stock with BEARISH ranking must NOT generate CE signals!
+    bearish_signals = evaluate_signals("RELIANCE", ind_df, timeframe="5m", stock_bias="BEARISH", market_bias="BULLISH")
+    assert len(bearish_signals) == 0
+
+    # 4. Market Bias BEARISH blocks Stock CE signals
+    market_blocked_signals = evaluate_signals("RELIANCE", ind_df, timeframe="5m", stock_bias="BULLISH", market_bias="BEARISH")
+    assert len(market_blocked_signals) == 0, "Counter-trend Stock CE must be blocked when broad market is BEARISH"
+
+    # 5. Benchmark index (e.g. NIFTY 50) is NOT blocked by stock_bias
+    index_signals = evaluate_signals("NIFTY 50", ind_df, timeframe="5m", stock_bias=None, market_bias="BULLISH")
+    assert len(index_signals) >= 1
+
+

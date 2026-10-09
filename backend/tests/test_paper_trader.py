@@ -237,5 +237,34 @@ def test_live_option_quote_updates_pnl_directly():
     assert p.booked_lots == 1
     assert p.booked_pnl_rupees == round(36.0 * 65, 2) # (196.0 - 160.0) * 65 = 2340.0
 
+def test_risk_capped_position_sizing():
+    engine = PaperTradingEngine()
+    engine.set_default_lots(2) # Default is 2 lots
+    engine.set_max_risk_per_trade(4000.0)
+
+    # 1. Normal index trade: NIFTY 50 with 25 pt SL (14 pt option SL * 65 = ~910 risk/lot)
+    # 2 lots = ~1820 risk <= 4000 -> full 2 lots allowed
+    sig_nifty = create_mock_signal(symbol="NIFTY 50", opt="CE", entry=25000.0, sl=24975.0)
+    pos_nifty = engine.open_position_from_signal(sig_nifty)
+    assert pos_nifty is not None
+    assert pos_nifty.lots == 2
+    assert pos_nifty.quantity == 130
+
+    # 2. Huge lot size stock (TATASTEEL lot 5500):
+    # Option risk = 1.1 pts. Risk per lot = 1.1 * 5500 = 6050.
+    # 2 lots = 12100 (> 4000). Must scale down to 1 lot!
+    sig_tatasteel = create_mock_signal(symbol="TATASTEEL", opt="CE", entry=150.0, sl=149.0)
+    pos_tatasteel = engine.open_position_from_signal(sig_tatasteel)
+    assert pos_tatasteel is not None
+    assert pos_tatasteel.lots == 1, f"Expected 1 lot for TATASTEEL due to max risk cap, got {pos_tatasteel.lots}"
+    assert pos_tatasteel.quantity == 5500
+
+    # 3. Excessive risk trade where 1 lot risk > 2.0 * max_risk_per_trade (> 8000)
+    # TATASTEEL with 3.0 pt SL -> option risk ~1.65 * 5500 = 9075 risk for 1 lot!
+    # Trade must be rejected / skipped to protect capital!
+    sig_huge_risk = create_mock_signal(symbol="TATASTEEL", opt="CE", entry=150.0, sl=147.0)
+    pos_huge = engine.open_position_from_signal(sig_huge_risk)
+    assert pos_huge is None, "Excessive risk trades exceeding cap even for 1 lot must be skipped"
+
 
 

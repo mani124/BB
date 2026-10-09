@@ -43,6 +43,7 @@ class PaperPortfolio(BaseModel):
     closed_trades: list[PaperPosition] = []
     auto_trade_enabled: bool = True
     default_lots: int = 2
+    max_risk_per_trade: float = 4000.0
     total_realized_pnl: float = 0.0
     total_unrealized_pnl: float = 0.0
     total_pnl: float = 0.0
@@ -81,6 +82,14 @@ class PaperTradingEngine:
                 self._portfolio.default_lots = int(saved_lots)
             except ValueError:
                 pass
+
+        saved_risk = self.storage.load_setting("max_risk_per_trade")
+        if saved_risk is not None:
+            try:
+                self._portfolio.max_risk_per_trade = float(saved_risk)
+            except ValueError:
+                pass
+
         self._recalculate_metrics()
 
     def get_portfolio(self) -> PaperPortfolio:
@@ -97,6 +106,11 @@ class PaperTradingEngine:
         if self.storage:
             self.storage.save_setting("default_lots", str(self._portfolio.default_lots))
 
+    def set_max_risk_per_trade(self, amount: float):
+        self._portfolio.max_risk_per_trade = max(500.0, float(amount))
+        if self.storage:
+            self.storage.save_setting("max_risk_per_trade", str(self._portfolio.max_risk_per_trade))
+
     def reset(self):
         self._portfolio = PaperPortfolio()
         self._processed_signal_ids.clear()
@@ -108,9 +122,31 @@ class PaperTradingEngine:
         if signal.id in self._processed_signal_ids:
             return None
 
+        rec = signal.strike_recommendation
+        lot_size = rec.lot_size
+
+        if lots is not None:
+            lots_to_trade = lots
+        else:
+            target_lots = self._portfolio.default_lots
+            lots_to_trade = target_lots
+
+            # Calculate risk per lot in Rupees
+            risk_per_unit = max(0.1, abs(rec.estimated_option_entry - rec.option_sl_price))
+            risk_per_lot = risk_per_unit * lot_size
+
+            if self._portfolio.max_risk_per_trade > 0 and risk_per_lot > 0:
+                # Capital preservation: if 1 lot risk is excessive (> 2x max risk cap), skip entering
+                if risk_per_lot > self._portfolio.max_risk_per_trade * 2.0:
+                    self._processed_signal_ids.add(signal.id)
+                    return None
+
+                allowed_lots = int(self._portfolio.max_risk_per_trade // risk_per_lot)
+                if allowed_lots < 1:
+                    allowed_lots = 1
+                lots_to_trade = min(target_lots, allowed_lots)
+
         self._processed_signal_ids.add(signal.id)
-        lots_to_trade = lots if lots is not None else self._portfolio.default_lots
-        lot_size = signal.strike_recommendation.lot_size
         qty = lot_size * lots_to_trade
 
         pos_id = f"POS_{signal.symbol}_{signal.option_type}_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:6]}"

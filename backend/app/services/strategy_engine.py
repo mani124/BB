@@ -26,7 +26,15 @@ class Signal(BaseModel):
     indicators_snapshot: dict[str, float]
     rationale: str
 
-def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> list[Signal]:
+INDEX_SYMBOLS = {"NIFTY 50", "NIFTY", "NIFTY BANK", "BANKNIFTY", "FINNIFTY", "NIFTY FINANCIAL SERVICES", "SENSEX", "MIDCPNIFTY"}
+
+def evaluate_signals(
+    symbol: str,
+    df: pd.DataFrame,
+    timeframe: str = "5m",
+    stock_bias: str | None = None,
+    market_bias: str | None = None,
+) -> list[Signal]:
     """
     Evaluate all 4 Bollinger Band setups across recent candles for both CE and PE.
     Returns list of active signals.
@@ -305,5 +313,18 @@ def evaluate_signals(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> li
                 indicators_snapshot=snap,
                 rationale="9:30 AM Opening Range Breakdown below Lower Band and VWAP"
             ))
+
+    # Stock momentum and market bias filtering for non-index equities
+    if symbol.upper() not in INDEX_SYMBOLS:
+        if stock_bias not in ("BULLISH", "BEARISH"):
+            return []
+        if stock_bias == "BULLISH":
+            if market_bias == "BEARISH":
+                return []
+            signals = [s for s in signals if s.option_type == "CE"]
+        elif stock_bias == "BEARISH":
+            if market_bias == "BULLISH":
+                return []
+            signals = [s for s in signals if s.option_type == "PE"]
 
     return signals

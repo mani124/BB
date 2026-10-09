@@ -16,6 +16,7 @@ from app.services.indicators import calculate_indicators
 from app.services.strategy_engine import evaluate_signals, Signal
 from app.services.strike_selector import resolve_live_strike_from_chain
 from app.services.paper_trader import paper_trader, PaperPortfolio
+from app.services.momentum_ranker import MomentumRanker, MomentumRankings
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,9 @@ class IndexRadarItem(BaseModel):
 class ScannerState(BaseModel):
     signals: list[Signal] = []
     radar: dict[str, IndexRadarItem] = {}
+    top_bullish: list[str] = Field(default_factory=list)
+    top_bearish: list[str] = Field(default_factory=list)
+    market_bias: str = "NEUTRAL"
     paper_portfolio: PaperPortfolio = Field(default_factory=PaperPortfolio)
     last_scan_time: str = ""
     scan_cycle_count: int = 0
@@ -49,6 +53,7 @@ class ScannerWorker:
     def __init__(self, universe_mgr: UniverseManager, dhan_client: Optional[DhanClient] = None):
         self.universe_mgr = universe_mgr
         self.dhan_client = dhan_client or DhanClient()
+        self.momentum_ranker = MomentumRanker(top_n=5)
         self._state = ScannerState(universe_count=len(universe_mgr.get_universe()))
         self._listeners: list[asyncio.Queue] = []
         self._running = False
@@ -367,7 +372,8 @@ class ScannerWorker:
                             pass
 
                 fetch_fn = getattr(self.dhan_client, "fetch_marketfeed_quotes", None)
-                if fetch_fn and asyncio.iscoroutinefunction(fetch_fn):
+                import inspect
+                if fetch_fn and (asyncio.iscoroutinefunction(fetch_fn) if hasattr(asyncio, "iscoroutinefunction") else inspect.iscoroutinefunction(fetch_fn)):
                     live_quotes = await fetch_fn(cid, tok, req_securities)
                     if live_quotes:
                         logger.debug(f"Live marketfeed quotes fetched for {sum(len(v) for v in live_quotes.values())} securities")
@@ -384,6 +390,19 @@ class ScannerWorker:
                     opt_ltp = float(q["last_price"])
                     if opt_ltp > 0:
                         option_price_map[str(sec_k)] = opt_ltp
+
+        # Rank momentum stocks based on real-time marketfeed quotes
+        stock_quotes_for_ranking: dict[str, dict] = {}
+        if live_quotes:
+            quotes_dict = live_quotes.get("data", live_quotes) if isinstance(live_quotes.get("data"), dict) else live_quotes
+            eq_quotes = quotes_dict.get("NSE_EQ", {})
+            for stock_inst in self.universe_mgr.get_momentum_stocks():
+                q = eq_quotes.get(str(stock_inst.security_id)) or eq_quotes.get(int(stock_inst.security_id))
+                if q and isinstance(q, dict):
+                    stock_quotes_for_ranking[stock_inst.symbol] = q
+
+        rankings = self.momentum_ranker.rank_stocks(stock_quotes_for_ranking)
+        market_bias = "NEUTRAL"
 
         for idx, inst in enumerate(instruments):
             inst_quote = None
@@ -458,8 +477,18 @@ class ScannerWorker:
                     trend_state=trend
                 )
 
-            # Evaluate Setups
-            detected = evaluate_signals(inst.symbol, ind_df, timeframe=inst.default_timeframe)
+                if inst.symbol == "NIFTY 50":
+                    market_bias = "BULLISH" if vwap_b == "ABOVE_VWAP" else "BEARISH"
+
+            # Evaluate Setups with stock momentum and market bias filtering
+            stock_bias = rankings.get_bias(inst.symbol) if inst.instrument_type == "EQUITY" else None
+            detected = evaluate_signals(
+                inst.symbol,
+                ind_df,
+                timeframe=inst.default_timeframe,
+                stock_bias=stock_bias,
+                market_bias=market_bias
+            )
 
             # Enrich signals with real live option quotes from Dhan
             if detected and mode == "live" and cid and tok:
@@ -490,6 +519,9 @@ class ScannerWorker:
 
         self._state.signals = new_signals
         self._state.radar = new_radar
+        self._state.top_bullish = rankings.top_bullish
+        self._state.top_bearish = rankings.top_bearish
+        self._state.market_bias = market_bias
         self._state.paper_portfolio = paper_trader.get_portfolio()
         self._state.last_scan_time = datetime.now().strftime("%H:%M:%S")
         self._state.scan_cycle_count += 1

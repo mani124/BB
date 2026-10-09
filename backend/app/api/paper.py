@@ -13,6 +13,7 @@ class ManualTradeRequest(BaseModel):
 class SettingsRequest(BaseModel):
     auto_trade_enabled: Optional[bool] = None
     default_lots: Optional[int] = None
+    max_risk_per_trade: Optional[float] = None
 
 @router.get("/portfolio")
 def get_portfolio() -> PaperPortfolio:
@@ -38,6 +39,8 @@ def update_settings(body: SettingsRequest):
         paper_trader.set_auto_trade(body.auto_trade_enabled)
     if body.default_lots is not None:
         paper_trader.set_default_lots(body.default_lots)
+    if body.max_risk_per_trade is not None:
+        paper_trader.set_max_risk_per_trade(body.max_risk_per_trade)
     return paper_trader.get_portfolio()
 
 @router.post("/reset")

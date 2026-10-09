@@ -114,6 +114,7 @@ export interface PaperPortfolio {
   closed_trades: PaperPosition[];
   auto_trade_enabled: boolean;
   default_lots: number;
+  max_risk_per_trade?: number;
   total_realized_pnl: number;
   total_unrealized_pnl: number;
   total_pnl: number;
@@ -126,6 +127,9 @@ export interface PaperPortfolio {
 export interface ScannerState {
   signals: Signal[];
   radar: Record<string, IndexRadarItem>;
+  top_bullish?: string[];
+  top_bearish?: string[];
+  market_bias?: string;
   paper_portfolio?: PaperPortfolio;
   last_scan_time: string;
   scan_cycle_count: number;

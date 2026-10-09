@@ -272,6 +272,59 @@ const DashboardContent: React.FC = () => {
               <IndexHeroRadar radar={state.radar} />
             </div>
 
+            {/* Section 1.5: Market Bias & Momentum Filter Banner */}
+            {(Boolean(state.top_bullish?.length) || Boolean(state.top_bearish?.length) || state.market_bias) && (
+              <div className="mb-4 p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px]">Market Bias:</span>
+                  <span className={`px-2 py-0.5 rounded font-black tracking-wide ${
+                    state.market_bias === 'BULLISH'
+                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800'
+                      : state.market_bias === 'BEARISH'
+                      ? 'bg-rose-950/80 text-rose-400 border border-rose-800'
+                      : 'bg-slate-800 text-slate-300'
+                  }`}>
+                    {state.market_bias || 'NEUTRAL'}
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    {state.market_bias === 'BULLISH'
+                      ? '(PE stock options blocked)'
+                      : state.market_bias === 'BEARISH'
+                      ? '(CE stock options blocked)'
+                      : ''}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4">
+                  {state.top_bullish && state.top_bullish.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-emerald-400 font-bold">Top Bullish (CE):</span>
+                      <div className="flex items-center gap-1">
+                        {state.top_bullish.map((sym) => (
+                          <span key={sym} className="px-1.5 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/80 text-emerald-300 font-mono text-[10px] font-bold">
+                            {sym}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {state.top_bearish && state.top_bearish.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-rose-400 font-bold">Top Bearish (PE):</span>
+                      <div className="flex items-center gap-1">
+                        {state.top_bearish.map((sym) => (
+                          <span key={sym} className="px-1.5 py-0.5 rounded bg-rose-950/60 border border-rose-800/80 text-rose-300 font-mono text-[10px] font-bold">
+                            {sym}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Section 2: Filters & Controls */}
             <SetupFilterTabs
               selectedSetup={selectedSetup}
