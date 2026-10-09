@@ -285,10 +285,12 @@ const DashboardContent: React.FC = () => {
 
           <div className="text-xs text-slate-500 dark:text-slate-400">
             {activeTab === 'scanner' ? (
-              <span>Signals update in real-time on every candle closure</span>
+              <span>Signals evaluate on candle closures with live tick verification</span>
             ) : (
               <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                Auto-evaluates TP/SL every 8 seconds
+                {wsConnected
+                  ? '⚡ Instant sub-second TP/SL execution on live ticks'
+                  : 'Auto-evaluates TP/SL every cycle'}
               </span>
             )}
           </div>
@@ -303,7 +305,7 @@ const DashboardContent: React.FC = () => {
                   Benchmark Indices Bollinger Radar (5m)
                 </h2>
                 <span className="text-xs text-slate-500 font-mono">
-                  Auto-refreshed every ~8s
+                  {wsConnected ? '⚡ Real-Time Ticks (Sub-second)' : 'Auto-scanned every ~8s'}
                 </span>
               </div>
               <IndexHeroRadar radar={state.radar} />
