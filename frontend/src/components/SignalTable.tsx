@@ -84,12 +84,21 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, a
 
                   {/* Spot Levels */}
                   <td className="py-3 px-4 font-mono">
-                    <span className="text-slate-900 dark:text-white block font-bold">Trigger: ₹{sig.entry_price}</span>
-                    <div className="flex items-center gap-2 text-[10px] mt-0.5">
-                      <span className="text-rose-600 dark:text-rose-400">SL: ₹{sig.stop_loss}</span>
-                      <span className="text-emerald-600 dark:text-emerald-400">T1: ₹{sig.target_1}</span>
-                      <span className="text-emerald-600/80 dark:text-emerald-400/80">T2: ₹{sig.target_2}</span>
-                    </div>
+                    {sig.setup_type.includes('Setup 5') ? (
+                      <div>
+                        <span className="text-cyan-700 dark:text-cyan-300 block font-bold">Opt: ₹{sig.entry_price}</span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400">Spot Ref: ₹{rec.underlying_price}</span>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="text-slate-900 dark:text-white block font-bold">Trigger: ₹{sig.entry_price}</span>
+                        <div className="flex items-center gap-2 text-[10px] mt-0.5">
+                          <span className="text-rose-600 dark:text-rose-400">SL: ₹{sig.stop_loss}</span>
+                          <span className="text-emerald-600 dark:text-emerald-400">T1: ₹{sig.target_1}</span>
+                          <span className="text-emerald-600/80 dark:text-emerald-400/80">T2: ₹{sig.target_2}</span>
+                        </div>
+                      </div>
+                    )}
                   </td>
 
                   {/* Option Entry */}
@@ -111,8 +120,10 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, a
 
                   {/* RSI / BW */}
                   <td className="py-3 px-4 font-mono text-slate-700 dark:text-slate-300">
-                    <div>RSI: {ind.rsi.toFixed(1)}</div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400">BW: {ind.bandwidth.toFixed(2)}%</div>
+                    <div>RSI: {ind?.rsi != null ? ind.rsi.toFixed(1) : '-'}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                      BW: {ind?.bandwidth != null ? `${ind.bandwidth.toFixed(2)}%` : '-'}
+                    </div>
                   </td>
 
                   {/* Action */}

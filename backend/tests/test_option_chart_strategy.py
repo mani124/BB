@@ -58,9 +58,9 @@ def test_setup5_ce_breakout_above_option_upper_bb_and_vwap():
     assert signal.setup_type == SetupType.SETUP_5_OPTION_BB
     assert signal.option_type == "CE"
     assert signal.symbol == "RELIANCE"
-    assert signal.entry_price == 2985.0
-    assert signal.stop_loss < 2985.0
-    assert signal.target_1 > 2985.0
+    assert signal.entry_price == 114.0
+    assert signal.stop_loss < 114.0
+    assert signal.target_1 > 114.0
     assert signal.target_2 > signal.target_1
     assert signal.strike_recommendation.estimated_option_entry == 114.0
     assert signal.strike_recommendation.option_sl_price < 114.0
@@ -147,9 +147,9 @@ def test_setup5_pe_breakout_above_option_upper_bb_and_vwap():
     assert signal is not None, "Setup 5 PE signal should trigger when Put premium expands above its Upper BB"
     assert signal.setup_type == SetupType.SETUP_5_OPTION_BB
     assert signal.option_type == "PE"
-    assert signal.entry_price == 22480.0
-    assert signal.stop_loss > 22480.0
-    assert signal.target_1 < 22480.0
+    assert signal.entry_price == 95.0
+    assert signal.stop_loss < 95.0
+    assert signal.target_1 > 95.0
     assert signal.strike_recommendation.estimated_option_entry == 95.0
     assert signal.strike_recommendation.option_sl_price < 95.0
     assert signal.strike_recommendation.option_target_1_price > 95.0
@@ -182,9 +182,10 @@ def test_setup5_paper_trader_does_not_instant_exit_on_market_price():
     pos = engine.open_position_from_signal(sig, lots=2)
     assert pos is not None
     assert pos.status == "OPEN"
-    assert pos.underlying_entry == 2985.0
+    assert pos.underlying_entry == 114.0
+    assert pos.option_entry == 114.0
 
-    # Feeding CURRENT market price (2985.0) must NOT instantly trigger Target 2 or SL
+    # 1. Feeding CURRENT market price (spot 2985.0 and option 114.0) must keep position OPEN
     engine.update_market_prices({"RELIANCE": 2985.0}, {"54321": 114.0})
     portfolio = engine.get_portfolio()
     assert len(portfolio.active_positions) == 1, "Position must remain open on normal market ticks"
@@ -192,3 +193,15 @@ def test_setup5_paper_trader_does_not_instant_exit_on_market_price():
     active = portfolio.active_positions[0]
     assert active.pnl_points == 0.0
     assert active.pnl_rupees == 0.0
+
+    # 2. Even if underlying spot plunges or surges violently, Setup 5 does NOT exit based on spot!
+    engine.update_market_prices({"RELIANCE": 2500.0}, {"54321": 114.0})
+    assert len(engine.get_portfolio().active_positions) == 1, "Spot plunge must NOT exit Setup 5"
+
+    # 3. Exits are strictly governed by option chart price: simulate option SL hit
+    opt_sl = pos.option_sl
+    engine.update_market_prices({"RELIANCE": 2985.0}, {"54321": opt_sl - 1.0})
+    portfolio = engine.get_portfolio()
+    assert len(portfolio.closed_trades) == 1, "Option chart price hitting SL must close position"
+    assert portfolio.closed_trades[0].status == "STOPPED_OUT"
+    assert portfolio.closed_trades[0].exit_reason == "Stop-Loss Hit"

@@ -12,6 +12,7 @@ export const SignalCard: React.FC<SignalCardProps> = ({ signal, onPaperBuy, isBo
   const isCE = signal.option_type === 'CE';
   const rec = signal.strike_recommendation;
   const ind = signal.indicators_snapshot;
+  const isSetup5 = signal.setup_type.includes('Setup 5');
 
   return (
     <div
@@ -70,94 +71,135 @@ export const SignalCard: React.FC<SignalCardProps> = ({ signal, onPaperBuy, isBo
           </div>
         </div>
 
-        {/* 1. Underlying Spot Levels (Trigger, SL, T1, T2) */}
-        <div className="mb-2">
-          <div className="text-[10px] uppercase font-bold text-slate-500 mb-1 tracking-wider">
-            Underlying Spot Levels
-          </div>
-          <div className="grid grid-cols-4 gap-1.5 text-center text-xs">
-            <div className="bg-slate-50 dark:bg-dark-900/60 border border-slate-200 dark:border-dark-700 rounded-lg p-1.5">
-              <span className="block text-[9px] text-slate-500 dark:text-slate-400 mb-0.5">Spot Trigger</span>
-              <span className="font-bold font-mono text-slate-900 dark:text-white text-[11px]">₹{signal.entry_price}</span>
-            </div>
-
-            <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 rounded-lg p-1.5">
-              <span className="block text-[9px] text-rose-700 dark:text-rose-300 flex items-center justify-center gap-0.5 mb-0.5">
-                <ShieldAlert className="h-2.5 w-2.5" /> Spot SL
+        {/* If Setup 5: Direct Option Chart Levels with Underlying Spot Reference */}
+        {isSetup5 ? (
+          <div className="mb-3">
+            <div className="flex items-center justify-between text-[10px] uppercase font-bold text-cyan-700 dark:text-cyan-400 mb-1 tracking-wider">
+              <span>Option Chart Scalp Levels</span>
+              <span className="font-mono text-[9px] text-slate-500 dark:text-slate-400">
+                Spot Ref: ₹{rec.underlying_price}
               </span>
-              <span className="font-bold font-mono text-rose-600 dark:text-rose-400 text-[11px]">₹{signal.stop_loss}</span>
             </div>
-
-            <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 rounded-lg p-1.5">
-              <span className="block text-[9px] text-emerald-700 dark:text-emerald-300 flex items-center justify-center gap-0.5 mb-0.5">
-                <Target className="h-2.5 w-2.5" /> Spot T1
-              </span>
-              <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400 text-[11px]">₹{signal.target_1}</span>
+            <div className="grid grid-cols-4 gap-1.5 text-center text-xs">
+              <div className="bg-cyan-50 dark:bg-cyan-950/20 border border-cyan-200 dark:border-cyan-900/40 rounded-lg p-1.5">
+                <span className="block text-[9px] text-cyan-700 dark:text-cyan-300 mb-0.5">Opt Trigger</span>
+                <span className="font-black font-mono text-cyan-700 dark:text-cyan-300 text-[11px]">₹{signal.entry_price}</span>
+              </div>
+              <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50 rounded-lg p-1.5">
+                <span className="block text-[9px] text-rose-700 dark:text-rose-300 mb-0.5 truncate" title={`-${rec.option_sl_pts}p risk`}>
+                  Opt SL (-{rec.option_sl_pts}p)
+                </span>
+                <span className="font-black font-mono text-rose-600 dark:text-rose-400 text-[11px]">₹{signal.stop_loss}</span>
+              </div>
+              <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-lg p-1.5">
+                <span className="block text-[9px] text-emerald-700 dark:text-emerald-300 mb-0.5 truncate" title={`+${rec.option_target_1_pts}p gain`}>
+                  Opt T1 (+{rec.option_target_1_pts}p)
+                </span>
+                <span className="font-black font-mono text-emerald-600 dark:text-emerald-400 text-[11px]">₹{signal.target_1}</span>
+              </div>
+              <div className="bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg p-1.5">
+                <span className="block text-[9px] text-emerald-700/80 dark:text-emerald-400/80 mb-0.5 truncate" title={`+${rec.option_target_2_pts}p gain`}>
+                  Opt T2 (+{rec.option_target_2_pts}p)
+                </span>
+                <span className="font-black font-mono text-emerald-600 dark:text-emerald-400 text-[11px]">₹{signal.target_2}</span>
+              </div>
             </div>
-
-            <div className="bg-emerald-50/60 dark:bg-emerald-950/10 border border-emerald-200 dark:border-emerald-900/30 rounded-lg p-1.5">
-              <span className="block text-[9px] text-emerald-700/80 dark:text-emerald-400/80 mb-0.5">Spot T2</span>
-              <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400 text-[11px]">₹{signal.target_2}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 2. Option Premium Levels (Delta ~ 0.55 or Live Greeks) */}
-        <div className="mb-3">
-          <div className="flex items-center justify-between text-[10px] uppercase font-bold text-cyan-700 dark:text-cyan-500/80 mb-1 tracking-wider">
-            <span>Option Premium {rec.is_live_quote ? (rec.real_delta ? `(Δ ${rec.real_delta})` : '(Live Quote)') : '(Δ ~0.55)'}</span>
-            {rec.is_live_quote ? (
-              <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black text-[9px] border border-emerald-500/30">
-                LIVE NSE_FNO
-              </span>
-            ) : null}
-          </div>
-          <div className="grid grid-cols-4 gap-1.5 text-center text-xs">
-            <div className="bg-cyan-50 dark:bg-cyan-950/20 border border-cyan-200 dark:border-cyan-900/40 rounded-lg p-1.5">
-              <span className="block text-[9px] text-cyan-700 dark:text-cyan-300 mb-0.5">
-                {rec.is_live_quote ? 'Live Ask' : 'Est. Entry'}
-              </span>
-              <span className="font-black font-mono text-cyan-700 dark:text-cyan-300 text-[11px]">₹{rec.estimated_option_entry}</span>
-            </div>
-
-            <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50 rounded-lg p-1.5">
-              <span className="block text-[9px] text-rose-700 dark:text-rose-300 mb-0.5 truncate" title={`-${rec.option_sl_pts}p risk`}>
-                SL (-{rec.option_sl_pts}p)
-              </span>
-              <span className="font-black font-mono text-rose-600 dark:text-rose-400 text-[11px]">₹{rec.option_sl_price}</span>
-            </div>
-
-            <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-lg p-1.5">
-              <span className="block text-[9px] text-emerald-700 dark:text-emerald-300 mb-0.5 truncate" title={`+${rec.option_target_1_pts}p gain`}>
-                T1 (+{rec.option_target_1_pts}p)
-              </span>
-              <span className="font-black font-mono text-emerald-600 dark:text-emerald-400 text-[11px]">₹{rec.option_target_1_price}</span>
-            </div>
-
-            <div className="bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg p-1.5">
-              <span className="block text-[9px] text-emerald-700/80 dark:text-emerald-400/80 mb-0.5 truncate" title={`+${rec.option_target_2_pts}p gain`}>
-                T2 (+{rec.option_target_2_pts}p)
-              </span>
-              <span className="font-black font-mono text-emerald-600 dark:text-emerald-400 text-[11px]">₹{rec.option_target_2_price}</span>
+            <div className="mt-1 text-[9px] text-right text-emerald-600 dark:text-emerald-400 font-medium">
+              ⚡ Option Chart Scalp (Exits tracked strictly on option premium)
             </div>
           </div>
-        </div>
+        ) : (
+          <>
+            {/* 1. Underlying Spot Levels (Trigger, SL, T1, T2) */}
+            <div className="mb-2">
+              <div className="text-[10px] uppercase font-bold text-slate-500 mb-1 tracking-wider">
+                Underlying Spot Levels
+              </div>
+              <div className="grid grid-cols-4 gap-1.5 text-center text-xs">
+                <div className="bg-slate-50 dark:bg-dark-900/60 border border-slate-200 dark:border-dark-700 rounded-lg p-1.5">
+                  <span className="block text-[9px] text-slate-500 dark:text-slate-400 mb-0.5">Spot Trigger</span>
+                  <span className="font-bold font-mono text-slate-900 dark:text-white text-[11px]">₹{signal.entry_price}</span>
+                </div>
+
+                <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 rounded-lg p-1.5">
+                  <span className="block text-[9px] text-rose-700 dark:text-rose-300 flex items-center justify-center gap-0.5 mb-0.5">
+                    <ShieldAlert className="h-2.5 w-2.5" /> Spot SL
+                  </span>
+                  <span className="font-bold font-mono text-rose-600 dark:text-rose-400 text-[11px]">₹{signal.stop_loss}</span>
+                </div>
+
+                <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 rounded-lg p-1.5">
+                  <span className="block text-[9px] text-emerald-700 dark:text-emerald-300 flex items-center justify-center gap-0.5 mb-0.5">
+                    <Target className="h-2.5 w-2.5" /> Spot T1
+                  </span>
+                  <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400 text-[11px]">₹{signal.target_1}</span>
+                </div>
+
+                <div className="bg-emerald-50/60 dark:bg-emerald-950/10 border border-emerald-200 dark:border-emerald-900/30 rounded-lg p-1.5">
+                  <span className="block text-[9px] text-emerald-700/80 dark:text-emerald-400/80 mb-0.5">Spot T2</span>
+                  <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400 text-[11px]">₹{signal.target_2}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Option Premium Levels (Delta ~ 0.55 or Live Greeks) */}
+            <div className="mb-3">
+              <div className="flex items-center justify-between text-[10px] uppercase font-bold text-cyan-700 dark:text-cyan-500/80 mb-1 tracking-wider">
+                <span>Option Premium {rec.is_live_quote ? (rec.real_delta ? `(Δ ${rec.real_delta})` : '(Live Quote)') : '(Δ ~0.55)'}</span>
+                {rec.is_live_quote ? (
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black text-[9px] border border-emerald-500/30">
+                    LIVE NSE_FNO
+                  </span>
+                ) : null}
+              </div>
+              <div className="grid grid-cols-4 gap-1.5 text-center text-xs">
+                <div className="bg-cyan-50 dark:bg-cyan-950/20 border border-cyan-200 dark:border-cyan-900/40 rounded-lg p-1.5">
+                  <span className="block text-[9px] text-cyan-700 dark:text-cyan-300 mb-0.5">
+                    {rec.is_live_quote ? 'Live Ask' : 'Est. Entry'}
+                  </span>
+                  <span className="font-black font-mono text-cyan-700 dark:text-cyan-300 text-[11px]">₹{rec.estimated_option_entry}</span>
+                </div>
+
+                <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50 rounded-lg p-1.5">
+                  <span className="block text-[9px] text-rose-700 dark:text-rose-300 mb-0.5 truncate" title={`-${rec.option_sl_pts}p risk`}>
+                    SL (-{rec.option_sl_pts}p)
+                  </span>
+                  <span className="font-black font-mono text-rose-600 dark:text-rose-400 text-[11px]">₹{rec.option_sl_price}</span>
+                </div>
+
+                <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-lg p-1.5">
+                  <span className="block text-[9px] text-emerald-700 dark:text-emerald-300 mb-0.5 truncate" title={`+${rec.option_target_1_pts}p gain`}>
+                    T1 (+{rec.option_target_1_pts}p)
+                  </span>
+                  <span className="font-black font-mono text-emerald-600 dark:text-emerald-400 text-[11px]">₹{rec.option_target_1_price}</span>
+                </div>
+
+                <div className="bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg p-1.5">
+                  <span className="block text-[9px] text-emerald-700/80 dark:text-emerald-400/80 mb-0.5 truncate" title={`+${rec.option_target_2_pts}p gain`}>
+                    T2 (+{rec.option_target_2_pts}p)
+                  </span>
+                  <span className="font-black font-mono text-emerald-600 dark:text-emerald-400 text-[11px]">₹{rec.option_target_2_price}</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Footer Snapshot & CTA */}
       <div className="pt-2.5 border-t border-slate-200 dark:border-dark-700/60">
         <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-600 dark:text-slate-400 mb-2 font-mono">
           <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-dark-900 border border-slate-200 dark:border-dark-700">
-            RSI: {ind.rsi.toFixed(1)}
+            RSI: {ind?.rsi != null ? ind.rsi.toFixed(1) : '-'}
           </span>
           <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-dark-900 border border-slate-200 dark:border-dark-700">
-            BW: {ind.bandwidth.toFixed(2)}%
+            BW: {ind?.bandwidth != null ? `${ind.bandwidth.toFixed(2)}%` : '-'}
           </span>
           <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-dark-900 border border-slate-200 dark:border-dark-700">
-            %B: {ind.percent_b.toFixed(2)}
+            %B: {ind?.percent_b != null ? ind.percent_b.toFixed(2) : '-'}
           </span>
           <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-dark-900 border border-slate-200 dark:border-dark-700">
-            VWAP: ₹{ind.vwap.toFixed(1)}
+            VWAP: ₹{ind?.vwap != null ? ind.vwap.toFixed(1) : '-'}
           </span>
         </div>
 

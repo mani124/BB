@@ -131,7 +131,20 @@ class PaperTradingEngine:
             None
         )
         if last_closed and last_closed.status == "STOPPED_OUT":
-            if signal.option_type == "CE":
+            is_s5 = (
+                signal.setup_type in ("Setup 5: Option Chart BB Scalp", "BB_EXPANSION_SCALP", "SETUP_5_OPTION_BB")
+                or "Setup 5" in str(signal.setup_type)
+            )
+            if is_s5:
+                failed_peak = last_closed.option_entry
+                opt_entry = signal.strike_recommendation.estimated_option_entry
+                if opt_entry <= failed_peak:
+                    logger.info(
+                        f"Re-entry blocked for {signal.symbol} Setup 5: option entry {opt_entry} <= previous failed option price {failed_peak} (Chop box protection)"
+                    )
+                    self._processed_signal_ids.add(signal.id)
+                    return None
+            elif signal.option_type == "CE":
                 failed_peak = last_closed.underlying_entry
                 if signal.entry_price <= failed_peak:
                     logger.info(
@@ -242,6 +255,11 @@ class PaperTradingEngine:
             if curr_spot is not None:
                 pos.current_underlying = round(curr_spot, 2)
 
+            is_opt_chart_setup = (
+                pos.setup_type in ("Setup 5: Option Chart BB Scalp", "BB_EXPANSION_SCALP", "SETUP_5_OPTION_BB")
+                or "Setup 5" in str(pos.setup_type)
+            )
+
             # Check if live option quote is directly provided from Dhan (NSE_FNO)
             real_opt_price = None
             if option_price_map and pos.option_security_id:
@@ -250,8 +268,11 @@ class PaperTradingEngine:
             if real_opt_price is not None and float(real_opt_price) > 0:
                 pos.current_option_price = round(float(real_opt_price), 2)
                 pos.pnl_points = round(pos.current_option_price - pos.option_entry, 2)
+            elif is_opt_chart_setup:
+                # Setup 5: Option chart scalp - maintain current option price if no new tick
+                pos.pnl_points = round(pos.current_option_price - pos.option_entry, 2)
             elif curr_spot is not None:
-                # Fallback to delta estimation only when offline or live option feed not available
+                # Fallback to delta estimation only when offline or live option feed not available for Setups 1-4
                 if pos.option_type == "CE":
                     spot_move = curr_spot - pos.underlying_entry
                     est_opt = max(0.5, pos.option_entry + (spot_move * delta))
@@ -264,6 +285,55 @@ class PaperTradingEngine:
                 still_active.append(pos)
                 continue
 
+            # --- SETUP 5: EXITS BASED EXCLUSIVELY ON OPTION CHARTS ---
+            if is_opt_chart_setup:
+                if pos.current_option_price <= pos.option_sl:
+                    is_breakeven = (pos.status == "TARGET_1")
+                    reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
+                    pos.status = "STOPPED_OUT"
+                    pos.exit_time = now_str
+                    pos.exit_reason = reason
+                    if is_breakeven:
+                        pos.current_option_price = pos.option_entry
+                        pos.pnl_points = 0.0
+                        runner_pnl = 0.0
+                    else:
+                        runner_pnl = round(pos.pnl_points * pos.quantity, 2)
+                    pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
+                    self._portfolio.closed_trades.append(pos)
+                    if self.storage:
+                        self.storage.upsert_position(pos)
+                    continue
+
+                elif pos.current_option_price >= pos.option_target_2:
+                    pos.status = "TARGET_2"
+                    pos.exit_time = now_str
+                    pos.exit_reason = "Target 2 (1:2.5) Hit"
+                    runner_pnl = round(pos.pnl_points * pos.quantity, 2)
+                    pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
+                    self._portfolio.closed_trades.append(pos)
+                    if self.storage:
+                        self.storage.upsert_position(pos)
+                    continue
+
+                elif pos.current_option_price >= pos.option_target_1 and pos.status == "OPEN":
+                    pos.status = "TARGET_1"
+                    if pos.lots >= 2:
+                        book_lots = pos.lots // 2
+                        book_qty = book_lots * pos.lot_size
+                        book_pnl = round(pos.pnl_points * book_qty, 2)
+                        pos.booked_lots += book_lots
+                        pos.booked_pnl_rupees = round(pos.booked_pnl_rupees + book_pnl, 2)
+                        pos.lots -= book_lots
+                        pos.quantity -= book_qty
+                    pos.option_sl = pos.option_entry
+                    if self.storage:
+                        self.storage.upsert_position(pos)
+
+                still_active.append(pos)
+                continue
+
+            # --- SETUPS 1-4: EXITS BASED ON UNDERLYING SPOT OR OPTION LEVELS ---
             if pos.option_type == "CE":
                 # Check SL
                 if (curr_spot is not None and curr_spot <= pos.underlying_sl) or pos.current_option_price <= pos.option_sl:

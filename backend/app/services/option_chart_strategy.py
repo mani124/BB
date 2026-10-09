@@ -73,18 +73,6 @@ def evaluate_option_chart_signal(
     opt_t1 = round(close + (actual_risk * 1.5), 1)
     opt_t2 = round(close + (actual_risk * 2.5), 1)
 
-    # Underlying spot levels mapped using Delta ~0.55
-    spot_risk = round(actual_risk / 0.55, 1)
-    spot_entry = round(underlying_price, 2)
-    if option_type == "CE":
-        spot_sl = round(underlying_price - spot_risk, 2)
-        spot_t1 = round(underlying_price + 1.5 * spot_risk, 2)
-        spot_t2 = round(underlying_price + 2.5 * spot_risk, 2)
-    else:
-        spot_sl = round(underlying_price + spot_risk, 2)
-        spot_t1 = round(underlying_price - 1.5 * spot_risk, 2)
-        spot_t2 = round(underlying_price - 2.5 * spot_risk, 2)
-
     ts_raw = curr.get("timestamp", last_idx)
     ts_str = str(ts_raw)
     ts_clean = ts_str.replace(":", "").replace("-", "").replace(" ", "_").replace(".", "")
@@ -92,16 +80,16 @@ def evaluate_option_chart_signal(
 
     rec = OptionStrikeRecommendation(
         symbol=symbol,
-        underlying_price=spot_entry,
+        underlying_price=round(underlying_price, 2),
         option_type=option_type,
         atm_strike=int(strike_price),
         recommended_strike=int(strike_price),
         strike_symbol=strike_symbol,
         lot_size=lot_size,
-        risk=spot_risk,
-        stop_loss=spot_sl,
-        target_1=spot_t1,
-        target_2=spot_t2,
+        risk=actual_risk,
+        stop_loss=opt_sl,
+        target_1=opt_t1,
+        target_2=opt_t2,
         estimated_option_entry=close,
         option_sl_pts=actual_risk,
         option_target_1_pts=round(actual_risk * 1.5, 1),
@@ -121,7 +109,12 @@ def evaluate_option_chart_signal(
         "option_vwap": vwap,
         "option_rsi": rsi,
         "option_volume": volume,
-        "option_ema_9": ema_9
+        "option_ema_9": ema_9,
+        "rsi": rsi,
+        "bandwidth": round(((bb_upper - float(curr.get("bb_lower", close * 0.9))) / max(0.1, float(curr.get("bb_middle", close)))) * 100, 2),
+        "percent_b": round(float(curr.get("percent_b", 1.05)), 2),
+        "vwap": vwap,
+        "close": close
     }
 
     return Signal(
@@ -131,10 +124,10 @@ def evaluate_option_chart_signal(
         setup_type=SetupType.SETUP_5_OPTION_BB,
         option_type=option_type,
         timestamp=ts_str,
-        entry_price=spot_entry,
-        stop_loss=spot_sl,
-        target_1=spot_t1,
-        target_2=spot_t2,
+        entry_price=close,
+        stop_loss=opt_sl,
+        target_1=opt_t1,
+        target_2=opt_t2,
         strike_recommendation=rec,
         indicators_snapshot=indicators_snap,
         rationale="Option BB Upper expansion with VWAP & volume surge"
