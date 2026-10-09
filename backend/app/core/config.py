@@ -11,6 +11,9 @@ class Settings(BaseModel):
     DHAN_AUTH_BASE: str = os.getenv("DHAN_AUTH_BASE", "https://auth.dhan.co")
     DHAN_LOGIN_URL: str = os.getenv("DHAN_LOGIN_URL", "https://auth.dhan.co/login/consent")
     DHAN_TOKEN_URL: str = os.getenv("DHAN_TOKEN_URL", "https://auth.dhan.co/oauth/token")
+    DHAN_GENERATE_CONSENT_URL: str = os.getenv("DHAN_GENERATE_CONSENT_URL", "https://auth.dhan.co/app/generate-consent")
+    DHAN_CONSENT_LOGIN_URL: str = os.getenv("DHAN_CONSENT_LOGIN_URL", "https://auth.dhan.co/login/consentApp-login")
+    DHAN_CONSUME_CONSENT_URL: str = os.getenv("DHAN_CONSUME_CONSENT_URL", "https://auth.dhan.co/app/consumeApp-consent")
     RATE_LIMIT_RPS: int = 5
     SCAN_INTERVAL_SECONDS: float = 3.0
     DATA_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")

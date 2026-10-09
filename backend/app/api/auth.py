@@ -22,10 +22,49 @@ class OAuthTokenRequest(BaseModel):
 
 
 @router.get("/oauth/login-url")
-def get_oauth_login_url(
-    app_id: str = Query(..., min_length=1, description="Dhan App ID / Client ID"),
+async def get_oauth_login_url(
+    app_id: str = Query(..., min_length=1, description="Dhan App ID / API Key"),
+    app_secret: Optional[str] = Query(None, description="Dhan App Secret"),
+    client_id: Optional[str] = Query(None, description="Dhan Client ID"),
     redirect_uri: Optional[str] = Query(None, description="Redirect URI after consent"),
 ):
+    # If app_secret is provided, call official DhanHQ generate-consent endpoint
+    if app_secret and app_secret.strip():
+        cid = (client_id or app_id).strip()
+        url = f"{settings.DHAN_GENERATE_CONSENT_URL}?client_id={cid}"
+        headers = {
+            "app_id": app_id.strip(),
+            "app_secret": app_secret.strip(),
+            "Accept": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                consent_app_id = (
+                    data.get("consentAppId")
+                    or (data.get("data") if isinstance(data.get("data"), dict) else {}).get("consentAppId")
+                )
+                if consent_app_id:
+                    login_url = f"{settings.DHAN_CONSENT_LOGIN_URL}?consentAppId={consent_app_id}"
+                    return {"login_url": login_url, "consent_app_id": consent_app_id}
+            else:
+                logger.warning(f"Dhan generate-consent returned {resp.status_code}: {resp.text}")
+                raise HTTPException(
+                    status_code=resp.status_code if resp.status_code in [400, 401, 403] else status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Dhan API authentication rejected ({resp.status_code}): {resp.text}",
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error communicating with Dhan generate-consent: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Dhan authentication server unreachable: {e}",
+            )
+
+    # Fallback / mock test format
     params = {"client_id": app_id.strip()}
     if redirect_uri and redirect_uri.strip():
         params["redirect_uri"] = redirect_uri.strip()
@@ -36,28 +75,46 @@ def get_oauth_login_url(
 
 @router.post("/oauth/token")
 async def exchange_oauth_token(payload: OAuthTokenRequest):
-    headers = {
-        "app-id": payload.app_id.strip(),
-        "app-secret": payload.app_secret.strip(),
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
-    body = {
-        "consentId": payload.consent_id.strip(),
-        "consent_id": payload.consent_id.strip(),
+    # 1. Try official DhanHQ consumeApp-consent endpoint
+    consume_url = f"{settings.DHAN_CONSUME_CONSENT_URL}?tokenId={payload.consent_id.strip()}"
+    consume_headers = {
         "app_id": payload.app_id.strip(),
         "app_secret": payload.app_secret.strip(),
+        "Accept": "application/json",
     }
-
+    resp = None
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(settings.DHAN_TOKEN_URL, headers=headers, json=body)
+            consume_resp = await client.post(consume_url, headers=consume_headers)
+            if consume_resp.status_code == 200:
+                resp = consume_resp
     except Exception as e:
-        logger.error(f"Failed to communicate with Dhan OAuth token endpoint: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Dhan authentication server unreachable: {e}",
-        )
+        logger.warning(f"Dhan consumeApp-consent request failed: {e}")
+
+    # 2. Fallback to DHAN_TOKEN_URL
+    if resp is None:
+        headers = {
+            "app-id": payload.app_id.strip(),
+            "app-secret": payload.app_secret.strip(),
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        body = {
+            "consentId": payload.consent_id.strip(),
+            "consent_id": payload.consent_id.strip(),
+            "app_id": payload.app_id.strip(),
+            "app_secret": payload.app_secret.strip(),
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(settings.DHAN_TOKEN_URL, headers=headers, json=body)
+        except Exception as e:
+            logger.error(f"Failed to communicate with Dhan OAuth token endpoint: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Dhan authentication server unreachable: {e}",
+            )
 
     if resp.status_code != 200:
         logger.warning(f"Dhan OAuth exchange failed with status {resp.status_code}: {resp.text}")
@@ -85,6 +142,7 @@ async def exchange_oauth_token(payload: OAuthTokenRequest):
         resp_data.get("dhanClientId")
         or resp_data.get("client_id")
         or resp_data.get("clientId")
+        or payload.app_id
         or ""
     ).strip()
     access_token = str(

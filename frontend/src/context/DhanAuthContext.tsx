@@ -43,9 +43,9 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // On mount: check for OAuth redirect param (consentId) or restored session in sessionStorage
   useEffect(() => {
-    // 1. Detect OAuth redirect
+    // 1. Detect OAuth redirect (DhanHQ redirects with ?tokenId=... or ?consentId=...)
     const params = new URLSearchParams(window.location.search);
-    const consentId = params.get('consentId');
+    const consentId = params.get('tokenId') || params.get('consentId') || params.get('token_id');
     if (consentId) {
       const appId = sessionStorage.getItem('dhan_oauth_app_id');
       const appSecret = sessionStorage.getItem('dhan_oauth_app_secret');
@@ -129,7 +129,7 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       sessionStorage.setItem('dhan_oauth_app_secret', appSecret.trim());
       const redirectUri = window.location.origin + window.location.pathname;
       const res = await fetch(
-        `/api/auth/oauth/login-url?app_id=${encodeURIComponent(appId.trim())}&redirect_uri=${encodeURIComponent(redirectUri)}`
+        `/api/auth/oauth/login-url?app_id=${encodeURIComponent(appId.trim())}&app_secret=${encodeURIComponent(appSecret.trim())}&redirect_uri=${encodeURIComponent(redirectUri)}`
       );
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
