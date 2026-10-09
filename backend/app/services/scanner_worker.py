@@ -22,19 +22,6 @@ from app.services.momentum_ranker import MomentumRanker, MomentumRankings
 
 logger = logging.getLogger(__name__)
 
-SEGMENT_STR_TO_INT: dict[str, int] = {
-    "IDX_I": 0,
-    "INDEX": 0,
-    "IDX": 0,
-    "NSE_EQ": 1,
-    "NSE_FNO": 2,
-    "NSE_CURR": 3,
-    "BSE_EQ": 4,
-    "MCX_COMM": 5,
-    "BSE_CURR": 7,
-    "BSE_FNO": 8,
-}
-
 class IndexRadarItem(BaseModel):
     symbol: str
     close: float
@@ -317,7 +304,7 @@ class ScannerWorker:
             self._session_credentials = None
             self._state.active_mode = "demo"
             self._state.feed_status = "DEMO"
-            if self.ws_manager and self.ws_manager.is_connected:
+            if self.ws_manager:
                 try:
                     loop = asyncio.get_running_loop()
                     loop.create_task(self.ws_manager.disconnect())
@@ -961,7 +948,7 @@ class ScannerWorker:
             except asyncio.CancelledError:
                 pass
             self._task = None
-        if self.ws_manager and self.ws_manager.is_connected:
+        if self.ws_manager:
             try:
                 await self.ws_manager.disconnect()
             except Exception as e:

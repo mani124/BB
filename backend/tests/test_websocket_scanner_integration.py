@@ -189,3 +189,75 @@ async def test_zero_token_persistence_remediation():
     assert not SESSION_FILE.exists()
 
     await worker.stop()
+
+
+@pytest.mark.asyncio
+async def test_sse_stream_formats_tick_as_named_event_and_snapshot_as_data():
+    from app.api.signals import stream_signals
+    import json
+
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+
+    # Patch the global worker in app.main with our worker for the test
+    with patch("app.main.worker", worker):
+        req = MagicMock()
+        async def is_disc():
+            return False
+        req.is_disconnected = is_disc
+
+        resp = await stream_signals(req, max_events=3)
+        gen = resp.body_iterator
+
+        # 1. Initial snapshot emitted as standard data: ...\n\n (no event: tick)
+        first_event = await anext(gen)
+        assert first_event.startswith("data:")
+        assert "event: tick" not in first_event
+        snapshot = json.loads(first_event.replace("data:", "").strip())
+        assert "active_mode" in snapshot
+
+        # 2. Tick broadcast emitted as named event: tick\ndata: ...\n\n
+        await worker.broadcast({
+            "type": "tick",
+            "security_id": 13,
+            "ltp": 22550.0,
+            "volume": 12000,
+        })
+        second_event = await anext(gen)
+        assert second_event.startswith("event: tick\ndata:")
+        parsed_tick = json.loads(second_event.replace("event: tick\ndata:", "").strip())
+        assert parsed_tick["type"] == "tick"
+        assert parsed_tick["ltp"] == 22550.0
+
+        # 3. Regular state update broadcast emitted as standard data: ...\n\n
+        await worker.broadcast({
+            "active_mode": "live",
+            "signals": [],
+            "scan_cycle_count": 5
+        })
+        third_event = await anext(gen)
+        assert third_event.startswith("data:")
+        assert "event: tick" not in third_event
+
+    await worker.stop()
+
+
+@pytest.mark.asyncio
+async def test_worker_stop_and_logout_disconnect_during_reconnecting_state():
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+
+    # Simulate WebSocket in RECONNECTING status (where is_connected is False)
+    worker.ws_manager.status = "RECONNECTING"
+    assert worker.ws_manager.is_connected is False
+
+    with patch.object(worker.ws_manager, "disconnect", new_callable=AsyncMock) as mock_disc:
+        # Logging out with credentials=None must trigger disconnect
+        worker.set_session_credentials(None, None)
+        await asyncio.sleep(0.01)
+        assert mock_disc.called
+
+    # Reset and test stop() also unconditionally disconnects
+    worker.ws_manager.status = "CONNECTING"
+    assert worker.ws_manager.is_connected is False
+    with patch.object(worker.ws_manager, "disconnect", new_callable=AsyncMock) as mock_disc:
+        await worker.stop()
+        assert mock_disc.called
