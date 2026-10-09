@@ -275,7 +275,7 @@ async def test_fetch_marketfeed_quotes_chunks_large_request():
 
     with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
         mock_post.side_effect = [resp1, resp2, resp3]
-        quotes = await client.fetch_marketfeed_quotes("10001", "tok", large_securities)
+        quotes = await client.fetch_marketfeed_quotes("10001", "tok", large_securities, batch_size=100)
 
         assert len(quotes.get("NSE_EQ", {})) == 213
         assert mock_post.call_count == 3

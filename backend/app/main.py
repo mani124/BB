@@ -17,9 +17,6 @@ worker = ScannerWorker(universe_mgr=universe_mgr)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Pre-populate initial scan in background
-    import asyncio
-    asyncio.create_task(worker.run_single_scan_cycle())
     worker.start()
     yield
     await worker.stop()

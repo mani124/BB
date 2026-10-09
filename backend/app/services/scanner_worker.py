@@ -64,6 +64,7 @@ class ScannerWorker:
         self._option_chain_cache: dict[str, tuple[float, dict]] = {}
         self._candle_history: dict[str, list[dict]] = {}
         self._current_forming_candle: dict[str, dict] = {}
+        self._scan_lock = asyncio.Lock()
         self._load_saved_session()
 
     def _load_saved_session(self):
@@ -332,7 +333,17 @@ class ScannerWorker:
         client_id: Optional[str] = None,
         access_token: Optional[str] = None
     ) -> ScannerState:
-        """Run a full cycle across all instruments in the universe."""
+        """Run a full cycle across all instruments in the universe with re-entrancy protection."""
+        if self._scan_lock.locked():
+            return self._state
+        async with self._scan_lock:
+            return await self._execute_scan_cycle(client_id, access_token)
+
+    async def _execute_scan_cycle(
+        self,
+        client_id: Optional[str] = None,
+        access_token: Optional[str] = None
+    ) -> ScannerState:
         self._state.is_scanning = True
         self._state.scan_progress = 0.0
 

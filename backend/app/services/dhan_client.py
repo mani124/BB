@@ -85,11 +85,13 @@ class DhanClient:
         self,
         client_id: str,
         access_token: str,
-        securities: dict[str, list[int]]
+        securities: dict[str, list[int]],
+        batch_size: int = 1000
     ) -> dict:
         """
         Fetch full real-time market quotes (LTP, OHLC, volume, net_change) for multiple securities
         across segments in a single API call via POST /marketfeed/quote.
+        Supports up to 1,000 instruments per request (Dhan official limit).
         """
         headers = {
             "client-id": client_id,
@@ -97,15 +99,15 @@ class DhanClient:
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
-        # Chunk requests so that no single call exceeds Dhan's 100 instrument limit
+        # Chunk requests so that no single call exceeds batch_size (Dhan limit 1,000)
         chunks: list[dict[str, list[int]]] = []
         current_chunk: dict[str, list[int]] = {}
         current_count = 0
 
         for seg, sec_ids in securities.items():
-            for i in range(0, len(sec_ids), 100):
-                batch = sec_ids[i:i + 100]
-                if current_count + len(batch) <= 100:
+            for i in range(0, len(sec_ids), batch_size):
+                batch = sec_ids[i:i + batch_size]
+                if current_count + len(batch) <= batch_size:
                     current_chunk.setdefault(seg, []).extend(batch)
                     current_count += len(batch)
                 else:
@@ -123,15 +125,20 @@ class DhanClient:
         merged_results: dict[str, dict] = {}
         try:
             client = await self.get_client()
-            for chunk in chunks:
+            for idx, chunk in enumerate(chunks):
+                if idx > 0:
+                    # Dhan market quote endpoint allows 1 request per second
+                    await asyncio.sleep(1.1)
+
                 async with self._semaphore:
                     await self._throttle()
                     resp = await client.post("/marketfeed/quote", headers=headers, json=chunk)
                     if resp.status_code == 429:
-                        logger.warning("Marketfeed quote hit 429 rate limit. Backing off 2.5s and retrying...")
+                        logger.warning(f"Marketfeed quote hit 429: {resp.text[:200]}. Backing off 2.5s and retrying...")
                         await asyncio.sleep(2.5)
                         await self._throttle()
                         resp = await client.post("/marketfeed/quote", headers=headers, json=chunk)
+                        logger.info(f"Marketfeed retry status: {resp.status_code}")
 
                     if resp.status_code == 200:
                         data = resp.json()
