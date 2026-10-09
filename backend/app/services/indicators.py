@@ -13,6 +13,8 @@ INDICATOR_COLUMNS = [
     "rsi",
     "ema_9",
     "adx",
+    "plus_di",
+    "minus_di",
     "or_high",
     "or_low",
 ]
@@ -127,6 +129,9 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
         / atr14_safe
         * 100.0
     ).fillna(0.0)
+
+    res["plus_di"] = plus_di14
+    res["minus_di"] = minus_di14
 
     di_sum = (plus_di14 + minus_di14).replace(0, np.nan)
     di_diff = (plus_di14 - minus_di14).abs()

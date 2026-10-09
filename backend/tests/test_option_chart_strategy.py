@@ -58,10 +58,13 @@ def test_setup5_ce_breakout_above_option_upper_bb_and_vwap():
     assert signal.setup_type == SetupType.SETUP_5_OPTION_BB
     assert signal.option_type == "CE"
     assert signal.symbol == "RELIANCE"
-    assert signal.entry_price == 114.0
-    assert signal.stop_loss < 114.0
-    assert signal.target_1 > 114.0
+    assert signal.entry_price == 2985.0
+    assert signal.stop_loss < 2985.0
+    assert signal.target_1 > 2985.0
     assert signal.target_2 > signal.target_1
+    assert signal.strike_recommendation.estimated_option_entry == 114.0
+    assert signal.strike_recommendation.option_sl_price < 114.0
+    assert signal.strike_recommendation.option_target_1_price > 114.0
     assert signal.strike_recommendation.strike_symbol == "RELIANCE 3000 CE"
     assert signal.strike_recommendation.option_security_id == "54321"
     assert "Option BB Upper expansion with VWAP & volume surge" in signal.rationale
@@ -144,6 +147,48 @@ def test_setup5_pe_breakout_above_option_upper_bb_and_vwap():
     assert signal is not None, "Setup 5 PE signal should trigger when Put premium expands above its Upper BB"
     assert signal.setup_type == SetupType.SETUP_5_OPTION_BB
     assert signal.option_type == "PE"
-    assert signal.entry_price == 95.0
-    assert signal.stop_loss < 95.0
-    assert signal.target_1 > 95.0
+    assert signal.entry_price == 22480.0
+    assert signal.stop_loss > 22480.0
+    assert signal.target_1 < 22480.0
+    assert signal.strike_recommendation.estimated_option_entry == 95.0
+    assert signal.strike_recommendation.option_sl_price < 95.0
+    assert signal.strike_recommendation.option_target_1_price > 95.0
+
+def test_setup5_paper_trader_does_not_instant_exit_on_market_price():
+    from app.services.paper_trader import PaperTradingEngine
+
+    df = create_option_candles(n=30, base_premium=100.0)
+    df.loc[29] = {
+        "timestamp": datetime(2026, 10, 9, 12, 30),
+        "open": 101.0,
+        "high": 115.0,
+        "low": 100.5,
+        "close": 114.0,
+        "volume": 45000
+    }
+    ind_df = calculate_indicators(df)
+    sig = evaluate_option_chart_signal(
+        symbol="RELIANCE",
+        strike_symbol="RELIANCE 3000 CE",
+        option_type="CE",
+        option_df=ind_df,
+        underlying_price=2985.0,
+        strike_price=3000.0,
+        lot_size=500,
+        option_security_id="54321"
+    )
+
+    engine = PaperTradingEngine()
+    pos = engine.open_position_from_signal(sig, lots=2)
+    assert pos is not None
+    assert pos.status == "OPEN"
+    assert pos.underlying_entry == 2985.0
+
+    # Feeding CURRENT market price (2985.0) must NOT instantly trigger Target 2 or SL
+    engine.update_market_prices({"RELIANCE": 2985.0}, {"54321": 114.0})
+    portfolio = engine.get_portfolio()
+    assert len(portfolio.active_positions) == 1, "Position must remain open on normal market ticks"
+    assert len(portfolio.closed_trades) == 0, "No trades should be prematurely closed"
+    active = portfolio.active_positions[0]
+    assert active.pnl_points == 0.0
+    assert active.pnl_rupees == 0.0

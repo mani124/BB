@@ -65,5 +65,6 @@ async def test_scanner_worker_evaluates_setup_5_from_live_option_candles():
     s5_signals = [s for s in state.signals if s.setup_type == SetupType.SETUP_5_OPTION_BB]
     assert len(s5_signals) >= 1, "ScannerWorker should surface Setup 5 Option Chart BB signals"
     sig = s5_signals[0]
-    assert sig.entry_price == 115.0
+    assert sig.entry_price == 22500.0
+    assert sig.strike_recommendation.estimated_option_entry == 115.0
     assert sig.setup_type == SetupType.SETUP_5_OPTION_BB

@@ -65,17 +65,23 @@ class ScannerWorker:
         self._option_chain_cache: dict[str, tuple[float, dict]] = {}
         self._candle_history: dict[str, list[dict]] = {}
         self._current_forming_candle: dict[str, dict] = {}
+        self._option_candle_history: dict[str, list[dict]] = {}
+        self._option_forming_candle: dict[str, dict] = {}
+        self._failed_candle_sec_ids: set[str] = set()
         self._scan_lock = asyncio.Lock()
         self._load_saved_session()
 
     def _load_saved_session(self):
+        # Do not load disk session during automated testing
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            return
         try:
             if SESSION_FILE.exists():
                 with open(SESSION_FILE, "r") as f:
                     data = json.load(f)
                     cid = data.get("client_id")
                     tok = data.get("access_token")
-                    if cid and tok:
+                    if cid and tok and cid != "TEST_CID":
                         self._session_credentials = (cid, tok)
                         self._state.active_mode = "live"
                         logger.info("Restored active Dhan session into live scanner mode")
@@ -135,7 +141,10 @@ class ScannerWorker:
             self.unsubscribe(dq)
 
     def generate_synthetic_candles(self, inst: Instrument, n: int = 40, base_price: Optional[float] = None) -> pd.DataFrame:
-        """Fallback simulated candles for demo mode when market quotes are completely unavailable."""
+        """Fallback simulated candles STRICTLY for offline demo mode when market quotes are unavailable."""
+        if self._state.active_mode == "live":
+            return pd.DataFrame()
+
         base_map = {
             "NIFTY 50": 22500.0,
             "NIFTY BANK": 48500.0,
@@ -174,7 +183,7 @@ class ScannerWorker:
     def get_or_update_live_candles(self, inst: Instrument, inst_quote: Optional[dict]) -> pd.DataFrame:
         """
         Build and maintain 100% real intraday OHLCV bars populated and updated continuously
-        by live Dhan market ticks. Strictly zero random/synthetic data. Anchored directly to
+        by live Dhan market ticks. Strictly zero random/synthetic data in live mode. Anchored directly to
         Dhan official Day OHLC (open, high, low, close) and VWAP (average_price).
         """
         now = datetime.now()
@@ -182,6 +191,8 @@ class ScannerWorker:
         sym = inst.symbol
 
         if not inst_quote or float(inst_quote.get("last_price", 0.0)) <= 0:
+            if self._state.active_mode == "live":
+                return pd.DataFrame()
             return self.generate_synthetic_candles(inst)
 
         live_ltp = float(inst_quote["last_price"])
@@ -208,37 +219,19 @@ class ScannerWorker:
                     "high": prev_base,
                     "low": prev_base,
                     "close": prev_base,
-                    "volume": int(day_volume / (warmup_count + 10)) if day_volume > 0 else 1000
+                    "volume": 0
                 })
 
             if now > market_open_dt:
-                elapsed_min = (now - market_open_dt).total_seconds() / 60.0
-                num_intraday_bars = max(1, int(elapsed_min // step_min))
-                for b in range(num_intraday_bars):
-                    ts = market_open_dt + timedelta(minutes=step_min * b)
-                    frac = b / max(1, num_intraday_bars)
-                    if frac < 0.3:
-                        p_open = day_open + (day_low - day_open) * (frac / 0.3)
-                        p_close = day_open + (day_low - day_open) * ((frac + (1.0 / num_intraday_bars)) / 0.3)
-                    elif frac < 0.7:
-                        p_open = day_low + (day_high - day_low) * ((frac - 0.3) / 0.4)
-                        p_close = day_low + (day_high - day_low) * (((frac + (1.0 / num_intraday_bars)) - 0.3) / 0.4)
-                    else:
-                        p_open = day_high + (live_ltp - day_high) * ((frac - 0.7) / 0.3)
-                        p_close = day_high + (live_ltp - day_high) * (((frac + (1.0 / num_intraday_bars)) - 0.7) / 0.3)
-
-                    b_high = max(p_open, p_close)
-                    b_low = min(p_open, p_close)
-                    bar_vol = int(day_volume / max(1, num_intraday_bars)) if day_volume > 0 else 5000
-
-                    history.append({
-                        "timestamp": ts,
-                        "open": round(p_open, 2),
-                        "high": round(b_high, 2),
-                        "low": round(b_low, 2),
-                        "close": round(p_close, 2),
-                        "volume": max(100, bar_vol)
-                    })
+                # Add opening session bar with real day OHLC
+                history.append({
+                    "timestamp": market_open_dt,
+                    "open": round(day_open, 2),
+                    "high": round(day_high, 2),
+                    "low": round(day_low, 2),
+                    "close": round(live_ltp, 2),
+                    "volume": max(100, day_volume)
+                })
 
             self._candle_history[sym] = history
 
@@ -583,6 +576,48 @@ class ScannerWorker:
         await self.broadcast(self._state.model_dump())
         return self._state
 
+    def _get_or_update_option_candles(self, sec_id: str, ltp: float, volume: int) -> pd.DataFrame:
+        now = datetime.now()
+        step_min = 5
+        if sec_id not in self._option_candle_history:
+            self._option_candle_history[sec_id] = []
+            forming_ts = now.replace(second=0, microsecond=0)
+            forming_min = (forming_ts.minute // step_min) * step_min
+            forming_ts = forming_ts.replace(minute=forming_min)
+            self._option_forming_candle[sec_id] = {
+                "timestamp": forming_ts,
+                "open": ltp,
+                "high": ltp,
+                "low": ltp,
+                "close": ltp,
+                "volume": volume
+            }
+
+        forming = self._option_forming_candle.get(sec_id)
+        if forming:
+            forming_ts = forming["timestamp"]
+            bar_elapsed = (now - forming_ts).total_seconds()
+            if bar_elapsed >= (step_min * 60):
+                self._option_candle_history[sec_id].append(forming)
+                next_ts = forming_ts + timedelta(minutes=step_min)
+                forming = {
+                    "timestamp": next_ts,
+                    "open": ltp,
+                    "high": ltp,
+                    "low": ltp,
+                    "close": ltp,
+                    "volume": volume
+                }
+                self._option_forming_candle[sec_id] = forming
+            else:
+                forming["high"] = max(forming["high"], ltp)
+                forming["low"] = min(forming["low"], ltp)
+                forming["close"] = ltp
+                forming["volume"] = max(forming.get("volume", 0), volume)
+
+        all_bars = self._option_candle_history[sec_id] + ([forming] if forming else [])
+        return pd.DataFrame(all_bars)
+
     async def _evaluate_option_chart_setups(
         self,
         cid: str,
@@ -622,34 +657,48 @@ class ScannerWorker:
             if not sec_id:
                 continue
 
+            opt_ltp = float(opt_info.get("last_price", 0.0))
+            opt_vol = int(opt_info.get("volume", 0))
+            sec_id_str = str(sec_id)
             strike_symbol = f"{inst.symbol} {int(atm_strike)} {opt_type}"
-            try:
-                opt_candles = await self.dhan_client.fetch_intraday_candles(
-                    client_id=cid,
-                    access_token=tok,
-                    security_id=str(sec_id),
-                    exchange_segment="NSE_FNO",
-                    instrument_type=inst_type_dhan,
-                    interval=5
-                )
-                if not opt_candles.empty and len(opt_candles) >= 20:
-                    ind_opt = calculate_indicators(opt_candles)
-                    sig = evaluate_option_chart_signal(
-                        symbol=inst.symbol,
-                        strike_symbol=strike_symbol,
-                        option_type=opt_type,
-                        option_df=ind_opt,
-                        underlying_price=underlying_price,
-                        strike_price=atm_strike,
-                        expiry_date=expiry,
-                        lot_size=lot_size,
-                        option_security_id=str(sec_id),
-                        timeframe="5m"
+
+            opt_candles = pd.DataFrame()
+            if sec_id_str not in self._failed_candle_sec_ids:
+                try:
+                    opt_candles = await self.dhan_client.fetch_intraday_candles(
+                        client_id=cid,
+                        access_token=tok,
+                        security_id=sec_id_str,
+                        exchange_segment="NSE_FNO",
+                        instrument_type=inst_type_dhan,
+                        interval=5
                     )
-                    if sig:
-                        results.append(sig)
-            except Exception as e:
-                logger.debug(f"Error checking option chart candles for {strike_symbol}: {e}")
+                    if opt_candles.empty:
+                        self._failed_candle_sec_ids.add(sec_id_str)
+                except Exception as e:
+                    logger.debug(f"Error checking option chart candles for {strike_symbol}: {e}")
+                    self._failed_candle_sec_ids.add(sec_id_str)
+
+            # If exchange intraday chart API does not support option contract, maintain live tick candle
+            if opt_candles.empty and opt_ltp > 0:
+                opt_candles = self._get_or_update_option_candles(sec_id_str, opt_ltp, opt_vol)
+
+            if not opt_candles.empty and len(opt_candles) >= 20:
+                ind_opt = calculate_indicators(opt_candles)
+                sig = evaluate_option_chart_signal(
+                    symbol=inst.symbol,
+                    strike_symbol=strike_symbol,
+                    option_type=opt_type,
+                    option_df=ind_opt,
+                    underlying_price=underlying_price,
+                    strike_price=atm_strike,
+                    expiry_date=expiry,
+                    lot_size=lot_size,
+                    option_security_id=sec_id_str,
+                    timeframe="5m"
+                )
+                if sig:
+                    results.append(sig)
 
         return results
 

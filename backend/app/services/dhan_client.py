@@ -312,10 +312,10 @@ class DhanClient:
                         data = resp.json()
                         break
                     elif resp.status_code == 400:
-                        logger.warning(f"Dhan intraday payload candidate {idx} returned HTTP 400: {resp.text}")
-                        continue
+                        logger.debug(f"Dhan intraday charts returned HTTP 400 for sec_id={security_id}: {resp.text[:120]}")
+                        break
                     else:
-                        logger.warning(f"Dhan intraday chart error: HTTP {resp.status_code} for sec_id={security_id}: {resp.text}")
+                        logger.warning(f"Dhan intraday chart error: HTTP {resp.status_code} for sec_id={security_id}: {resp.text[:120]}")
                         break
 
                 if data is None:
