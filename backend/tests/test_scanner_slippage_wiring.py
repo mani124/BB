@@ -299,3 +299,12 @@ async def test_scanner_worker_ws_tick_zero_or_invalid_bid_ignored():
     assert closed.status == "TARGET_2"
     assert closed.theoretical_exit == 190.0
 
+
+def test_api_signals_state_alias():
+    client = TestClient(app)
+    resp = client.get("/api/signals/state")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "signals" in data
+    assert "paper_portfolio" in data
+

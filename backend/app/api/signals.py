@@ -8,6 +8,7 @@ router = APIRouter(prefix="/signals", tags=["signals"])
 
 @router.get("")
 @router.get("/snapshot")
+@router.get("/state")
 def get_signals_snapshot():
     from app.main import worker
     return worker.get_state().model_dump()
