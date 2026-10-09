@@ -36,4 +36,93 @@ describe('Header Theme Toggle', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true);
     expect(document.documentElement.classList.contains('light')).toBe(false);
   });
+
+  it('renders WS LIVE badge when feedStatus is WS_LIVE', () => {
+    render(
+      <ThemeProvider>
+        <DhanAuthProvider>
+          <Header
+            activeMode="live"
+            feedStatus="WS_LIVE"
+            scanCycleCount={5}
+            lastScanTime="12:00:00"
+            isScanning={false}
+            scanProgress={100}
+            onScanNow={vi.fn()}
+          />
+        </DhanAuthProvider>
+      </ThemeProvider>
+    );
+
+    expect(screen.getByText(/WS LIVE/i)).toBeInTheDocument();
+  });
+
+  it('renders HTTP Polling badge when in live mode but feedStatus is not WS_LIVE', () => {
+    render(
+      <ThemeProvider>
+        <DhanAuthProvider>
+          <Header
+            activeMode="live"
+            feedStatus="LIVE"
+            scanCycleCount={5}
+            lastScanTime="12:00:00"
+            isScanning={false}
+            scanProgress={100}
+            onScanNow={vi.fn()}
+          />
+        </DhanAuthProvider>
+      </ThemeProvider>
+    );
+
+    expect(screen.getByText(/HTTP Polling/i)).toBeInTheDocument();
+  });
+
+  it('displays countdown tooltip with remaining session hours', () => {
+    render(
+      <ThemeProvider>
+        <DhanAuthProvider>
+          <Header
+            activeMode="live"
+            feedStatus="WS_LIVE"
+            scanCycleCount={5}
+            lastScanTime="12:00:00"
+            isScanning={false}
+            scanProgress={100}
+            onScanNow={vi.fn()}
+            tokenExpiryCountdown="23h 45m"
+          />
+        </DhanAuthProvider>
+      </ThemeProvider>
+    );
+
+    const countdownEl = screen.getByTitle(/remaining session hours/i);
+    expect(countdownEl).toBeInTheDocument();
+    expect(screen.getByText(/Token:\s*23h\s*45m/i)).toBeInTheDocument();
+  });
+
+  it('renders 1-Click Dhan OAuth Login tab in connect modal', () => {
+    render(
+      <ThemeProvider>
+        <DhanAuthProvider>
+          <Header
+            activeMode="demo"
+            scanCycleCount={1}
+            lastScanTime="12:00:00"
+            isScanning={false}
+            scanProgress={100}
+            onScanNow={vi.fn()}
+          />
+        </DhanAuthProvider>
+      </ThemeProvider>
+    );
+
+    // Open connect modal
+    const connectBtn = screen.getByRole('button', { name: /dhan/i });
+    fireEvent.click(connectBtn);
+
+    // Modal should show 1-Click Dhan OAuth tab and Connect with Dhan button
+    expect(screen.getByText(/1-Click Dhan OAuth/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Connect with Dhan/i })).toBeInTheDocument();
+  });
 });
+

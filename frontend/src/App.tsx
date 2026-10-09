@@ -28,6 +28,7 @@ const DashboardContent: React.FC = () => {
   const [selectedInstrumentType, setSelectedInstrumentType] = useState<string>('ALL');
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [wsConnected, setWsConnected] = useState(false);
   const { connect } = useDhanAuth();
   const reconnectingRef = React.useRef(false);
 
@@ -43,10 +44,13 @@ const DashboardContent: React.FC = () => {
         if (res.ok) {
           const data = await res.json();
           setState((prev) => ({ ...prev, ...data }));
+          if (data.feed_status === 'WS_LIVE' || data.ws_connected) {
+            setWsConnected(true);
+          }
           if (data.active_mode === 'demo' && !reconnectingRef.current) {
-            const savedId = localStorage.getItem('dhan_client_id');
-            const savedToken = localStorage.getItem('dhan_access_token');
-            if (savedId && savedToken) {
+            const savedId = sessionStorage.getItem('dhan_client_id');
+            const savedToken = sessionStorage.getItem('dhan_access_token');
+            if (savedId && savedToken && !savedToken.includes('*')) {
               reconnectingRef.current = true;
               connect(savedId, savedToken).finally(() => {
                 setTimeout(() => { reconnectingRef.current = false; }, 15000);
@@ -63,14 +67,45 @@ const DashboardContent: React.FC = () => {
     const connectSSE = () => {
       eventSource = new EventSource('/api/signals/stream');
 
+      // Listen for sub-second real-time tick named events
+      eventSource.addEventListener('tick', (event: MessageEvent) => {
+        try {
+          const tickData = JSON.parse(event.data);
+          setWsConnected(true);
+          if (tickData.symbol && tickData.ltp) {
+            setState((prev) => {
+              const sym = tickData.symbol;
+              const prevRadar = prev.radar[sym];
+              if (!prevRadar) return prev;
+              return {
+                ...prev,
+                radar: {
+                  ...prev.radar,
+                  [sym]: {
+                    ...prevRadar,
+                    close: tickData.ltp,
+                  },
+                },
+              };
+            });
+          }
+        } catch (err) {
+          console.error('Failed to parse SSE tick', err);
+        }
+      });
+
+      // Default stream state snapshot updates
       eventSource.onmessage = (event) => {
         try {
           const data: ScannerState = JSON.parse(event.data);
           setState(data);
+          if (data.feed_status === 'WS_LIVE' || data.ws_connected) {
+            setWsConnected(true);
+          }
           if (data.active_mode === 'demo' && !reconnectingRef.current) {
-            const savedId = localStorage.getItem('dhan_client_id');
-            const savedToken = localStorage.getItem('dhan_access_token');
-            if (savedId && savedToken) {
+            const savedId = sessionStorage.getItem('dhan_client_id');
+            const savedToken = sessionStorage.getItem('dhan_access_token');
+            if (savedId && savedToken && !savedToken.includes('*')) {
               reconnectingRef.current = true;
               connect(savedId, savedToken).finally(() => {
                 setTimeout(() => { reconnectingRef.current = false; }, 15000);
@@ -84,6 +119,7 @@ const DashboardContent: React.FC = () => {
 
       eventSource.onerror = () => {
         eventSource?.close();
+        setWsConnected(false);
         reconnectTimeout = setTimeout(connectSSE, 3000);
       };
     };
@@ -95,6 +131,7 @@ const DashboardContent: React.FC = () => {
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
   }, []);
+
 
   const handleScanNow = async () => {
     try {
@@ -210,6 +247,8 @@ const DashboardContent: React.FC = () => {
         isScanning={state.is_scanning}
         scanProgress={state.scan_progress}
         onScanNow={handleScanNow}
+        feedStatus={state.feed_status}
+        wsConnected={state.ws_connected || wsConnected}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-6">

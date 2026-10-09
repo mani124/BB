@@ -1,10 +1,23 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
+export function formatTokenExpiryCountdown(expiryMs: number): string {
+  const diff = expiryMs - Date.now();
+  if (diff <= 0) return 'Expired';
+  const totalMinutes = Math.floor(diff / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}h ${minutes.toString().padStart(2, '0')}m`;
+}
+
 interface DhanAuthContextType {
   clientId: string | null;
   accessToken: string | null;
   isLoggedIn: boolean;
+  tokenExpiry: number | null;
+  tokenExpiryCountdown: string | null;
   connect: (id: string, token: string) => Promise<boolean>;
+  loginWithOAuth: (appId: string, appSecret: string) => Promise<void>;
+  exchangeOAuthToken: (appId: string, appSecret: string, consentId: string) => Promise<boolean>;
   disconnect: () => void;
   error: string | null;
 }
@@ -14,14 +27,58 @@ const DhanAuthContext = createContext<DhanAuthContextType | undefined>(undefined
 export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [clientId, setClientId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [tokenExpiry, setTokenExpiry] = useState<number | null>(null);
+  const [tokenExpiryCountdown, setTokenExpiryCountdown] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Update countdown every 30 seconds if expiry is set
   useEffect(() => {
-    // Restore and verify from localStorage on reload/reopen
-    const savedId = localStorage.getItem('dhan_client_id');
-    const savedToken = localStorage.getItem('dhan_access_token');
+    if (!tokenExpiry) return;
+    setTokenExpiryCountdown(formatTokenExpiryCountdown(tokenExpiry));
+    const interval = setInterval(() => {
+      setTokenExpiryCountdown(formatTokenExpiryCountdown(tokenExpiry));
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [tokenExpiry]);
+
+  // On mount: check for OAuth redirect param (consentId) or restored session in sessionStorage
+  useEffect(() => {
+    // 1. Detect OAuth redirect
+    const params = new URLSearchParams(window.location.search);
+    const consentId = params.get('consentId');
+    if (consentId) {
+      const appId = sessionStorage.getItem('dhan_oauth_app_id');
+      const appSecret = sessionStorage.getItem('dhan_oauth_app_secret');
+      if (appId && appSecret) {
+        exchangeOAuthToken(appId, appSecret, consentId);
+      }
+      // Clean URL without reloading page
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    // 2. Restore and verify from sessionStorage on reload/reopen
+    const savedId = sessionStorage.getItem('dhan_client_id');
+    const savedToken = sessionStorage.getItem('dhan_access_token');
+    const savedExpiry = sessionStorage.getItem('dhan_token_expiry');
+
+    if (savedExpiry) {
+      const exp = Number(savedExpiry);
+      if (!isNaN(exp) && exp > Date.now()) {
+        setTokenExpiry(exp);
+        setTokenExpiryCountdown(formatTokenExpiryCountdown(exp));
+      }
+    }
+
     if (savedId && savedToken) {
-      connect(savedId, savedToken);
+      if (savedToken.includes('*')) {
+        // OAuth masked session, already authenticated on server
+        setClientId(savedId);
+        setAccessToken(savedToken);
+      } else {
+        // Raw token session
+        connect(savedId, savedToken);
+      }
     }
   }, []);
 
@@ -48,11 +105,16 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return false;
       }
 
-      // Store in localStorage for continuous intraday session
-      localStorage.setItem('dhan_client_id', id.trim());
-      localStorage.setItem('dhan_access_token', token.trim());
+      // Store in sessionStorage for zero-token persistence guarantee
+      const expiryMs = Date.now() + 24 * 3600 * 1000;
+      sessionStorage.setItem('dhan_client_id', id.trim());
+      sessionStorage.setItem('dhan_access_token', token.trim());
+      sessionStorage.setItem('dhan_token_expiry', expiryMs.toString());
+
       setClientId(id.trim());
       setAccessToken(token.trim());
+      setTokenExpiry(expiryMs);
+      setTokenExpiryCountdown(formatTokenExpiryCountdown(expiryMs));
       return true;
     } catch (e: any) {
       setError(e.message || 'Connection error');
@@ -60,11 +122,87 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  const loginWithOAuth = async (appId: string, appSecret: string): Promise<void> => {
+    setError(null);
+    try {
+      sessionStorage.setItem('dhan_oauth_app_id', appId.trim());
+      sessionStorage.setItem('dhan_oauth_app_secret', appSecret.trim());
+      const redirectUri = window.location.origin + window.location.pathname;
+      const res = await fetch(
+        `/api/auth/oauth/login-url?app_id=${encodeURIComponent(appId.trim())}&redirect_uri=${encodeURIComponent(redirectUri)}`
+      );
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to generate Dhan OAuth login URL');
+      }
+      const data = await res.json();
+      if (data.login_url) {
+        window.location.href = data.login_url;
+      } else {
+        throw new Error('No login URL returned from Dhan auth service');
+      }
+    } catch (err: any) {
+      setError(err.message || 'OAuth initiation failed');
+      throw err;
+    }
+  };
+
+  const exchangeOAuthToken = async (appId: string, appSecret: string, consentId: string): Promise<boolean> => {
+    setError(null);
+    try {
+      const res = await fetch('/api/auth/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          app_id: appId.trim(),
+          app_secret: appSecret.trim(),
+          consent_id: consentId.trim(),
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setError(errData.detail || 'OAuth token exchange failed');
+        return false;
+      }
+
+      const data = await res.json();
+      const cId = data.client_id;
+      if (!cId) {
+        setError('No client ID received from OAuth token exchange');
+        return false;
+      }
+
+      const hours = Number(data.expires_in_hours) || 24;
+      const expiryMs = Date.now() + hours * 3600 * 1000;
+      const maskedToken = data.masked_token || 'oauth_connected';
+
+      sessionStorage.setItem('dhan_client_id', cId);
+      sessionStorage.setItem('dhan_access_token', maskedToken);
+      sessionStorage.setItem('dhan_token_expiry', expiryMs.toString());
+
+      setClientId(cId);
+      setAccessToken(maskedToken);
+      setTokenExpiry(expiryMs);
+      setTokenExpiryCountdown(formatTokenExpiryCountdown(expiryMs));
+      return true;
+    } catch (err: any) {
+      setError(err.message || 'OAuth token exchange network error');
+      return false;
+    }
+  };
+
   const disconnect = () => {
+    sessionStorage.removeItem('dhan_client_id');
+    sessionStorage.removeItem('dhan_access_token');
+    sessionStorage.removeItem('dhan_token_expiry');
+    sessionStorage.removeItem('dhan_oauth_app_secret');
     localStorage.removeItem('dhan_client_id');
     localStorage.removeItem('dhan_access_token');
     setClientId(null);
     setAccessToken(null);
+    setTokenExpiry(null);
+    setTokenExpiryCountdown(null);
     fetch('/api/auth/disconnect', { method: 'POST' }).catch(() => {});
   };
 
@@ -74,7 +212,11 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         clientId,
         accessToken,
         isLoggedIn: !!clientId && !!accessToken,
+        tokenExpiry,
+        tokenExpiryCountdown,
         connect,
+        loginWithOAuth,
+        exchangeOAuthToken,
         disconnect,
         error,
       }}

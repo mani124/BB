@@ -137,5 +137,10 @@ export interface ScannerState {
   is_scanning: boolean;
   scan_progress: number;
   universe_count: number;
-  active_mode: 'live' | 'demo';
+  active_mode: 'live' | 'demo' | 'stale' | 'error' | string;
+  feed_status?: 'WS_LIVE' | 'LIVE' | 'STALE' | 'ERROR' | 'DEMO' | 'HTTP_POLLING' | string;
+  feed_mode?: 'websocket_live' | 'http_polling' | 'demo' | 'disconnected' | string;
+  ws_connected?: boolean;
+  last_quote_time?: string;
 }
+
