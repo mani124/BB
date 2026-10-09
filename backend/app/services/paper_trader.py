@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from typing import Any, Callable, Literal, Optional
 from pydantic import BaseModel
+from app.services.charges_calculator import calculate_option_trade_charges
 from app.services.strategy_engine import Signal
 from app.services.strike_selector import get_lot_size
 
@@ -42,6 +43,15 @@ class PaperPosition(BaseModel):
     booked_pnl_rupees: float = 0.0
     option_security_id: Optional[str] = None
     feed_mode: str = "demo"  # "demo" or "live"
+    theoretical_entry: float = 0.0
+    entry_slippage: float = 0.0
+    theoretical_exit: Optional[float] = None
+    exit_slippage: float = 0.0
+    total_slippage_cost: float = 0.0
+    gross_pnl: float = 0.0
+    total_charges: float = 0.0
+    net_pnl: float = 0.0
+    charges_breakdown: Optional[dict] = None
 
 class PaperPortfolio(BaseModel):
     active_positions: list[PaperPosition] = []
@@ -56,6 +66,11 @@ class PaperPortfolio(BaseModel):
     total_trades_count: int = 0
     winning_trades_count: int = 0
     losing_trades_count: int = 0
+    total_gross_pnl: float = 0.0
+    total_slippage_cost: float = 0.0
+    avg_slippage_points: float = 0.0
+    total_charges: float = 0.0
+    total_net_pnl: float = 0.0
 
 class PaperTradingEngine:
     """Manages paper trading execution, position monitoring, and analytics."""
@@ -113,6 +128,15 @@ class PaperTradingEngine:
         losing = sum(1 for p in closed if p.pnl_rupees <= 0)
         win_rate = round((winning / total_trades) * 100, 1) if total_trades > 0 else 0.0
 
+        total_gross = sum(getattr(p, "gross_pnl", 0.0) or p.pnl_rupees for p in closed)
+        total_charges = sum(getattr(p, "total_charges", 0.0) for p in closed)
+        total_net = sum(getattr(p, "net_pnl", 0.0) for p in closed)
+        total_slip_cost = sum(getattr(p, "total_slippage_cost", 0.0) for p in closed)
+        avg_slip_pts = (
+            sum((getattr(p, "entry_slippage", 0.0) + getattr(p, "exit_slippage", 0.0)) for p in closed) / total_trades
+            if total_trades > 0 else 0.0
+        )
+
         return PaperPortfolio(
             active_positions=active,
             closed_trades=closed,
@@ -125,7 +149,12 @@ class PaperTradingEngine:
             win_rate_pct=win_rate,
             total_trades_count=total_trades,
             winning_trades_count=winning,
-            losing_trades_count=losing
+            losing_trades_count=losing,
+            total_gross_pnl=round(total_gross, 2),
+            total_slippage_cost=round(total_slip_cost, 2),
+            avg_slippage_points=round(avg_slip_pts, 2),
+            total_charges=round(total_charges, 2),
+            total_net_pnl=round(total_net, 2)
         )
 
     def set_auto_trade(self, enabled: bool):
@@ -220,6 +249,21 @@ class PaperTradingEngine:
         pos_id = f"POS_{signal.symbol}_{signal.option_type}_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:6]}"
         rec = signal.strike_recommendation
 
+        p_signal = float(rec.estimated_option_entry)
+        is_s5 = (
+            signal.setup_type in ("Setup 5: Option Chart BB Scalp", "BB_EXPANSION_SCALP", "SETUP_5_OPTION_BB")
+            or "Setup 5" in str(signal.setup_type)
+        )
+        if getattr(rec, "real_ask_price", 0.0) is not None and float(rec.real_ask_price or 0.0) > 0:
+            p_fill_entry = float(rec.real_ask_price)
+        elif not is_s5 and getattr(rec, "real_ltp", 0.0) is not None and float(rec.real_ltp or 0.0) > 0:
+            p_fill_entry = round(float(rec.real_ltp) * 1.001, 2)
+        else:
+            p_fill_entry = float(p_signal)
+
+        entry_slippage = max(0.0, round(p_fill_entry - p_signal, 2))
+        init_slip_cost = round(entry_slippage * qty, 2)
+
         pos = PaperPosition(
             id=pos_id,
             signal_id=signal.id,
@@ -233,7 +277,7 @@ class PaperTradingEngine:
             underlying_sl=signal.stop_loss,
             underlying_target_1=signal.target_1,
             underlying_target_2=signal.target_2,
-            option_entry=rec.estimated_option_entry,
+            option_entry=round(p_fill_entry, 2),
             option_sl=rec.option_sl_price,
             option_target_1=rec.option_target_1_price,
             option_target_2=rec.option_target_2_price,
@@ -245,12 +289,21 @@ class PaperTradingEngine:
             booked_lots=0,
             booked_pnl_rupees=0.0,
             current_underlying=signal.entry_price,
-            current_option_price=rec.estimated_option_entry,
+            current_option_price=round(p_fill_entry, 2),
             pnl_points=0.0,
             pnl_rupees=0.0,
             status="OPEN",
             option_security_id=getattr(rec, "option_security_id", None),
-            feed_mode=feed_mode
+            feed_mode=feed_mode,
+            theoretical_entry=round(p_signal, 2),
+            entry_slippage=entry_slippage,
+            theoretical_exit=None,
+            exit_slippage=0.0,
+            total_slippage_cost=init_slip_cost,
+            gross_pnl=0.0,
+            total_charges=0.0,
+            net_pnl=0.0,
+            charges_breakdown=None,
         )
 
         self._portfolio.active_positions.append(pos)
@@ -281,11 +334,67 @@ class PaperTradingEngine:
                 # Open position for new signals
                 self.open_position_from_signal(sig, feed_mode=feed_mode)
 
+    def _finalize_closed_position(
+        self,
+        pos: PaperPosition,
+        theoretical_exit: float,
+        status: Literal["OPEN", "TARGET_1", "TARGET_2", "STOPPED_OUT", "CLOSED"],
+        reason: str,
+        exit_time: str,
+        real_bid_price: Optional[float] = None,
+        real_opt_price: Optional[float] = None,
+    ):
+        # 1. Determine fill price P_fill_exit
+        if real_bid_price is not None and float(real_bid_price) > 0:
+            p_fill_exit = float(real_bid_price)
+        elif real_opt_price is not None and float(real_opt_price) > 0:
+            opt_val = float(real_opt_price)
+            if opt_val < float(theoretical_exit):
+                p_fill_exit = opt_val
+            else:
+                p_fill_exit = round(opt_val * 0.999, 2)
+        else:
+            p_fill_exit = float(theoretical_exit)
+
+        # 2. Exit slippage
+        exit_slippage = max(0.0, round(float(theoretical_exit) - p_fill_exit, 2))
+
+        # 3. Update position state and P&L
+        pos.status = status
+        pos.exit_time = exit_time
+        pos.exit_reason = reason
+        pos.theoretical_exit = round(float(theoretical_exit), 2)
+        pos.exit_slippage = exit_slippage
+        pos.current_option_price = round(p_fill_exit, 2)
+        pos.pnl_points = round(pos.current_option_price - pos.option_entry, 2)
+        runner_pnl = round(pos.pnl_points * pos.quantity, 2)
+        pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
+
+        # 4. Total slippage cost
+        init_qty = pos.initial_quantity if (pos.initial_quantity and pos.initial_quantity > 0) else pos.quantity
+        pos.total_slippage_cost = round((pos.entry_slippage + pos.exit_slippage) * init_qty, 2)
+
+        # 5. Charges calculation
+        orders_count = 3 if pos.booked_lots > 0 else 2
+        sell_price = max(0.0, round(pos.option_entry + (pos.pnl_rupees / init_qty), 2)) if init_qty > 0 else pos.current_option_price
+        breakdown = calculate_option_trade_charges(
+            buy_price=pos.option_entry,
+            sell_price=sell_price,
+            quantity=init_qty,
+            orders_count=orders_count,
+        )
+
+        pos.gross_pnl = round(pos.pnl_rupees, 2)
+        pos.total_charges = breakdown.total_charges
+        pos.net_pnl = round(pos.gross_pnl - pos.total_charges, 2)
+        pos.charges_breakdown = breakdown.model_dump()
+
     def update_market_prices(
         self,
         price_map: dict[str, float],
         option_price_map: Optional[dict[str, float]] = None,
-        feed_mode: Optional[str] = None
+        feed_mode: Optional[str] = None,
+        option_bid_map: Optional[dict[str, float]] = None,
     ):
         """Update active positions with current underlying prices and live option prices from Dhan."""
         delta = 0.55
@@ -308,8 +417,19 @@ class PaperTradingEngine:
 
             # Check if live option quote is directly provided from Dhan (NSE_FNO)
             real_opt_price = None
-            if option_price_map and pos.option_security_id:
-                real_opt_price = option_price_map.get(str(pos.option_security_id)) or option_price_map.get(pos.option_security_id)
+            if option_price_map:
+                if pos.option_security_id:
+                    real_opt_price = option_price_map.get(str(pos.option_security_id)) or option_price_map.get(pos.option_security_id)
+                if real_opt_price is None:
+                    real_opt_price = option_price_map.get(pos.id) or option_price_map.get(pos.strike_symbol)
+
+            real_bid_price = None
+            if option_bid_map:
+                real_bid_price = option_bid_map.get(pos.id)
+                if real_bid_price is None and pos.option_security_id:
+                    real_bid_price = option_bid_map.get(str(pos.option_security_id)) or option_bid_map.get(pos.option_security_id)
+                if real_bid_price is None and pos.strike_symbol:
+                    real_bid_price = option_bid_map.get(pos.strike_symbol)
 
             if real_opt_price is not None and float(real_opt_price) > 0:
                 pos.current_option_price = round(float(real_opt_price), 2)
@@ -339,22 +459,30 @@ class PaperTradingEngine:
                 if pos.current_option_price <= pos.option_sl:
                     is_breakeven = (pos.status == "TARGET_1")
                     reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
-                    pos.status = "STOPPED_OUT"
-                    pos.exit_time = now_str
-                    pos.exit_reason = reason
-                    runner_pnl = round(pos.pnl_points * pos.quantity, 2)
-                    pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
+                    self._finalize_closed_position(
+                        pos=pos,
+                        theoretical_exit=pos.option_sl,
+                        status="STOPPED_OUT",
+                        reason=reason,
+                        exit_time=now_str,
+                        real_bid_price=real_bid_price,
+                        real_opt_price=real_opt_price,
+                    )
                     self._portfolio.closed_trades.append(pos)
                     if self.storage:
                         self.storage.upsert_position(pos)
                     continue
 
                 elif pos.current_option_price >= pos.option_target_2:
-                    pos.status = "TARGET_2"
-                    pos.exit_time = now_str
-                    pos.exit_reason = "Target 2 (1:2.5) Hit"
-                    runner_pnl = round(pos.pnl_points * pos.quantity, 2)
-                    pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
+                    self._finalize_closed_position(
+                        pos=pos,
+                        theoretical_exit=pos.option_target_2,
+                        status="TARGET_2",
+                        reason="Target 2 (1:2.5) Hit",
+                        exit_time=now_str,
+                        real_bid_price=real_bid_price,
+                        real_opt_price=real_opt_price,
+                    )
                     self._portfolio.closed_trades.append(pos)
                     if self.storage:
                         self.storage.upsert_position(pos)
@@ -383,11 +511,15 @@ class PaperTradingEngine:
                 if (curr_spot is not None and curr_spot <= pos.underlying_sl) or pos.current_option_price <= pos.option_sl:
                     is_breakeven = (pos.status == "TARGET_1")
                     reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
-                    pos.status = "STOPPED_OUT"
-                    pos.exit_time = now_str
-                    pos.exit_reason = reason
-                    runner_pnl = round(pos.pnl_points * pos.quantity, 2)
-                    pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
+                    self._finalize_closed_position(
+                        pos=pos,
+                        theoretical_exit=pos.option_sl,
+                        status="STOPPED_OUT",
+                        reason=reason,
+                        exit_time=now_str,
+                        real_bid_price=real_bid_price,
+                        real_opt_price=real_opt_price,
+                    )
                     self._portfolio.closed_trades.append(pos)
                     if self.storage:
                         self.storage.upsert_position(pos)
@@ -395,11 +527,15 @@ class PaperTradingEngine:
 
                 # Check Target 2
                 elif (curr_spot is not None and curr_spot >= pos.underlying_target_2) or pos.current_option_price >= pos.option_target_2:
-                    pos.status = "TARGET_2"
-                    pos.exit_time = now_str
-                    pos.exit_reason = "Target 2 (1:2.5) Hit"
-                    runner_pnl = round(pos.pnl_points * pos.quantity, 2)
-                    pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
+                    self._finalize_closed_position(
+                        pos=pos,
+                        theoretical_exit=pos.option_target_2,
+                        status="TARGET_2",
+                        reason="Target 2 (1:2.5) Hit",
+                        exit_time=now_str,
+                        real_bid_price=real_bid_price,
+                        real_opt_price=real_opt_price,
+                    )
                     self._portfolio.closed_trades.append(pos)
                     if self.storage:
                         self.storage.upsert_position(pos)
@@ -424,11 +560,15 @@ class PaperTradingEngine:
                 if (curr_spot is not None and curr_spot >= pos.underlying_sl) or pos.current_option_price <= pos.option_sl:
                     is_breakeven = (pos.status == "TARGET_1")
                     reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
-                    pos.status = "STOPPED_OUT"
-                    pos.exit_time = now_str
-                    pos.exit_reason = reason
-                    runner_pnl = round(pos.pnl_points * pos.quantity, 2)
-                    pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
+                    self._finalize_closed_position(
+                        pos=pos,
+                        theoretical_exit=pos.option_sl,
+                        status="STOPPED_OUT",
+                        reason=reason,
+                        exit_time=now_str,
+                        real_bid_price=real_bid_price,
+                        real_opt_price=real_opt_price,
+                    )
                     self._portfolio.closed_trades.append(pos)
                     if self.storage:
                         self.storage.upsert_position(pos)
@@ -436,11 +576,15 @@ class PaperTradingEngine:
 
                 # Check Target 2
                 elif (curr_spot is not None and curr_spot <= pos.underlying_target_2) or pos.current_option_price >= pos.option_target_2:
-                    pos.status = "TARGET_2"
-                    pos.exit_time = now_str
-                    pos.exit_reason = "Target 2 (1:2.5) Hit"
-                    runner_pnl = round(pos.pnl_points * pos.quantity, 2)
-                    pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
+                    self._finalize_closed_position(
+                        pos=pos,
+                        theoretical_exit=pos.option_target_2,
+                        status="TARGET_2",
+                        reason="Target 2 (1:2.5) Hit",
+                        exit_time=now_str,
+                        real_bid_price=real_bid_price,
+                        real_opt_price=real_opt_price,
+                    )
                     self._portfolio.closed_trades.append(pos)
                     if self.storage:
                         self.storage.upsert_position(pos)
@@ -473,11 +617,15 @@ class PaperTradingEngine:
     def close_position(self, position_id: str, reason: str = "MANUAL_EXIT") -> Optional[PaperPosition]:
         for i, pos in enumerate(self._portfolio.active_positions):
             if pos.id == position_id:
-                pos.status = "CLOSED"
-                pos.exit_time = datetime.now().strftime("%H:%M:%S")
-                pos.exit_reason = reason
-                runner_pnl = round(pos.pnl_points * pos.quantity, 2)
-                pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
+                self._finalize_closed_position(
+                    pos=pos,
+                    theoretical_exit=pos.current_option_price,
+                    status="CLOSED",
+                    reason=reason,
+                    exit_time=datetime.now().strftime("%H:%M:%S"),
+                    real_bid_price=None,
+                    real_opt_price=None,
+                )
                 closed = self._portfolio.active_positions.pop(i)
                 self._portfolio.closed_trades.append(closed)
                 self._recalculate_metrics()
@@ -503,6 +651,21 @@ class PaperTradingEngine:
         self._portfolio.losing_trades_count = losses
         self._portfolio.total_trades_count = total_closed
         self._portfolio.win_rate_pct = round((wins / total_closed * 100.0) if total_closed > 0 else 0.0, 1)
+
+        total_gross = sum(getattr(p, "gross_pnl", 0.0) or p.pnl_rupees for p in self._portfolio.closed_trades)
+        total_charges = sum(getattr(p, "total_charges", 0.0) for p in self._portfolio.closed_trades)
+        total_net = sum(getattr(p, "net_pnl", 0.0) for p in self._portfolio.closed_trades)
+        total_slip_cost = sum(getattr(p, "total_slippage_cost", 0.0) for p in self._portfolio.closed_trades)
+        avg_slip_pts = (
+            sum((getattr(p, "entry_slippage", 0.0) + getattr(p, "exit_slippage", 0.0)) for p in self._portfolio.closed_trades) / total_closed
+            if total_closed > 0 else 0.0
+        )
+
+        self._portfolio.total_gross_pnl = round(total_gross, 2)
+        self._portfolio.total_charges = round(total_charges, 2)
+        self._portfolio.total_net_pnl = round(total_net, 2)
+        self._portfolio.total_slippage_cost = round(total_slip_cost, 2)
+        self._portfolio.avg_slippage_points = round(avg_slip_pts, 2)
 
 from app.core.config import settings
 paper_trader = PaperTradingEngine(db_path=settings.DB_PATH)

@@ -55,15 +55,39 @@ class PaperStorage:
                 initial_quantity INTEGER,
                 booked_lots INTEGER,
                 booked_pnl_rupees REAL,
-                option_security_id TEXT
+                option_security_id TEXT,
+                feed_mode TEXT DEFAULT 'demo',
+                theoretical_entry REAL DEFAULT 0.0,
+                entry_slippage REAL DEFAULT 0.0,
+                theoretical_exit REAL DEFAULT 0.0,
+                exit_slippage REAL DEFAULT 0.0,
+                total_slippage_cost REAL DEFAULT 0.0,
+                gross_pnl REAL DEFAULT 0.0,
+                total_charges REAL DEFAULT 0.0,
+                net_pnl REAL DEFAULT 0.0,
+                charges_json TEXT DEFAULT ''
             );
             """)
 
-            # Auto-migrate table if column does not exist
-            try:
-                cursor.execute("ALTER TABLE positions ADD COLUMN option_security_id TEXT;")
-            except sqlite3.OperationalError:
-                pass  # Column already exists
+            # Auto-migrate table if columns do not exist
+            migrations = [
+                "ALTER TABLE positions ADD COLUMN option_security_id TEXT;",
+                "ALTER TABLE positions ADD COLUMN feed_mode TEXT DEFAULT 'demo';",
+                "ALTER TABLE positions ADD COLUMN theoretical_entry REAL DEFAULT 0.0;",
+                "ALTER TABLE positions ADD COLUMN entry_slippage REAL DEFAULT 0.0;",
+                "ALTER TABLE positions ADD COLUMN theoretical_exit REAL DEFAULT 0.0;",
+                "ALTER TABLE positions ADD COLUMN exit_slippage REAL DEFAULT 0.0;",
+                "ALTER TABLE positions ADD COLUMN total_slippage_cost REAL DEFAULT 0.0;",
+                "ALTER TABLE positions ADD COLUMN gross_pnl REAL DEFAULT 0.0;",
+                "ALTER TABLE positions ADD COLUMN total_charges REAL DEFAULT 0.0;",
+                "ALTER TABLE positions ADD COLUMN net_pnl REAL DEFAULT 0.0;",
+                "ALTER TABLE positions ADD COLUMN charges_json TEXT DEFAULT '';",
+            ]
+            for stmt in migrations:
+                try:
+                    cursor.execute(stmt)
+                except sqlite3.OperationalError:
+                    pass
 
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS settings (
@@ -81,6 +105,7 @@ class PaperStorage:
             conn.commit()
 
     def upsert_position(self, pos: PaperPosition):
+        charges_json = json.dumps(pos.charges_breakdown) if pos.charges_breakdown else ""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -91,8 +116,10 @@ class PaperStorage:
                 lot_size, lots, quantity, current_underlying, current_option_price,
                 pnl_points, pnl_rupees, status, exit_time, exit_reason,
                 initial_lots, initial_quantity, booked_lots, booked_pnl_rupees,
-                option_security_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                option_security_id, feed_mode,
+                theoretical_entry, entry_slippage, theoretical_exit, exit_slippage,
+                total_slippage_cost, gross_pnl, total_charges, net_pnl, charges_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 lots=excluded.lots,
                 quantity=excluded.quantity,
@@ -105,7 +132,17 @@ class PaperStorage:
                 exit_reason=excluded.exit_reason,
                 booked_lots=excluded.booked_lots,
                 booked_pnl_rupees=excluded.booked_pnl_rupees,
-                option_security_id=COALESCE(excluded.option_security_id, positions.option_security_id);
+                option_security_id=COALESCE(excluded.option_security_id, positions.option_security_id),
+                feed_mode=excluded.feed_mode,
+                theoretical_entry=excluded.theoretical_entry,
+                entry_slippage=excluded.entry_slippage,
+                theoretical_exit=excluded.theoretical_exit,
+                exit_slippage=excluded.exit_slippage,
+                total_slippage_cost=excluded.total_slippage_cost,
+                gross_pnl=excluded.gross_pnl,
+                total_charges=excluded.total_charges,
+                net_pnl=excluded.net_pnl,
+                charges_json=excluded.charges_json;
             """, (
                 pos.id, pos.signal_id, pos.symbol, pos.option_type, pos.strike_symbol, pos.timeframe, pos.setup_type,
                 pos.entry_time, pos.underlying_entry, pos.underlying_sl, pos.underlying_target_1, pos.underlying_target_2,
@@ -113,7 +150,9 @@ class PaperStorage:
                 pos.lot_size, pos.lots, pos.quantity, pos.current_underlying, pos.current_option_price,
                 pos.pnl_points, pos.pnl_rupees, pos.status, pos.exit_time, pos.exit_reason,
                 pos.initial_lots, pos.initial_quantity, pos.booked_lots, pos.booked_pnl_rupees,
-                pos.option_security_id
+                pos.option_security_id, getattr(pos, "feed_mode", "demo"),
+                pos.theoretical_entry, pos.entry_slippage, pos.theoretical_exit, pos.exit_slippage,
+                pos.total_slippage_cost, pos.gross_pnl, pos.total_charges, pos.net_pnl, charges_json
             ))
             conn.commit()
 
@@ -128,6 +167,28 @@ class PaperStorage:
             rows = cursor.fetchall()
             for row in rows:
                 d = dict(row)
+                charges_str = d.pop("charges_json", None)
+                if charges_str:
+                    try:
+                        d["charges_breakdown"] = json.loads(charges_str)
+                    except Exception:
+                        d["charges_breakdown"] = None
+                else:
+                    d["charges_breakdown"] = None
+
+                d["theoretical_entry"] = float(d.get("theoretical_entry") or 0.0)
+                d["entry_slippage"] = float(d.get("entry_slippage") or 0.0)
+                d["theoretical_exit"] = float(d["theoretical_exit"]) if d.get("theoretical_exit") is not None else None
+                d["exit_slippage"] = float(d.get("exit_slippage") or 0.0)
+                d["total_slippage_cost"] = float(d.get("total_slippage_cost") or 0.0)
+                gross_val = d.get("gross_pnl")
+                d["gross_pnl"] = float(gross_val if gross_val is not None and gross_val != 0.0 else (d.get("pnl_rupees") or 0.0))
+                d["total_charges"] = float(d.get("total_charges") or 0.0)
+                net_val = d.get("net_pnl")
+                d["net_pnl"] = float(net_val if net_val is not None and net_val != 0.0 else (d["gross_pnl"] - d["total_charges"]))
+                if not d.get("feed_mode"):
+                    d["feed_mode"] = "demo"
+
                 pos = PaperPosition(**d)
                 if pos.status in ["OPEN", "TARGET_1"]:
                     active.append(pos)
