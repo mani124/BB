@@ -32,6 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
     connect,
     loginWithOAuth,
     disconnect,
+    clearError,
     error,
     tokenExpiryCountdown: contextCountdown,
   } = useDhanAuth();
@@ -224,7 +225,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex border-b border-dark-600 mb-4">
               <button
                 type="button"
-                onClick={() => setAuthTab('oauth')}
+                onClick={() => { setAuthTab('oauth'); clearError(); }}
                 className={`flex-1 py-2 text-xs font-bold transition border-b-2 ${
                   authTab === 'oauth'
                     ? 'border-cyan-500 text-cyan-400'
@@ -235,7 +236,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setAuthTab('manual')}
+                onClick={() => { setAuthTab('manual'); clearError(); }}
                 className={`flex-1 py-2 text-xs font-bold transition border-b-2 ${
                   authTab === 'manual'
                     ? 'border-cyan-500 text-cyan-400'

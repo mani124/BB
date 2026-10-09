@@ -19,6 +19,7 @@ interface DhanAuthContextType {
   loginWithOAuth: (appId: string, appSecret: string, clientId?: string) => Promise<void>;
   exchangeOAuthToken: (appId: string, appSecret: string, consentId: string) => Promise<boolean>;
   disconnect: () => void;
+  clearError: () => void;
   error: string | null;
 }
 
@@ -70,30 +71,38 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
-    if (savedId && savedToken) {
-      if (savedToken.includes('*') || savedToken === 'server_active') {
-        // OAuth masked session, already authenticated on server
-        setClientId(savedId);
-        setAccessToken(savedToken);
-      } else {
-        // Raw token session
-        connect(savedId, savedToken);
-      }
-    } else {
-      // Check if server already has an active session (e.g. browser reopen)
-      fetch('/api/auth/status')
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data && data.authenticated) {
-            const cid = data.client_id || 'Active';
-            setClientId(cid);
-            setAccessToken('server_active');
-            sessionStorage.setItem('dhan_client_id', cid);
-            sessionStorage.setItem('dhan_access_token', 'server_active');
+    fetch('/api/auth/status')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.authenticated) {
+          const cid = data.client_id || savedId || 'Active';
+          setClientId(cid);
+          setAccessToken('server_active');
+          setError(null);
+          sessionStorage.setItem('dhan_client_id', cid);
+          sessionStorage.setItem('dhan_access_token', 'server_active');
+          return;
+        }
+
+        if (savedId && savedToken) {
+          if (savedToken.includes('*') || savedToken === 'server_active') {
+            setClientId(savedId);
+            setAccessToken(savedToken);
+          } else {
+            connect(savedId, savedToken);
           }
-        })
-        .catch(() => {});
-    }
+        }
+      })
+      .catch(() => {
+        if (savedId && savedToken) {
+          if (savedToken.includes('*') || savedToken === 'server_active') {
+            setClientId(savedId);
+            setAccessToken(savedToken);
+          } else {
+            connect(savedId, savedToken);
+          }
+        }
+      });
   }, []);
 
   const connect = async (id: string, token: string): Promise<boolean> => {
@@ -239,6 +248,7 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         loginWithOAuth,
         exchangeOAuthToken,
         disconnect,
+        clearError: () => setError(null),
         error,
       }}
     >
