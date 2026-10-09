@@ -470,7 +470,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                         <div>₹{trade.current_option_price.toFixed(1)}</div>
                         {trade.exit_slippage !== undefined && trade.exit_slippage !== null && (
                           <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
-                            (Slip: -{trade.exit_slippage.toFixed(1)} pts)
+                            {trade.exit_slippage && trade.exit_slippage > 0 ? `(Slip: -${trade.exit_slippage.toFixed(1)} pts)` : '(Slip: 0.0 pts)'}
                           </div>
                         )}
                       </td>

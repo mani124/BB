@@ -82,6 +82,7 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
       pnl_points: -55.0,
       pnl_rupees: -3300.0,
       gross_pnl: -3300.0,
+      exit_slippage: 0.0,
       total_charges: 62.0,
       net_pnl: -3362.0,
       status: 'STOPPED_OUT',
@@ -170,5 +171,23 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
     expect(within(modal).getByText(/Brokerage/i)).toBeInTheDocument();
     expect(within(modal).getByText(/STT/i)).toBeInTheDocument();
     expect(within(modal).getByText(/NSE Exchange Fee/i)).toBeInTheDocument();
+  });
+
+  it('formats exit slippage correctly without negative zero', () => {
+    render(
+      <PaperPortfolioView
+        portfolio={mockPortfolio}
+        onClosePosition={() => {}}
+        onToggleAutoTrade={() => {}}
+        onChangeLots={() => {}}
+        onResetPortfolio={() => {}}
+      />
+    );
+
+    // POS_1 has exit_slippage = 0.8 -> (Slip: -0.8 pts)
+    expect(screen.getByText('(Slip: -0.8 pts)')).toBeInTheDocument();
+    // POS_2 has exit_slippage = 0.0 -> (Slip: 0.0 pts) (not -0.0 pts)
+    expect(screen.getByText('(Slip: 0.0 pts)')).toBeInTheDocument();
+    expect(screen.queryByText('(Slip: -0.0 pts)')).not.toBeInTheDocument();
   });
 });

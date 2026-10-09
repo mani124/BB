@@ -75,6 +75,22 @@ def test_favorable_entry_slippage_clamped_to_zero(mock_signal):
     assert pos.entry_slippage == 0.0
     assert pos.option_entry == 148.0
 
+def test_favorable_exit_slippage_clamped_to_zero(mock_signal):
+    # Review Focus: When exit bid is greater than theoretical target/exit, exit_slippage is clamped to 0.0
+    mock_signal.id = "SIG_SLIP_002B"
+    engine = PaperTradingEngine()
+    pos = engine.open_position_from_signal(mock_signal, lots=2)
+    assert pos is not None
+    closed = engine.close_position(
+        pos.id,
+        reason="Target 1 Hit",
+        exit_price=174.8,
+        real_bid_price=176.0,
+    )
+    assert closed is not None
+    assert closed.exit_slippage == 0.0
+    assert closed.current_option_price == 176.0
+
 def test_exit_slippage_and_charges_on_target_exit(mock_signal, tmp_path):
     db_file = str(tmp_path / "test_trades.db")
     engine = PaperTradingEngine(db_path=db_file)

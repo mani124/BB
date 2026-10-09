@@ -3,6 +3,7 @@ import json
 from typing import Optional
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
+from app.api.paper import ClosePositionRequest
 
 router = APIRouter(prefix="/signals", tags=["signals"])
 
@@ -73,14 +74,25 @@ async def stream_signals(request: Request, max_events: Optional[int] = None):
 
 
 @router.post("/close/{position_id}")
-def close_trade_signal(position_id: str, body: Optional[dict] = None):
+def close_trade_signal(position_id: str, body: Optional[ClosePositionRequest] = None):
     from app.services.paper_trader import paper_trader
     from fastapi import HTTPException
-    b = body or {}
-    reason = b.get("reason", "Manual User Exit")
-    exit_price = b.get("exit_price")
-    real_bid_price = b.get("real_bid_price")
-    real_opt_price = b.get("real_opt_price")
+    if isinstance(body, dict):
+        reason = body.get("reason", "Manual User Exit")
+        exit_price = body.get("exit_price")
+        real_bid_price = body.get("real_bid_price")
+        real_opt_price = body.get("real_opt_price")
+    elif body is not None:
+        reason = body.reason or "Manual User Exit"
+        exit_price = body.exit_price
+        real_bid_price = body.real_bid_price
+        real_opt_price = body.real_opt_price
+    else:
+        reason = "Manual User Exit"
+        exit_price = None
+        real_bid_price = None
+        real_opt_price = None
+
     closed = paper_trader.close_position(
         position_id,
         reason=reason,

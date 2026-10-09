@@ -59,3 +59,9 @@ def test_option_expired_worthless_zero_sell():
     assert breakdown.stt == 0.0  # STT is only on sell turnover
     assert breakdown.stamp_duty == round(3250.0 * 0.00003, 2)
     assert breakdown.total_charges > 40.0
+
+def test_negative_brokerage_rate_clamped_to_zero():
+    # Negative brokerage per order must be clamped to 0.0
+    breakdown = calculate_option_trade_charges(buy_price=100.0, sell_price=150.0, quantity=65, brokerage_per_order=-20.0)
+    assert breakdown.brokerage == 0.0
+

@@ -61,7 +61,8 @@ def calculate_option_trade_charges(
     total_turnover = round(buy_turnover + sell_turnover, 2)
 
     effective_orders = max(0, orders_count)
-    brokerage = round(effective_orders * brokerage_per_order, 2)
+    safe_brokerage_rate = max(0.0, float(brokerage_per_order))
+    brokerage = round(effective_orders * safe_brokerage_rate, 2)
 
     # STT: 0.1% (0.0010) on Sell Turnover only
     stt = round(sell_turnover * 0.0010, 2)

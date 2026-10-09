@@ -272,6 +272,22 @@ def test_api_signals_close_alias():
     assert data["exit_reason"] == "Signals API Exit"
     assert data["current_option_price"] == 149.0
 
+def test_api_signals_close_alias_no_body():
+    client = TestClient(app)
+    client.post("/api/paper/reset")
+
+    sig = make_test_signal(signal_id="SIG_ALIAS_02", sec_id="66126", opt_entry=150.0)
+    trade_res = client.post("/api/paper/trade", json={"signal": sig.model_dump(), "lots": 1})
+    assert trade_res.status_code == 200
+    pos_id = trade_res.json()["id"]
+
+    close_res = client.post(f"/api/signals/close/{pos_id}")
+    assert close_res.status_code == 200
+    data = close_res.json()
+    assert data["status"] == "CLOSED"
+    assert data["exit_reason"] == "Manual User Exit"
+
+
 @pytest.mark.asyncio
 async def test_scanner_worker_ws_tick_zero_or_invalid_bid_ignored():
     universe_mgr = UniverseManager()
