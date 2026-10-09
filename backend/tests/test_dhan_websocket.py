@@ -34,7 +34,11 @@ async def test_websocket_manager_lifecycle():
 
     with patch("websockets.connect", return_value=mock_ws) as mock_connect:
         await mgr.connect("1000000000", "TEST_TOKEN")
-        mock_connect.assert_called_with(mgr.url, ping_interval=None)
+        mock_connect.assert_called_with(mgr._build_ws_url(), ping_interval=None)
+        assert "version=2" in mgr._build_ws_url()
+        assert "token=TEST_TOKEN" in mgr._build_ws_url()
+        assert "clientId=1000000000" in mgr._build_ws_url()
+        assert "authType=2" in mgr._build_ws_url()
         assert mgr.is_connected is True
         assert mgr.status == "CONNECTED"
         await mgr.subscribe([(1, 1330), (2, 44608)])

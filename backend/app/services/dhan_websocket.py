@@ -15,6 +15,7 @@ providing:
 import asyncio
 import inspect
 import logging
+import urllib.parse
 from typing import Any, Awaitable, Callable, Optional, Set, Tuple
 
 import websockets
@@ -67,6 +68,23 @@ class DhanWebSocketManager:
         """Set of currently subscribed (exchange_segment, security_id) tuples."""
         return set(self._subscribed_instruments)
 
+    def _build_ws_url(self) -> str:
+        """
+        Build WebSocket URL with Dhan v2 authentication query parameters.
+        Format: wss://api-feed.dhan.co?version=2&token={access_token}&clientId={client_id}&authType=2
+        """
+        url = self.url
+        if "version=" not in url and "token=" not in url and self._access_token:
+            separator = "&" if "?" in url else "?"
+            params = {
+                "version": "2",
+                "token": self._access_token,
+                "clientId": self._client_id,
+                "authType": "2",
+            }
+            url = f"{url}{separator}{urllib.parse.urlencode(params)}"
+        return url
+
     async def connect(self, client_id: str, access_token: str) -> None:
         """
         Connect to Dhan WebSocket feed and complete binary login handshake.
@@ -81,7 +99,7 @@ class DhanWebSocketManager:
         self.status = "CONNECTING"
 
         try:
-            conn_result = websockets.connect(self.url, ping_interval=None)
+            conn_result = websockets.connect(self._build_ws_url(), ping_interval=None)
             if inspect.isawaitable(conn_result):
                 self._ws = await conn_result
             else:
@@ -294,7 +312,7 @@ class DhanWebSocketManager:
                         pass
                     self._ws = None
 
-                conn_result = websockets.connect(self.url, ping_interval=None)
+                conn_result = websockets.connect(self._build_ws_url(), ping_interval=None)
                 if inspect.isawaitable(conn_result):
                     self._ws = await conn_result
                 else:
