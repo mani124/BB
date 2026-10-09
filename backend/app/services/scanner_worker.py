@@ -44,7 +44,9 @@ class ScannerState(BaseModel):
     is_scanning: bool = False
     scan_progress: float = 0.0
     universe_count: int = 0
-    active_mode: str = "demo"  # "live" or "demo"
+    active_mode: str = "demo"  # "live", "stale", "error", or "demo"
+    feed_status: str = "DEMO"  # "LIVE", "STALE", "ERROR", "DEMO"
+    last_quote_time: str = ""
 
 SESSION_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "active_session.json"
 
@@ -67,9 +69,27 @@ class ScannerWorker:
         self._current_forming_candle: dict[str, dict] = {}
         self._option_candle_history: dict[str, list[dict]] = {}
         self._option_forming_candle: dict[str, dict] = {}
-        self._failed_candle_sec_ids: set[str] = set()
+        self._failed_candle_sec_ids: dict[str, float] = {}
+        self._last_session_date = datetime.now().date()
+        self._last_successful_quote_time: Optional[float] = None
         self._scan_lock = asyncio.Lock()
         self._load_saved_session()
+
+    def check_session_reset(self):
+        today = datetime.now().date()
+        if self._last_session_date != today:
+            logger.info(f"Resetting session candles for new trading day {today}")
+            self._candle_history.clear()
+            self._current_forming_candle.clear()
+            self._option_candle_history.clear()
+            self._option_forming_candle.clear()
+            self._last_session_date = today
+
+    def _can_retry_contract_candle(self, sec_id: str, current_time: float) -> bool:
+        failed_ts = self._failed_candle_sec_ids.get(sec_id)
+        if failed_ts is None:
+            return True
+        return (current_time - failed_ts) >= 60.0
 
     def _load_saved_session(self):
         # Do not load disk session during automated testing
@@ -183,8 +203,7 @@ class ScannerWorker:
     def get_or_update_live_candles(self, inst: Instrument, inst_quote: Optional[dict]) -> pd.DataFrame:
         """
         Build and maintain 100% real intraday OHLCV bars populated and updated continuously
-        by live Dhan market ticks. Strictly zero random/synthetic data in live mode. Anchored directly to
-        Dhan official Day OHLC (open, high, low, close) and VWAP (average_price).
+        by live Dhan market ticks. Strictly zero random/synthetic data in live mode.
         """
         now = datetime.now()
         step_min = 5 if inst.default_timeframe == "5m" else 15
@@ -192,49 +211,16 @@ class ScannerWorker:
 
         if not inst_quote or float(inst_quote.get("last_price", 0.0)) <= 0:
             if self._state.active_mode == "live":
-                return pd.DataFrame()
+                return pd.DataFrame(self._candle_history.get(sym, []))
             return self.generate_synthetic_candles(inst)
 
         live_ltp = float(inst_quote["last_price"])
-        ohlc = inst_quote.get("ohlc", {})
-        day_open = float(ohlc.get("open", live_ltp))
-        day_high = max(float(ohlc.get("high", live_ltp)), live_ltp)
-        day_low = min(float(ohlc.get("low", live_ltp)), live_ltp)
-        day_close = float(ohlc.get("close", day_open))
-        day_volume = int(inst_quote.get("volume", 0))
 
-        market_open_dt = now.replace(hour=9, minute=15, second=0, microsecond=0)
+        # Initialize intraday history if not present
+        if sym not in self._candle_history:
+            self._candle_history[sym] = []
 
-        # Initialize intraday history if not present for today
-        if sym not in self._candle_history or not self._candle_history[sym]:
-            history: list[dict] = []
-            warmup_count = 20
-            warmup_start = market_open_dt - timedelta(minutes=step_min * warmup_count)
-            prev_base = day_close if day_close > 0 else day_open
-            for w in range(warmup_count):
-                ts = warmup_start + timedelta(minutes=step_min * w)
-                history.append({
-                    "timestamp": ts,
-                    "open": prev_base,
-                    "high": prev_base,
-                    "low": prev_base,
-                    "close": prev_base,
-                    "volume": 0
-                })
-
-            if now > market_open_dt:
-                # Add opening session bar with real day OHLC
-                history.append({
-                    "timestamp": market_open_dt,
-                    "open": round(day_open, 2),
-                    "high": round(day_high, 2),
-                    "low": round(day_low, 2),
-                    "close": round(live_ltp, 2),
-                    "volume": max(100, day_volume)
-                })
-
-            self._candle_history[sym] = history
-
+        if sym not in self._current_forming_candle:
             forming_ts = now.replace(second=0, microsecond=0)
             forming_min = (forming_ts.minute // step_min) * step_min
             forming_ts = forming_ts.replace(minute=forming_min)
@@ -247,16 +233,18 @@ class ScannerWorker:
                 "volume": 0
             }
 
-        # Update the forming candle with the 1-second live tick
+        # Update the forming candle with the live tick
         forming = self._current_forming_candle[sym]
         forming_ts = forming["timestamp"]
         bar_elapsed = (now - forming_ts).total_seconds()
 
-        if bar_elapsed >= (step_min * 60):
+        current_slot_min = (now.minute // step_min) * step_min
+        current_slot_ts = now.replace(minute=current_slot_min, second=0, microsecond=0)
+
+        if bar_elapsed >= (step_min * 60) or forming_ts.date() != now.date():
             self._candle_history[sym].append(forming)
-            next_ts = forming_ts + timedelta(minutes=step_min)
             forming = {
-                "timestamp": next_ts,
+                "timestamp": current_slot_ts,
                 "open": live_ltp,
                 "high": live_ltp,
                 "low": live_ltp,
@@ -282,7 +270,12 @@ class ScannerWorker:
         loop_time = asyncio.get_running_loop().time()
         sym = inst.symbol
 
+        today_str = datetime.now().strftime("%Y-%m-%d")
         expiry = self._expiry_cache.get(sym)
+        if expiry and expiry < today_str:
+            self._expiry_cache.pop(sym, None)
+            expiry = None
+
         if not expiry:
             try:
                 exp_list = await self.dhan_client.fetch_expiry_list(
@@ -292,7 +285,8 @@ class ScannerWorker:
                     underlying_seg=inst.exchange_segment
                 )
                 if exp_list and len(exp_list) > 0:
-                    expiry = exp_list[0]
+                    valid_expiries = [e for e in exp_list if str(e) >= today_str]
+                    expiry = valid_expiries[0] if valid_expiries else exp_list[0]
                     self._expiry_cache[sym] = expiry
             except Exception as e:
                 logger.warning(f"Error resolving expiry for {sym}: {e}")
@@ -317,8 +311,11 @@ class ScannerWorker:
             if oc:
                 self._option_chain_cache[sym] = (loop_time, oc)
                 return expiry, oc
+            else:
+                self._expiry_cache.pop(sym, None)
         except Exception as e:
             logger.warning(f"Error fetching option chain for {sym}: {e}")
+            self._expiry_cache.pop(sym, None)
 
         return expiry, {}
 
@@ -340,12 +337,10 @@ class ScannerWorker:
     ) -> ScannerState:
         self._state.is_scanning = True
         self._state.scan_progress = 0.0
+        self.check_session_reset()
 
         cid = client_id or (self._session_credentials[0] if self._session_credentials else None)
         tok = access_token or (self._session_credentials[1] if self._session_credentials else None)
-
-        mode = "live" if (cid and tok) else "demo"
-        self._state.active_mode = mode
 
         instruments = self.universe_mgr.get_universe()
         total_count = len(instruments)
@@ -357,7 +352,8 @@ class ScannerWorker:
 
         # Batch-fetch real-time market quotes (LTP, OHLC, volume, net change) via marketfeed
         live_quotes: dict = {}
-        if mode == "live" and cid and tok:
+        has_creds = bool(cid and tok)
+        if has_creds:
             try:
                 req_securities: dict[str, list[int]] = {}
                 for inst in instruments:
@@ -384,6 +380,32 @@ class ScannerWorker:
                         logger.debug(f"Live marketfeed quotes fetched for {sum(len(v) for v in live_quotes.values())} securities")
             except Exception as e:
                 logger.warning(f"Error fetching live marketfeed quotes: {e}")
+
+        # Derive active mode and feed health from quote success
+        loop_time = asyncio.get_running_loop().time()
+        if has_creds:
+            if live_quotes and len(live_quotes) > 0:
+                self._last_successful_quote_time = loop_time
+                mode = "live"
+                self._state.active_mode = "live"
+                self._state.feed_status = "LIVE"
+                self._state.last_quote_time = datetime.now().strftime("%H:%M:%S")
+            elif self._last_successful_quote_time and (loop_time - self._last_successful_quote_time) <= 30.0:
+                mode = "live"
+                self._state.active_mode = "live"
+                self._state.feed_status = "LIVE"
+            elif self._last_successful_quote_time and (loop_time - self._last_successful_quote_time) <= 60.0:
+                mode = "stale"
+                self._state.active_mode = "stale"
+                self._state.feed_status = "STALE"
+            else:
+                mode = "error"
+                self._state.active_mode = "error"
+                self._state.feed_status = "ERROR"
+        else:
+            mode = "demo"
+            self._state.active_mode = "demo"
+            self._state.feed_status = "DEMO"
 
         # Extract live option quotes from NSE_FNO
         option_price_map: dict[str, float] = {}
@@ -556,14 +578,14 @@ class ScannerWorker:
 
         # Update paper trading engine with latest market prices and real option prices
         paper_trader.update_market_prices(price_map, option_price_map)
-        paper_trader.on_signals_cycle(new_signals)
+        paper_trader.on_signals_cycle(new_signals, feed_mode=mode)
 
         self._state.signals = new_signals
         self._state.radar = new_radar
         self._state.top_bullish = rankings.top_bullish
         self._state.top_bearish = rankings.top_bearish
         self._state.market_bias = market_bias
-        self._state.paper_portfolio = paper_trader.get_portfolio()
+        self._state.paper_portfolio = paper_trader.get_portfolio(mode=mode)
         self._state.last_scan_time = datetime.now().strftime("%H:%M:%S")
         self._state.scan_cycle_count += 1
         self._state.is_scanning = False
@@ -660,7 +682,8 @@ class ScannerWorker:
             strike_symbol = f"{inst.symbol} {int(atm_strike)} {opt_type}"
 
             opt_candles = pd.DataFrame()
-            if sec_id_str not in self._failed_candle_sec_ids:
+            now_loop = asyncio.get_running_loop().time()
+            if self._can_retry_contract_candle(sec_id_str, now_loop):
                 try:
                     opt_candles = await self.dhan_client.fetch_intraday_candles(
                         client_id=cid,
@@ -671,10 +694,12 @@ class ScannerWorker:
                         interval=5
                     )
                     if opt_candles.empty:
-                        self._failed_candle_sec_ids.add(sec_id_str)
+                        self._failed_candle_sec_ids[sec_id_str] = now_loop
+                    else:
+                        self._failed_candle_sec_ids.pop(sec_id_str, None)
                 except Exception as e:
                     logger.debug(f"Error checking option chart candles for {strike_symbol}: {e}")
-                    self._failed_candle_sec_ids.add(sec_id_str)
+                    self._failed_candle_sec_ids[sec_id_str] = now_loop
 
             # If exchange intraday chart API does not support option contract, maintain live tick candle
             if opt_candles.empty and opt_ltp > 0:
@@ -722,5 +747,13 @@ class ScannerWorker:
             except asyncio.CancelledError:
                 pass
             self._task = None
-        await self.dhan_client.close()
+        close_fn = getattr(self.dhan_client, "close", None)
+        if close_fn:
+            import inspect
+            if inspect.iscoroutinefunction(close_fn):
+                await close_fn()
+            else:
+                res = close_fn()
+                if asyncio.iscoroutine(res):
+                    await res
         logger.info("ScannerWorker background loop stopped")

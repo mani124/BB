@@ -179,6 +179,7 @@ def test_setup5_paper_trader_does_not_instant_exit_on_market_price():
     )
 
     engine = PaperTradingEngine()
+    engine.set_max_risk_per_trade(15000.0)
     pos = engine.open_position_from_signal(sig, lots=2)
     assert pos is not None
     assert pos.status == "OPEN"

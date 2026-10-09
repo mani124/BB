@@ -150,3 +150,68 @@ async def test_scanner_worker_momentum_ranking_and_bias():
     assert "RELIANCE" in state.top_bearish
     await worker.stop()
 
+@pytest.mark.asyncio
+async def test_expiry_cache_refreshes_when_past_date():
+    mock_dhan = MagicMock()
+    mock_dhan.fetch_expiry_list = AsyncMock(return_value=["2026-10-15"])
+    mock_dhan.fetch_option_chain = AsyncMock(return_value={"25000.0": {"ce": {"last_price": 100.0}}})
+    worker = ScannerWorker(universe_mgr=UniverseManager(), dhan_client=mock_dhan)
+    inst = worker.universe_mgr.get_indices()[0]
+
+    # Pre-populate expiry cache with an expired past date
+    worker._expiry_cache[inst.symbol] = "2026-10-01"
+    expiry, oc = await worker.get_or_fetch_option_chain("CID", "TOK", inst)
+
+    # Must have refreshed expiry to "2026-10-15"
+    assert expiry == "2026-10-15"
+    assert mock_dhan.fetch_expiry_list.called
+    await worker.stop()
+
+@pytest.mark.asyncio
+async def test_failed_candle_retries_after_backoff():
+    mock_dhan = MagicMock()
+    mock_dhan.fetch_intraday_candles = AsyncMock(return_value=pd.DataFrame())
+    worker = ScannerWorker(universe_mgr=UniverseManager(), dhan_client=mock_dhan)
+
+    sec_id = "12345"
+    loop = asyncio.get_running_loop()
+    # Initially failed 10 seconds ago (within 60s backoff)
+    worker._failed_candle_sec_ids[sec_id] = loop.time() - 10.0
+
+    # Should check backoff condition
+    assert worker._can_retry_contract_candle(sec_id, loop.time()) is False
+
+    # After 65 seconds, backoff has elapsed
+    assert worker._can_retry_contract_candle(sec_id, loop.time() + 65.0) is True
+    await worker.stop()
+
+@pytest.mark.asyncio
+async def test_feed_health_derived_from_quote_success():
+    mock_dhan = MagicMock()
+    # Mock quote request returns empty dict (API error or market closed with 0 data)
+    mock_dhan.fetch_marketfeed_quotes = AsyncMock(return_value={})
+    mock_dhan.close = AsyncMock()
+
+    worker = ScannerWorker(universe_mgr=UniverseManager(), dhan_client=mock_dhan)
+    worker.set_session_credentials("TEST_CID", "TEST_TOKEN")
+    state = await worker.run_single_scan_cycle()
+
+    # Even with credentials, if quotes fail/empty, feed must NOT say "live"
+    assert state.active_mode in ["error", "demo", "stale"]
+    assert state.feed_status in ["ERROR", "STALE", "DEMO"]
+    await worker.stop()
+
+@pytest.mark.asyncio
+async def test_session_boundary_clears_candle_history():
+    from datetime import date, timedelta
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    worker._candle_history["NIFTY 50"] = [{"timestamp": datetime.now(), "close": 25000.0}]
+    worker._last_session_date = date.today() - timedelta(days=1)
+
+    # When date changes, reset session candles
+    worker.check_session_reset()
+    assert "NIFTY 50" not in worker._candle_history
+    assert worker._last_session_date == date.today()
+    await worker.stop()
+
+

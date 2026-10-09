@@ -4,7 +4,7 @@ import { useDhanAuth } from '../context/DhanAuthContext';
 import { useTheme } from '../context/ThemeContext';
 
 interface HeaderProps {
-  activeMode: 'live' | 'demo';
+  activeMode: 'live' | 'demo' | 'stale' | 'error' | string;
   scanCycleCount: number;
   lastScanTime: string;
   isScanning: boolean;
@@ -84,6 +84,16 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-400">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
               Live Market Feed
+            </span>
+          ) : activeMode === 'stale' ? (
+            <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-950/80 border border-orange-300 dark:border-orange-700 text-orange-800 dark:text-orange-400">
+              <Radio className="h-3 w-3 text-orange-500" />
+              Feed Stale (&gt;30s)
+            </span>
+          ) : activeMode === 'error' ? (
+            <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-400">
+              <Radio className="h-3 w-3 text-rose-500" />
+              Feed Disconnected / Error
             </span>
           ) : (
             <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-400">

@@ -237,3 +237,30 @@ def test_resolve_live_strike_from_chain():
     assert rec_pe.recommended_strike == 22550
     assert rec_pe.estimated_option_entry == 144.2
     assert rec_pe.real_delta == 0.5312
+
+def test_live_quote_flag_false_when_ask_and_ltp_are_zero():
+    from app.services.strike_selector import resolve_live_strike_from_chain
+    mock_oc = {
+        "22450.000000": {
+            "ce": {
+                "security_id": 44608,
+                "last_price": 0.0,
+                "top_ask_price": 0.0,
+                "top_bid_price": 0.0,
+                "volume": 0,
+                "oi": 100,
+                "greeks": {"delta": 0.55}
+            }
+        }
+    }
+    rec = resolve_live_strike_from_chain(
+        symbol="NIFTY 50",
+        underlying_price=22490.0,
+        option_type="CE",
+        option_chain_oc=mock_oc,
+        expiry_date="2026-10-13",
+        stop_loss=22450.0
+    )
+    # When both ask and ltp are 0, entry is estimated, so is_live_quote must NOT be True!
+    assert rec.is_live_quote is False
+

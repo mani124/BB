@@ -165,7 +165,7 @@ def test_api_paper_trade_open_and_duplicate_prevention():
 
 def test_api_paper_close_trade_and_not_found():
     client.post("/api/paper/reset")
-    sig = create_test_signal(symbol="RELIANCE", opt="PE", entry=2800.0, sl=2820.0)
+    sig = create_test_signal(symbol="NIFTY 50", opt="PE", entry=25000.0, sl=25050.0)
     res = client.post("/api/paper/trade", json={"signal": sig.model_dump(), "lots": 1})
     assert res.status_code == 200
     pos = res.json()
@@ -195,7 +195,7 @@ def test_api_paper_settings():
     client.post("/api/paper/settings", json={"auto_trade_enabled": False, "default_lots": 1})
 
 def test_api_paper_reset():
-    sig = create_test_signal(symbol="TCS", opt="CE")
+    sig = create_test_signal(symbol="NIFTY 50", opt="CE")
     client.post("/api/paper/trade", json={"signal": sig.model_dump(), "lots": 1})
     port_before = client.get("/api/paper/portfolio").json()
     assert len(port_before["active_positions"]) == 1

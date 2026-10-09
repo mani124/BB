@@ -5,7 +5,7 @@ class Settings(BaseModel):
     APP_NAME: str = "Bollinger Bands Options Trading Dashboard PRO"
     VERSION: str = "1.0.0"
     API_PREFIX: str = "/api"
-    HOST: str = "0.0.0.0"
+    HOST: str = os.getenv("HOST", "127.0.0.1")
     PORT: int = 8001
     DHAN_API_BASE: str = "https://api.dhan.co/v2"
     RATE_LIMIT_RPS: int = 5

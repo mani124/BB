@@ -40,6 +40,7 @@ class PaperPosition(BaseModel):
     booked_lots: int = 0
     booked_pnl_rupees: float = 0.0
     option_security_id: Optional[str] = None
+    feed_mode: str = "demo"  # "demo" or "live"
 
 class PaperPortfolio(BaseModel):
     active_positions: list[PaperPosition] = []
@@ -95,9 +96,35 @@ class PaperTradingEngine:
 
         self._recalculate_metrics()
 
-    def get_portfolio(self) -> PaperPortfolio:
+    def get_portfolio(self, mode: Optional[str] = None) -> PaperPortfolio:
         self._recalculate_metrics()
-        return self._portfolio
+        if not mode:
+            return self._portfolio
+
+        active = [p for p in self._portfolio.active_positions if getattr(p, "feed_mode", "demo") == mode]
+        closed = [p for p in self._portfolio.closed_trades if getattr(p, "feed_mode", "demo") == mode]
+        realized = round(sum(p.pnl_rupees for p in closed), 2)
+        unrealized = round(sum(p.pnl_rupees for p in active), 2)
+        total = round(realized + unrealized, 2)
+        total_trades = len(closed)
+        winning = sum(1 for p in closed if p.pnl_rupees > 0)
+        losing = sum(1 for p in closed if p.pnl_rupees <= 0)
+        win_rate = round((winning / total_trades) * 100, 1) if total_trades > 0 else 0.0
+
+        return PaperPortfolio(
+            active_positions=active,
+            closed_trades=closed,
+            auto_trade_enabled=self._portfolio.auto_trade_enabled,
+            default_lots=self._portfolio.default_lots,
+            max_risk_per_trade=self._portfolio.max_risk_per_trade,
+            total_realized_pnl=realized,
+            total_unrealized_pnl=unrealized,
+            total_pnl=total,
+            win_rate_pct=win_rate,
+            total_trades_count=total_trades,
+            winning_trades_count=winning,
+            losing_trades_count=losing
+        )
 
     def set_auto_trade(self, enabled: bool):
         self._portfolio.auto_trade_enabled = enabled
@@ -120,7 +147,12 @@ class PaperTradingEngine:
         if self.storage:
             self.storage.clear_all()
 
-    def open_position_from_signal(self, signal: Signal, lots: Optional[int] = None) -> Optional[PaperPosition]:
+    def open_position_from_signal(
+        self,
+        signal: Signal,
+        lots: Optional[int] = None,
+        feed_mode: str = "demo"
+    ) -> Optional[PaperPosition]:
         # Avoid duplicate trades on same signal ID
         if signal.id in self._processed_signal_ids:
             return None
@@ -164,26 +196,21 @@ class PaperTradingEngine:
         rec = signal.strike_recommendation
         lot_size = rec.lot_size
 
-        if lots is not None:
-            lots_to_trade = lots
-        else:
-            target_lots = self._portfolio.default_lots
-            lots_to_trade = target_lots
+        risk_per_unit = max(0.1, abs(rec.estimated_option_entry - rec.option_sl_price))
+        risk_per_lot = risk_per_unit * lot_size
 
-            # Calculate risk per lot in Rupees
-            risk_per_unit = max(0.1, abs(rec.estimated_option_entry - rec.option_sl_price))
-            risk_per_lot = risk_per_unit * lot_size
+        target_lots = lots if lots is not None else self._portfolio.default_lots
+        lots_to_trade = target_lots
 
-            if self._portfolio.max_risk_per_trade > 0 and risk_per_lot > 0:
-                # Capital preservation: if 1 lot risk is excessive (> 2x max risk cap), skip entering
-                if risk_per_lot > self._portfolio.max_risk_per_trade * 2.0:
-                    self._processed_signal_ids.add(signal.id)
-                    return None
-
-                allowed_lots = int(self._portfolio.max_risk_per_trade // risk_per_lot)
-                if allowed_lots < 1:
-                    allowed_lots = 1
-                lots_to_trade = min(target_lots, allowed_lots)
+        if self._portfolio.max_risk_per_trade > 0 and risk_per_lot > 0:
+            allowed_lots = int(self._portfolio.max_risk_per_trade // risk_per_lot)
+            if allowed_lots < 1:
+                logger.info(
+                    f"Trade skipped for {signal.symbol}: risk per lot {risk_per_lot:.1f} exceeds max risk cap {self._portfolio.max_risk_per_trade:.1f}"
+                )
+                self._processed_signal_ids.add(signal.id)
+                return None
+            lots_to_trade = min(target_lots, allowed_lots)
 
         self._processed_signal_ids.add(signal.id)
         qty = lot_size * lots_to_trade
@@ -220,7 +247,8 @@ class PaperTradingEngine:
             pnl_points=0.0,
             pnl_rupees=0.0,
             status="OPEN",
-            option_security_id=getattr(rec, "option_security_id", None)
+            option_security_id=getattr(rec, "option_security_id", None),
+            feed_mode=feed_mode
         )
 
         self._portfolio.active_positions.append(pos)
@@ -230,7 +258,7 @@ class PaperTradingEngine:
             self.storage.add_processed_signal(signal.id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         return pos
 
-    def on_signals_cycle(self, signals: list[Signal]):
+    def on_signals_cycle(self, signals: list[Signal], feed_mode: str = "demo"):
         """Automatically open paper positions if auto-trade is enabled."""
         if not self._portfolio.auto_trade_enabled:
             return
@@ -238,7 +266,7 @@ class PaperTradingEngine:
         for sig in signals:
             if sig.id not in self._processed_signal_ids:
                 # Open position for new signals
-                self.open_position_from_signal(sig)
+                self.open_position_from_signal(sig, feed_mode=feed_mode)
 
     def update_market_prices(
         self,
@@ -268,11 +296,14 @@ class PaperTradingEngine:
             if real_opt_price is not None and float(real_opt_price) > 0:
                 pos.current_option_price = round(float(real_opt_price), 2)
                 pos.pnl_points = round(pos.current_option_price - pos.option_entry, 2)
+            elif pos.option_security_id:
+                # Live contract with security_id: keep last known real price, do not synthesize fake delta
+                pos.pnl_points = round(pos.current_option_price - pos.option_entry, 2)
             elif is_opt_chart_setup:
                 # Setup 5: Option chart scalp - maintain current option price if no new tick
                 pos.pnl_points = round(pos.current_option_price - pos.option_entry, 2)
             elif curr_spot is not None:
-                # Fallback to delta estimation only when offline or live option feed not available for Setups 1-4
+                # Fallback to delta estimation only for demo/offline signals lacking option_security_id
                 if pos.option_type == "CE":
                     spot_move = curr_spot - pos.underlying_entry
                     est_opt = max(0.5, pos.option_entry + (spot_move * delta))
@@ -293,12 +324,7 @@ class PaperTradingEngine:
                     pos.status = "STOPPED_OUT"
                     pos.exit_time = now_str
                     pos.exit_reason = reason
-                    if is_breakeven:
-                        pos.current_option_price = pos.option_entry
-                        pos.pnl_points = 0.0
-                        runner_pnl = 0.0
-                    else:
-                        runner_pnl = round(pos.pnl_points * pos.quantity, 2)
+                    runner_pnl = round(pos.pnl_points * pos.quantity, 2)
                     pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
                     self._portfolio.closed_trades.append(pos)
                     if self.storage:
@@ -342,12 +368,7 @@ class PaperTradingEngine:
                     pos.status = "STOPPED_OUT"
                     pos.exit_time = now_str
                     pos.exit_reason = reason
-                    if is_breakeven:
-                        pos.current_option_price = pos.option_entry
-                        pos.pnl_points = 0.0
-                        runner_pnl = 0.0
-                    else:
-                        runner_pnl = round(pos.pnl_points * pos.quantity, 2)
+                    runner_pnl = round(pos.pnl_points * pos.quantity, 2)
                     pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
                     self._portfolio.closed_trades.append(pos)
                     if self.storage:
@@ -388,12 +409,7 @@ class PaperTradingEngine:
                     pos.status = "STOPPED_OUT"
                     pos.exit_time = now_str
                     pos.exit_reason = reason
-                    if is_breakeven:
-                        pos.current_option_price = pos.option_entry
-                        pos.pnl_points = 0.0
-                        runner_pnl = 0.0
-                    else:
-                        runner_pnl = round(pos.pnl_points * pos.quantity, 2)
+                    runner_pnl = round(pos.pnl_points * pos.quantity, 2)
                     pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
                     self._portfolio.closed_trades.append(pos)
                     if self.storage:

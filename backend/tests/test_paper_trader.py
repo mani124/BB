@@ -117,9 +117,11 @@ def test_target_1_runner_hits_breakeven_sl_retains_profit():
     assert len(portfolio.closed_trades) == 1
     closed = portfolio.closed_trades[0]
     assert "Breakeven Trailed SL Hit" in closed.exit_reason
-    # Total P&L must retain the booked profit from Target 1!
-    assert closed.pnl_rupees == pytest.approx(booked_profit, rel=0.01)
-    assert portfolio.total_realized_pnl == pytest.approx(booked_profit, rel=0.01)
+    # Total P&L must retain the booked profit from Target 1 plus runner P&L at observed exit price
+    runner_pnl = round(closed.pnl_points * closed.quantity, 2)
+    assert closed.pnl_rupees == pytest.approx(booked_profit + runner_pnl, rel=0.01)
+    assert closed.pnl_rupees > 0
+    assert portfolio.total_realized_pnl == closed.pnl_rupees
     assert portfolio.winning_trades_count == 1
     assert portfolio.win_rate_pct == 100.0
 
@@ -182,6 +184,7 @@ def test_pe_partial_profit_booking_and_runner_target_2():
 
 def test_four_lots_partial_booking_halves_position():
     engine = PaperTradingEngine()
+    engine.set_max_risk_per_trade(10000.0)
     sig = create_mock_signal(symbol="NIFTY 50", opt="CE", entry=25000.0, sl=24950.0)
     pos = engine.open_position_from_signal(sig, lots=4)
     assert pos.lots == 4
@@ -259,12 +262,101 @@ def test_risk_capped_position_sizing():
     assert pos_tatasteel.lots == 1, f"Expected 1 lot for TATASTEEL due to max risk cap, got {pos_tatasteel.lots}"
     assert pos_tatasteel.quantity == 2750
 
-    # 3. Excessive risk trade where 1 lot risk > 2.0 * max_risk_per_trade (> 8000)
-    # TATASTEEL with 6.0 pt SL -> option risk ~3.3 * 2750 = 9075 risk for 1 lot!
+    # 3. Excessive risk trade where 1 lot risk > max_risk_per_trade (> 4000)
+    # TATASTEEL with 3.0 pt SL -> option risk ~1.65 * 2750 = 4537 risk for 1 lot! (> 4000)
     # Trade must be rejected / skipped to protect capital!
-    sig_huge_risk = create_mock_signal(symbol="TATASTEEL", opt="CE", entry=150.0, sl=144.0)
-    pos_huge = engine.open_position_from_signal(sig_huge_risk)
-    assert pos_huge is None, "Excessive risk trades exceeding cap even for 1 lot must be skipped"
+    sig_moderate_excess = create_mock_signal(symbol="TATASTEEL", opt="CE", entry=150.0, sl=147.0)
+    pos_mod = engine.open_position_from_signal(sig_moderate_excess)
+    assert pos_mod is None, "Trades where 1 lot risk exceeds max_risk_per_trade must be rejected"
+
+def test_trailed_stop_exit_records_actual_observed_price_and_pnl():
+    engine = PaperTradingEngine()
+    # Signal with option entry 100.0, SL 90.0, Target 1 115.0
+    sig = create_mock_signal(symbol="BANK NIFTY", opt="CE", entry=50000.0, sl=49900.0)
+    sig.strike_recommendation.estimated_option_entry = 100.0
+    sig.strike_recommendation.option_sl_price = 90.0
+    sig.strike_recommendation.option_target_1_price = 115.0
+    sig.strike_recommendation.option_security_id = "99881"
+
+    pos = engine.open_position_from_signal(sig, lots=2)
+    assert pos is not None
+    # 1. Trigger Target 1 with real option price 116.0
+    engine.update_market_prices(
+        price_map={"BANK NIFTY": 50150.0},
+        option_price_map={"99881": 116.0}
+    )
+    assert pos.status == "TARGET_1"
+    assert pos.booked_lots == 1
+    assert pos.booked_pnl_rupees == (116.0 - 100.0) * pos.lot_size
+    # Stop loss trailed to 100.0
+    assert pos.option_sl == 100.0
+
+    # 2. Market pulls back and option price drops to 98.0 (slipping below 100.0)
+    engine.update_market_prices(
+        price_map={"BANK NIFTY": 49990.0},
+        option_price_map={"99881": 98.0}
+    )
+    portfolio = engine.get_portfolio()
+    assert len(portfolio.active_positions) == 0
+    assert len(portfolio.closed_trades) == 1
+    closed = portfolio.closed_trades[0]
+    # Exit price MUST be the real observed price (98.0), NOT rewritten to entry (100.0)
+    assert closed.current_option_price == 98.0, f"Expected 98.0 actual exit price, got {closed.current_option_price}"
+    assert closed.pnl_points == -2.0, f"Expected -2.0 runner pnl points, got {closed.pnl_points}"
+    # Runner lost 2 pts * 1 lot, so total P&L = booked_pnl - (2.0 * lot_size)
+    expected_total_pnl = ((116.0 - 100.0) * pos.lot_size) + ((98.0 - 100.0) * pos.lot_size)
+    assert closed.pnl_rupees == expected_total_pnl
+
+def test_manual_trades_must_not_exceed_max_risk_cap():
+    engine = PaperTradingEngine()
+    engine.set_max_risk_per_trade(4000.0)
+    # TATASTEEL risk per lot is ~3025
+    sig_tatasteel = create_mock_signal(symbol="TATASTEEL", opt="CE", entry=150.0, sl=149.0)
+    # Manual attempt to open 2 lots (2 * 3025 = 6050 > 4000 cap)
+    pos = engine.open_position_from_signal(sig_tatasteel, lots=2)
+    # Must either clamp to 1 lot or reject; must NOT open 2 lots with 6050 risk
+    if pos is not None:
+        assert pos.lots == 1, "Manual lots must be clamped to respect max_risk_per_trade"
+
+def test_live_contract_without_real_quote_does_not_use_synthetic_delta():
+    engine = PaperTradingEngine()
+    sig = create_mock_signal(symbol="NIFTY 50", opt="CE", entry=25000.0, sl=24950.0)
+    sig.strike_recommendation.option_security_id = "55555"
+    sig.strike_recommendation.estimated_option_entry = 150.0
+
+    pos = engine.open_position_from_signal(sig, lots=1)
+    assert pos.current_option_price == 150.0
+
+    # Spot moves up strongly from 25000 to 25100 (+100 pts)
+    # But NO option quote provided for "55555"
+    engine.update_market_prices(
+        price_map={"NIFTY 50": 25100.0},
+        option_price_map={}
+    )
+    # Must NOT fabricate a +55 pt option gain using 0.55 delta
+    assert pos.current_option_price == 150.0
+    assert pos.pnl_points == 0.0
+
+def test_portfolio_separates_demo_and_live_trades():
+    engine = PaperTradingEngine()
+    sig_demo = create_mock_signal(symbol="NIFTY 50", opt="CE", entry=25000.0, sl=24950.0)
+    sig_live = create_mock_signal(symbol="BANK NIFTY", opt="PE", entry=50000.0, sl=50100.0)
+
+    pos_demo = engine.open_position_from_signal(sig_demo, lots=1, feed_mode="demo")
+    pos_live = engine.open_position_from_signal(sig_live, lots=1, feed_mode="live")
+
+    assert pos_demo.feed_mode == "demo"
+    assert pos_live.feed_mode == "live"
+
+    live_port = engine.get_portfolio(mode="live")
+    assert len(live_port.active_positions) == 1
+    assert live_port.active_positions[0].symbol == "BANK NIFTY"
+
+    demo_port = engine.get_portfolio(mode="demo")
+    assert len(demo_port.active_positions) == 1
+    assert demo_port.active_positions[0].symbol == "NIFTY 50"
+
+
 
 
 

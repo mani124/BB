@@ -6,6 +6,7 @@ DEFAULT_LOT_SIZES: dict[str, int] = {
     "NIFTY": 65,
     "NIFTY BANK": 30,
     "BANKNIFTY": 30,
+    "BANK NIFTY": 30,
     "FINNIFTY": 65,
     "NIFTY FINANCIAL SERVICES": 65,
     "SENSEX": 20,
@@ -357,7 +358,7 @@ def resolve_live_strike_from_chain(
             real_bid_price=bid,
             real_ltp=ltp,
             real_delta=round(delta, 4),
-            is_live_quote=True,
+            is_live_quote=(ask > 0 or ltp > 0),
         )
 
     # Fallback if strike not resolved from chain
