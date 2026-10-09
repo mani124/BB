@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal
+from typing import Literal, Optional
 
 class Instrument(BaseModel):
     symbol: str
@@ -95,15 +95,61 @@ class UniverseManager:
         Instrument(symbol="BEL", name="Bharat Electronics", security_id="383", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="PSU"),
     ]
 
+    _FNO_STOCKS: list[Instrument] = []
+    _INSTRUMENT_MAP: dict[str, Instrument] = {}
+
+    def __init__(self):
+        if not UniverseManager._FNO_STOCKS:
+            from pathlib import Path
+            import json
+            fno_file = Path(__file__).resolve().parent.parent / "data" / "fno_universe.json"
+            if fno_file.exists():
+                try:
+                    with open(fno_file, "r") as f:
+                        data = json.load(f)
+                        stocks = []
+                        for sym, item in data.items():
+                            stocks.append(Instrument(
+                                symbol=sym,
+                                name=item.get("name", sym),
+                                security_id=str(item.get("security_id", "")),
+                                exchange_segment=item.get("exchange_segment", "NSE_EQ"),
+                                instrument_type="EQUITY",
+                                default_timeframe=item.get("default_timeframe", "5m"),
+                                sector=item.get("sector", "F&O")
+                            ))
+                        UniverseManager._FNO_STOCKS = stocks
+                except Exception:
+                    pass
+
+        if not UniverseManager._INSTRUMENT_MAP:
+            for inst in self.INDICES:
+                UniverseManager._INSTRUMENT_MAP[inst.symbol] = inst
+            for inst in self.MOMENTUM_STOCKS:
+                UniverseManager._INSTRUMENT_MAP[inst.symbol] = inst
+            for inst in UniverseManager._FNO_STOCKS:
+                UniverseManager._INSTRUMENT_MAP[inst.symbol] = inst
+
     def get_indices(self) -> list[Instrument]:
         return self.INDICES
 
     def get_momentum_stocks(self) -> list[Instrument]:
         return self.MOMENTUM_STOCKS
 
+    def get_fno_stocks(self) -> list[Instrument]:
+        """Returns all official NSE F&O stocks (~213 instruments)."""
+        return self._FNO_STOCKS if self._FNO_STOCKS else self.MOMENTUM_STOCKS
+
+    def get_instrument(self, symbol: str) -> Optional[Instrument]:
+        clean = symbol.strip().upper()
+        for pfx in ("NSE:", "BSE:"):
+            if clean.startswith(pfx):
+                clean = clean[len(pfx):]
+        return self._INSTRUMENT_MAP.get(clean)
+
     def get_all_instruments(self) -> list[Instrument]:
-        return self.INDICES + self.MOMENTUM_STOCKS
+        return self.INDICES + self.get_fno_stocks()
 
     def get_universe(self) -> list[Instrument]:
-        """Returns the full curated universe (4 Indices + 35 Momentum Stocks)."""
+        """Returns the full universe (4 Indices + all 213 F&O Stocks)."""
         return self.get_all_instruments()

@@ -258,3 +258,31 @@ async def test_fetch_intraday_candles_corrupt_payload_returns_empty():
         assert df.empty
     await client.close()
 
+@pytest.mark.asyncio
+async def test_fetch_marketfeed_quotes_chunks_large_request():
+    client = DhanClient(min_spacing=0.01)
+    # Request 213 securities on NSE_EQ
+    large_securities = {"NSE_EQ": [i for i in range(1, 214)]}
+
+    resp1 = MagicMock(status_code=200)
+    resp1.json.return_value = {"data": {"NSE_EQ": {str(i): {"last_price": float(i)} for i in range(1, 101)}}}
+
+    resp2 = MagicMock(status_code=200)
+    resp2.json.return_value = {"data": {"NSE_EQ": {str(i): {"last_price": float(i)} for i in range(101, 201)}}}
+
+    resp3 = MagicMock(status_code=200)
+    resp3.json.return_value = {"data": {"NSE_EQ": {str(i): {"last_price": float(i)} for i in range(201, 214)}}}
+
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.side_effect = [resp1, resp2, resp3]
+        quotes = await client.fetch_marketfeed_quotes("10001", "tok", large_securities)
+
+        assert len(quotes.get("NSE_EQ", {})) == 213
+        assert mock_post.call_count == 3
+        # Check payload chunking: each call should send <= 100 instruments
+        for call_arg in mock_post.call_args_list:
+            payload = call_arg.kwargs["json"]
+            assert len(payload["NSE_EQ"]) <= 100
+    await client.close()
+
+

@@ -48,7 +48,8 @@ def test_api_universe():
     assert "stocks" in data
     assert len(data["indices"]) == 4
     assert len(data["stocks"]) == 35
-    assert data["total_count"] == 39
+    assert data["total_count"] == 217
+    assert data["fno_count"] == 213
 
     idx_symbols = [i["symbol"] for i in data["indices"]]
     assert "NIFTY 50" in idx_symbols

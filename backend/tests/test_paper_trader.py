@@ -250,19 +250,19 @@ def test_risk_capped_position_sizing():
     assert pos_nifty.lots == 2
     assert pos_nifty.quantity == 130
 
-    # 2. Huge lot size stock (TATASTEEL lot 5500):
-    # Option risk = 1.1 pts. Risk per lot = 1.1 * 5500 = 6050.
-    # 2 lots = 12100 (> 4000). Must scale down to 1 lot!
+    # 2. Huge lot size stock (TATASTEEL lot 2750):
+    # Option risk = 1.1 pts. Risk per lot = 1.1 * 2750 = 3025.
+    # 2 lots = 6050 (> 4000). Must scale down to 1 lot!
     sig_tatasteel = create_mock_signal(symbol="TATASTEEL", opt="CE", entry=150.0, sl=149.0)
     pos_tatasteel = engine.open_position_from_signal(sig_tatasteel)
     assert pos_tatasteel is not None
     assert pos_tatasteel.lots == 1, f"Expected 1 lot for TATASTEEL due to max risk cap, got {pos_tatasteel.lots}"
-    assert pos_tatasteel.quantity == 5500
+    assert pos_tatasteel.quantity == 2750
 
     # 3. Excessive risk trade where 1 lot risk > 2.0 * max_risk_per_trade (> 8000)
-    # TATASTEEL with 3.0 pt SL -> option risk ~1.65 * 5500 = 9075 risk for 1 lot!
+    # TATASTEEL with 6.0 pt SL -> option risk ~3.3 * 2750 = 9075 risk for 1 lot!
     # Trade must be rejected / skipped to protect capital!
-    sig_huge_risk = create_mock_signal(symbol="TATASTEEL", opt="CE", entry=150.0, sl=147.0)
+    sig_huge_risk = create_mock_signal(symbol="TATASTEEL", opt="CE", entry=150.0, sl=144.0)
     pos_huge = engine.open_position_from_signal(sig_huge_risk)
     assert pos_huge is None, "Excessive risk trades exceeding cap even for 1 lot must be skipped"
 

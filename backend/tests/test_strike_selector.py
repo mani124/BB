@@ -22,7 +22,7 @@ def test_official_nse_lot_sizes():
     # Stock lot sizes
     assert get_lot_size("RELIANCE") == 500
     assert get_lot_size("HDFCBANK") == 650
-    assert get_lot_size("TCS") == 175
+    assert get_lot_size("TCS") == 225
     assert get_lot_size("INFY") == 400
     assert get_lot_size("TATAMOTORS") == 550
     # Whitespace and prefix resilience

@@ -53,7 +53,7 @@ class ScannerWorker:
     def __init__(self, universe_mgr: UniverseManager, dhan_client: Optional[DhanClient] = None):
         self.universe_mgr = universe_mgr
         self.dhan_client = dhan_client or DhanClient()
-        self.momentum_ranker = MomentumRanker(top_n=5)
+        self.momentum_ranker = MomentumRanker(top_n=10)
         self._state = ScannerState(universe_count=len(universe_mgr.get_universe()))
         self._listeners: list[asyncio.Queue] = []
         self._running = False
@@ -373,7 +373,7 @@ class ScannerWorker:
 
                 fetch_fn = getattr(self.dhan_client, "fetch_marketfeed_quotes", None)
                 import inspect
-                if fetch_fn and (asyncio.iscoroutinefunction(fetch_fn) if hasattr(asyncio, "iscoroutinefunction") else inspect.iscoroutinefunction(fetch_fn)):
+                if fetch_fn and inspect.iscoroutinefunction(fetch_fn):
                     live_quotes = await fetch_fn(cid, tok, req_securities)
                     if live_quotes:
                         logger.debug(f"Live marketfeed quotes fetched for {sum(len(v) for v in live_quotes.values())} securities")
@@ -391,20 +391,48 @@ class ScannerWorker:
                     if opt_ltp > 0:
                         option_price_map[str(sec_k)] = opt_ltp
 
-        # Rank momentum stocks based on real-time marketfeed quotes
+        # Rank momentum stocks across the entire F&O universe based on real-time marketfeed quotes
         stock_quotes_for_ranking: dict[str, dict] = {}
         if live_quotes:
             quotes_dict = live_quotes.get("data", live_quotes) if isinstance(live_quotes.get("data"), dict) else live_quotes
             eq_quotes = quotes_dict.get("NSE_EQ", {})
-            for stock_inst in self.universe_mgr.get_momentum_stocks():
+            for stock_inst in self.universe_mgr.get_fno_stocks():
                 q = eq_quotes.get(str(stock_inst.security_id)) or eq_quotes.get(int(stock_inst.security_id))
                 if q and isinstance(q, dict):
                     stock_quotes_for_ranking[stock_inst.symbol] = q
 
+            # Also populate full price_map across all instruments from live quotes
+            for inst in instruments:
+                seg_quotes = quotes_dict.get(inst.exchange_segment, {})
+                q = seg_quotes.get(str(inst.security_id)) or seg_quotes.get(int(inst.security_id))
+                if q and isinstance(q, dict) and "last_price" in q:
+                    lp = float(q["last_price"])
+                    if lp > 0:
+                        price_map[inst.symbol] = lp
+
         rankings = self.momentum_ranker.rank_stocks(stock_quotes_for_ranking)
         market_bias = "NEUTRAL"
 
-        for idx, inst in enumerate(instruments):
+        # Tier 2 Selection: Deep Bollinger setup scanning on Indices + Top Momentum stocks + active positions
+        top_symbols = set(rankings.top_bullish + rankings.top_bearish)
+        active_symbols = set(p.symbol for p in paper_trader.get_portfolio().active_positions)
+
+        deep_scan_targets: list[Instrument] = []
+        for inst in self.universe_mgr.get_indices():
+            deep_scan_targets.append(inst)
+
+        for sym in (top_symbols | active_symbols):
+            inst = self.universe_mgr.get_instrument(sym)
+            if inst and inst not in deep_scan_targets:
+                deep_scan_targets.append(inst)
+
+        # In demo mode fallback if quotes are synthetic, include core momentum stocks
+        if mode == "demo" and len(deep_scan_targets) <= 4:
+            for inst in self.universe_mgr.get_momentum_stocks():
+                if inst not in deep_scan_targets:
+                    deep_scan_targets.append(inst)
+
+        for idx, inst in enumerate(deep_scan_targets):
             inst_quote = None
             if live_quotes:
                 quotes_dict = live_quotes.get("data", live_quotes) if isinstance(live_quotes.get("data"), dict) else live_quotes
@@ -511,7 +539,7 @@ class ScannerWorker:
             new_signals.extend(detected)
 
             # Update progress
-            self._state.scan_progress = round(((idx + 1) / total_count) * 100.0, 1)
+            self._state.scan_progress = round(((idx + 1) / max(1, len(deep_scan_targets))) * 100.0, 1)
 
         # Update paper trading engine with latest market prices and real option prices
         paper_trader.update_market_prices(price_map, option_price_map)

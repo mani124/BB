@@ -21,8 +21,8 @@ def test_universe_manager_curation():
     assert any(i.symbol == "FINNIFTY" for i in indices)
     assert any(i.symbol == "SENSEX" for i in indices)
     assert len(stocks) == 35
-    assert len(all_inst) == 39
-    assert len(universe) == 39
+    assert len(all_inst) >= 214
+    assert len(universe) >= 214
     # Verify timeframes: stocks unified to 5m for responsive momentum scalps
     assert all(i.default_timeframe == "5m" for i in indices)
     assert all(s.default_timeframe == "5m" for s in stocks)
@@ -36,7 +36,7 @@ async def test_scanner_worker_demo_cycle():
     state = await worker.run_single_scan_cycle(client_id=None, access_token=None)
 
     assert state.scan_cycle_count >= 1
-    assert state.universe_count == 39
+    assert state.universe_count >= 214
     assert len(state.radar) == 4
     assert "NIFTY 50" in state.radar
     assert "NIFTY BANK" in state.radar

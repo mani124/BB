@@ -97,28 +97,57 @@ class DhanClient:
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
+        # Chunk requests so that no single call exceeds Dhan's 100 instrument limit
+        chunks: list[dict[str, list[int]]] = []
+        current_chunk: dict[str, list[int]] = {}
+        current_count = 0
+
+        for seg, sec_ids in securities.items():
+            for i in range(0, len(sec_ids), 100):
+                batch = sec_ids[i:i + 100]
+                if current_count + len(batch) <= 100:
+                    current_chunk.setdefault(seg, []).extend(batch)
+                    current_count += len(batch)
+                else:
+                    if current_chunk:
+                        chunks.append(current_chunk)
+                    current_chunk = {seg: list(batch)}
+                    current_count = len(batch)
+
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        if not chunks:
+            return {}
+
+        merged_results: dict[str, dict] = {}
         try:
             client = await self.get_client()
-            async with self._semaphore:
-                await self._throttle()
-                resp = await client.post("/marketfeed/quote", headers=headers, json=securities)
-                if resp.status_code == 429:
-                    logger.warning("Marketfeed quote hit 429 rate limit. Backing off 2.5s and retrying...")
-                    await asyncio.sleep(2.5)
+            for chunk in chunks:
+                async with self._semaphore:
                     await self._throttle()
-                    resp = await client.post("/marketfeed/quote", headers=headers, json=securities)
+                    resp = await client.post("/marketfeed/quote", headers=headers, json=chunk)
+                    if resp.status_code == 429:
+                        logger.warning("Marketfeed quote hit 429 rate limit. Backing off 2.5s and retrying...")
+                        await asyncio.sleep(2.5)
+                        await self._throttle()
+                        resp = await client.post("/marketfeed/quote", headers=headers, json=chunk)
 
-                if resp.status_code == 200:
-                    data = resp.json()
-                    res_data = data.get("data", {})
-                    if isinstance(res_data, dict) and "data" in res_data and isinstance(res_data["data"], dict):
-                        res_data = res_data["data"]
-                    return res_data
-                logger.warning(f"Marketfeed quote returned HTTP {resp.status_code}: {resp.text[:200]}")
-                return {}
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        res_data = data.get("data", {})
+                        if isinstance(res_data, dict) and "data" in res_data and isinstance(res_data["data"], dict):
+                            res_data = res_data["data"]
+                        if isinstance(res_data, dict):
+                            for seg, seg_quotes in res_data.items():
+                                if isinstance(seg_quotes, dict):
+                                    merged_results.setdefault(seg, {}).update(seg_quotes)
+                    else:
+                        logger.warning(f"Marketfeed quote returned HTTP {resp.status_code}: {resp.text[:200]}")
+            return merged_results
         except Exception as e:
             logger.warning(f"Exception fetching marketfeed quotes: {e}")
-            return {}
+            return merged_results
 
     async def fetch_expiry_list(
         self,

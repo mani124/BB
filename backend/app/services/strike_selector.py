@@ -47,6 +47,21 @@ DEFAULT_LOT_SIZES: dict[str, int] = {
     "BEL": 2700,
 }
 
+# Automatically load and enrich lot sizes for all 213 F&O stocks from official master
+import json
+from pathlib import Path
+
+_FNO_PATH = Path(__file__).resolve().parent.parent / "data" / "fno_universe.json"
+if _FNO_PATH.exists():
+    try:
+        with open(_FNO_PATH, "r") as _f:
+            _fno_data = json.load(_f)
+            for _sym, _item in _fno_data.items():
+                if "lot_size" in _item and _item["lot_size"] > 0:
+                    DEFAULT_LOT_SIZES[_sym] = int(_item["lot_size"])
+    except Exception:
+        pass
+
 def clean_symbol_key(symbol: str) -> str:
     s = symbol.upper().strip()
     for prefix in ("NSE:", "BSE:"):
