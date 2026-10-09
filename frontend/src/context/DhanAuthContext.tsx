@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 export function formatTokenExpiryCountdown(expiryMs: number): string {
   const diff = expiryMs - Date.now();
   if (diff <= 0) return 'Expired';
-  const totalMinutes = Math.floor(diff / 60000);
+  const totalMinutes = Math.ceil(diff / 60000);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return `${hours}h ${minutes.toString().padStart(2, '0')}m`;

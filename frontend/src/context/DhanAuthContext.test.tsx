@@ -5,9 +5,13 @@ import { DhanAuthProvider, useDhanAuth, formatTokenExpiryCountdown } from './Dha
 
 describe('formatTokenExpiryCountdown', () => {
   it('formats remaining hours and minutes correctly', () => {
-    const futureMs = Date.now() + 23 * 3600 * 1000 + 45 * 60 * 1000;
+    vi.useFakeTimers();
+    const now = 1700000000000;
+    vi.setSystemTime(now);
+    const futureMs = now + 23 * 3600 * 1000 + 45 * 60 * 1000;
     const result = formatTokenExpiryCountdown(futureMs);
     expect(result).toBe('23h 45m');
+    vi.useRealTimers();
   });
 
   it('returns Expired for past timestamps', () => {
