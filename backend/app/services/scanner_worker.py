@@ -524,33 +524,30 @@ class ScannerWorker:
                 market_bias=market_bias
             )
 
-            # Enrich signals with real live option quotes from Dhan
-            if detected and mode == "live" and cid and tok:
+            # Enrich signals and evaluate Setup 5 with live option chain from Dhan
+            if mode == "live" and cid and tok:
                 try:
                     expiry, oc = await self.get_or_fetch_option_chain(cid, tok, inst)
                     if oc:
-                        for sig in detected:
-                            live_rec = resolve_live_strike_from_chain(
-                                symbol=sig.symbol,
-                                underlying_price=sig.entry_price,
-                                option_type=sig.option_type,
-                                option_chain_oc=oc,
-                                expiry_date=expiry,
-                                stop_loss=sig.stop_loss
-                            )
-                            sig.strike_recommendation = live_rec
-                except Exception as e:
-                    logger.warning(f"Error enriching signal with live option chain for {inst.symbol}: {e}")
+                        # Enrich Setups 1-4 with live option quotes
+                        if detected:
+                            for sig in detected:
+                                live_rec = resolve_live_strike_from_chain(
+                                    symbol=sig.symbol,
+                                    underlying_price=sig.entry_price,
+                                    option_type=sig.option_type,
+                                    option_chain_oc=oc,
+                                    expiry_date=expiry,
+                                    stop_loss=sig.stop_loss
+                                )
+                                sig.strike_recommendation = live_rec
 
-            # Also evaluate Setup 5 (Option Chart BB Scalp) directly on live option candles
-            if mode == "live" and cid and tok and current_price > 0:
-                try:
-                    expiry, oc = await self.get_or_fetch_option_chain(cid, tok, inst)
-                    if oc:
-                        opt_signals = await self._evaluate_option_chart_setups(cid, tok, inst, oc, expiry, current_price)
-                        detected.extend(opt_signals)
+                        # Also evaluate Setup 5 (Option Chart BB Scalp) directly on live option candles
+                        if current_price > 0:
+                            opt_signals = await self._evaluate_option_chart_setups(cid, tok, inst, oc, expiry, current_price)
+                            detected.extend(opt_signals)
                 except Exception as e:
-                    logger.warning(f"Error evaluating Setup 5 option chart for {inst.symbol}: {e}")
+                    logger.warning(f"Error processing option chain for {inst.symbol}: {e}")
 
             new_signals.extend(detected)
 

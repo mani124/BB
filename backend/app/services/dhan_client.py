@@ -183,6 +183,12 @@ class DhanClient:
             async with self._semaphore:
                 await self._throttle()
                 resp = await client.post("/optionchain/expirylist", headers=headers, json=payload)
+                if resp.status_code == 429:
+                    logger.warning("Expirylist rate limit (429) hit. Backing off 2.0s and retrying...")
+                    await asyncio.sleep(2.0)
+                    await self._throttle()
+                    resp = await client.post("/optionchain/expirylist", headers=headers, json=payload)
+
                 if resp.status_code == 200:
                     data = resp.json()
                     expiries = data.get("data", [])
@@ -223,6 +229,12 @@ class DhanClient:
             async with self._semaphore:
                 await self._throttle()
                 resp = await client.post("/optionchain", headers=headers, json=payload)
+                if resp.status_code == 429:
+                    logger.warning("Optionchain rate limit (429) hit. Backing off 2.0s and retrying...")
+                    await asyncio.sleep(2.0)
+                    await self._throttle()
+                    resp = await client.post("/optionchain", headers=headers, json=payload)
+
                 if resp.status_code == 200:
                     data = resp.json()
                     d = data.get("data", {})
