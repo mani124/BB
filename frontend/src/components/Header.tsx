@@ -53,7 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [loading, setLoading] = useState(false);
 
   const countdown = propCountdown || contextCountdown;
-  const showAuthenticated = isLoggedIn || Boolean(propCountdown);
+  const showAuthenticated = (isLoggedIn || Boolean(propCountdown)) && activeMode !== 'demo';
   const isWsLive = feedStatus === 'WS_LIVE' || wsConnected === true;
 
   const handleManualSubmit = async (e: React.FormEvent) => {
