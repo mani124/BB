@@ -34,7 +34,9 @@ async def get_oauth_login_url(
         url = f"{settings.DHAN_GENERATE_CONSENT_URL}?client_id={cid}"
         headers = {
             "app_id": app_id.strip(),
+            "app-id": app_id.strip(),
             "app_secret": app_secret.strip(),
+            "app-secret": app_secret.strip(),
             "Accept": "application/json",
         }
         try:
@@ -51,9 +53,12 @@ async def get_oauth_login_url(
                     return {"login_url": login_url, "consent_app_id": consent_app_id}
             else:
                 logger.warning(f"Dhan generate-consent returned {resp.status_code}: {resp.text}")
+                detail_msg = resp.text
+                if resp.status_code == 401:
+                    detail_msg = "Invalid Dhan credentials: App ID, App Secret, or Client ID did not match. Please verify them in your Dhan Developer Portal."
                 raise HTTPException(
                     status_code=resp.status_code if resp.status_code in [400, 401, 403] else status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Dhan API authentication rejected ({resp.status_code}): {resp.text}",
+                    detail=f"Dhan API authentication rejected ({resp.status_code}): {detail_msg}",
                 )
         except HTTPException:
             raise

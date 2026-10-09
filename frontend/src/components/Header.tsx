@@ -41,6 +41,9 @@ export const Header: React.FC<HeaderProps> = ({
   const [authTab, setAuthTab] = useState<'oauth' | 'manual'>('oauth');
   const [inputClientId, setInputClientId] = useState('');
   const [inputToken, setInputToken] = useState('');
+  const [oauthClientId, setOauthClientId] = useState(
+    typeof window !== 'undefined' ? sessionStorage.getItem('dhan_client_id') || '' : ''
+  );
   const [oauthAppId, setOauthAppId] = useState(
     typeof window !== 'undefined' ? sessionStorage.getItem('dhan_oauth_app_id') || '' : ''
   );
@@ -69,7 +72,7 @@ export const Header: React.FC<HeaderProps> = ({
     e.preventDefault();
     setLoading(true);
     try {
-      await loginWithOAuth(oauthAppId, oauthAppSecret);
+      await loginWithOAuth(oauthAppId, oauthAppSecret, oauthClientId);
     } catch {
       setLoading(false);
     }
@@ -253,12 +256,26 @@ export const Header: React.FC<HeaderProps> = ({
               <form onSubmit={handleOAuthSubmit} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Dhan App ID / Client ID
+                    Dhan Client ID
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. 1000000001"
+                    placeholder="Your 10-digit Dhan ID (e.g. 1000000001)"
+                    value={oauthClientId}
+                    onChange={(e) => setOauthClientId(e.target.value)}
+                    className="w-full bg-dark-900 border border-dark-600 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Dhan App ID / API Key
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="API Key generated in Dhan Developer Portal"
                     value={oauthAppId}
                     onChange={(e) => setOauthAppId(e.target.value)}
                     className="w-full bg-dark-900 border border-dark-600 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition"
@@ -272,7 +289,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <input
                     type="password"
                     required
-                    placeholder="Enter Dhan Developer App Secret"
+                    placeholder="API Secret generated in Dhan Developer Portal"
                     value={oauthAppSecret}
                     onChange={(e) => setOauthAppSecret(e.target.value)}
                     className="w-full bg-dark-900 border border-dark-600 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition"

@@ -16,7 +16,7 @@ interface DhanAuthContextType {
   tokenExpiry: number | null;
   tokenExpiryCountdown: string | null;
   connect: (id: string, token: string) => Promise<boolean>;
-  loginWithOAuth: (appId: string, appSecret: string) => Promise<void>;
+  loginWithOAuth: (appId: string, appSecret: string, clientId?: string) => Promise<void>;
   exchangeOAuthToken: (appId: string, appSecret: string, consentId: string) => Promise<boolean>;
   disconnect: () => void;
   error: string | null;
@@ -122,15 +122,20 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const loginWithOAuth = async (appId: string, appSecret: string): Promise<void> => {
+  const loginWithOAuth = async (appId: string, appSecret: string, clientId?: string): Promise<void> => {
     setError(null);
     try {
       sessionStorage.setItem('dhan_oauth_app_id', appId.trim());
       sessionStorage.setItem('dhan_oauth_app_secret', appSecret.trim());
+      if (clientId && clientId.trim()) {
+        sessionStorage.setItem('dhan_client_id', clientId.trim());
+      }
       const redirectUri = window.location.origin + window.location.pathname;
-      const res = await fetch(
-        `/api/auth/oauth/login-url?app_id=${encodeURIComponent(appId.trim())}&app_secret=${encodeURIComponent(appSecret.trim())}&redirect_uri=${encodeURIComponent(redirectUri)}`
-      );
+      let url = `/api/auth/oauth/login-url?app_id=${encodeURIComponent(appId.trim())}&app_secret=${encodeURIComponent(appSecret.trim())}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+      if (clientId && clientId.trim()) {
+        url += `&client_id=${encodeURIComponent(clientId.trim())}`;
+      }
+      const res = await fetch(url);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || 'Failed to generate Dhan OAuth login URL');
