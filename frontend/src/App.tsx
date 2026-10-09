@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DhanAuthProvider } from './context/DhanAuthContext';
+import { DhanAuthProvider, useDhanAuth } from './context/DhanAuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { Header } from './components/Header';
 import { IndexHeroRadar } from './components/IndexHeroRadar';
