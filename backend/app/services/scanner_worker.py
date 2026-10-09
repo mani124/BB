@@ -46,7 +46,8 @@ class ScannerState(BaseModel):
     scan_progress: float = 0.0
     universe_count: int = 0
     active_mode: str = "demo"  # "live", "stale", "error", or "demo"
-    feed_status: str = "DEMO"  # "LIVE", "STALE", "ERROR", "DEMO"
+    feed_status: str = "DEMO"  # "WS_LIVE", "LIVE", "STALE", "ERROR", "DEMO"
+    ws_connected: bool = False
     last_quote_time: str = ""
 
 SESSION_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "active_session.json"
@@ -161,7 +162,8 @@ class ScannerWorker:
             await self.ws_manager.connect(client_id, access_token)
             await self._subscribe_universe_instruments()
             await self._subscribe_active_positions()
-            self._state.feed_status = "LIVE"
+            self._state.ws_connected = True
+            self._state.feed_status = "WS_LIVE"
             logger.info("Dhan WebSocket connected and universe instruments subscribed")
         except Exception as exc:
             logger.warning(
@@ -191,6 +193,10 @@ class ScannerWorker:
             return
         if ltp <= 0:
             return
+
+        if not self._state.ws_connected:
+            self._state.ws_connected = True
+            self._state.feed_status = "WS_LIVE"
 
         sec_id_str = str(sec_id)
         seg = tick.get("exchange_segment")
@@ -304,6 +310,7 @@ class ScannerWorker:
             self._session_credentials = None
             self._state.active_mode = "demo"
             self._state.feed_status = "DEMO"
+            self._state.ws_connected = False
             if self.ws_manager:
                 try:
                     loop = asyncio.get_running_loop()
@@ -573,8 +580,15 @@ class ScannerWorker:
         # Derive active mode and feed health from quote success or active WebSocket feed
         loop_time = asyncio.get_running_loop().time()
         ws_live = bool(self.ws_manager and self.ws_manager.is_connected)
+        self._state.ws_connected = ws_live
         if has_creds:
-            if ws_live or (live_quotes and len(live_quotes) > 0):
+            if ws_live:
+                self._last_successful_quote_time = loop_time
+                mode = "live"
+                self._state.active_mode = "live"
+                self._state.feed_status = "WS_LIVE"
+                self._state.last_quote_time = datetime.now().strftime("%H:%M:%S")
+            elif live_quotes and len(live_quotes) > 0:
                 self._last_successful_quote_time = loop_time
                 mode = "live"
                 self._state.active_mode = "live"
@@ -583,7 +597,7 @@ class ScannerWorker:
             elif self._last_successful_quote_time and (loop_time - self._last_successful_quote_time) <= 30.0:
                 mode = "live"
                 self._state.active_mode = "live"
-                self._state.feed_status = "LIVE"
+                self._state.feed_status = "WS_LIVE" if ws_live else "LIVE"
             elif self._last_successful_quote_time and (loop_time - self._last_successful_quote_time) <= 60.0:
                 mode = "stale"
                 self._state.active_mode = "stale"
