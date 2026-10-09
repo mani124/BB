@@ -27,6 +27,13 @@ export interface OptionStrikeRecommendation {
   option_sl_price: number;
   option_target_1_price: number;
   option_target_2_price: number;
+  option_security_id?: string;
+  expiry_date?: string;
+  real_ask_price?: number;
+  real_bid_price?: number;
+  real_ltp?: number;
+  real_delta?: number;
+  is_live_quote?: boolean;
 }
 
 export interface Signal {
@@ -99,6 +106,7 @@ export interface PaperPosition {
   initial_quantity?: number;
   booked_lots?: number;
   booked_pnl_rupees?: number;
+  option_security_id?: string;
 }
 
 export interface PaperPortfolio {

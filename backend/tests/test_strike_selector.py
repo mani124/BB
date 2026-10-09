@@ -157,3 +157,83 @@ def test_option_premium_levels():
     assert rec.option_target_1_price == round(rec.estimated_option_entry + rec.option_target_1_pts, 1)
     assert rec.option_target_2_price == round(rec.estimated_option_entry + rec.option_target_2_pts, 1)
     assert rec.option_target_2_price > rec.option_target_1_price > rec.estimated_option_entry
+
+def test_resolve_live_strike_from_chain():
+    from app.services.strike_selector import resolve_live_strike_from_chain
+    # Mock Dhan option chain for Nifty around 22500
+    mock_oc = {
+        "22450.000000": {
+            "ce": {
+                "security_id": 44608,
+                "last_price": 160.3,
+                "top_ask_price": 160.7,
+                "top_bid_price": 160.0,
+                "volume": 500000,
+                "oi": 1200000,
+                "greeks": {"delta": 0.5966, "theta": -12.4, "gamma": 0.0012, "vega": 15.2}
+            },
+            "pe": {
+                "security_id": 44611,
+                "last_price": 99.55,
+                "top_ask_price": 99.8,
+                "top_bid_price": 99.5,
+                "volume": 300000,
+                "oi": 800000,
+                "greeks": {"delta": -0.4112, "theta": -10.1, "gamma": 0.0011, "vega": 14.1}
+            }
+        },
+        "22550.000000": {
+            "ce": {
+                "security_id": 44614,
+                "last_price": 105.5,
+                "top_ask_price": 105.6,
+                "top_bid_price": 105.4,
+                "volume": 200000,
+                "oi": 600000,
+                "greeks": {"delta": 0.4654}
+            },
+            "pe": {
+                "security_id": 44615,
+                "last_price": 144.2,
+                "top_ask_price": 144.2,
+                "top_bid_price": 144.0,
+                "volume": 400000,
+                "oi": 950000,
+                "greeks": {"delta": -0.5312}
+            }
+        }
+    }
+
+    # At spot 22490, 1-strike ITM for CE is 22450
+    rec_ce = resolve_live_strike_from_chain(
+        symbol="NIFTY 50",
+        underlying_price=22490.0,
+        option_type="CE",
+        option_chain_oc=mock_oc,
+        expiry_date="2026-10-13",
+        stop_loss=22450.0
+    )
+    assert rec_ce.is_live_quote is True
+    assert rec_ce.option_security_id == "44608"
+    assert rec_ce.recommended_strike == 22450
+    assert rec_ce.estimated_option_entry == 160.7  # Enters at top ask price!
+    assert rec_ce.real_ask_price == 160.7
+    assert rec_ce.real_ltp == 160.3
+    assert rec_ce.real_delta == 0.5966
+    assert rec_ce.option_sl_price < rec_ce.estimated_option_entry
+    assert rec_ce.option_target_1_price > rec_ce.estimated_option_entry
+
+    # At spot 22490, 1-strike ITM for PE is 22550
+    rec_pe = resolve_live_strike_from_chain(
+        symbol="NIFTY 50",
+        underlying_price=22490.0,
+        option_type="PE",
+        option_chain_oc=mock_oc,
+        expiry_date="2026-10-13",
+        stop_loss=22530.0
+    )
+    assert rec_pe.is_live_quote is True
+    assert rec_pe.option_security_id == "44615"
+    assert rec_pe.recommended_strike == 22550
+    assert rec_pe.estimated_option_entry == 144.2
+    assert rec_pe.real_delta == 0.5312

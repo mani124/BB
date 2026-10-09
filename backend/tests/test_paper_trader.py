@@ -197,4 +197,45 @@ def test_four_lots_partial_booking_halves_position():
     assert active_pos.booked_lots == 2
     assert active_pos.booked_pnl_rupees > 0
 
+def test_live_option_quote_updates_pnl_directly():
+    engine = PaperTradingEngine()
+    sig = create_mock_signal(symbol="NIFTY 50", opt="CE", entry=22500.0, sl=22450.0)
+    # Set real option security id and real live entry price
+    sig.strike_recommendation.option_security_id = "44608"
+    sig.strike_recommendation.estimated_option_entry = 160.0
+    sig.strike_recommendation.option_sl_price = 135.0
+    sig.strike_recommendation.option_target_1_price = 195.0
+    sig.strike_recommendation.option_target_2_price = 230.0
+
+    pos = engine.open_position_from_signal(sig, lots=2)
+    assert pos.option_security_id == "44608"
+    assert pos.option_entry == 160.0
+    assert pos.quantity == 130 # 2 lots of 65
+
+    # Update with real option marketfeed quote at 172.5
+    engine.update_market_prices(
+        price_map={"NIFTY 50": 22520.0},
+        option_price_map={"44608": 172.5}
+    )
+    portfolio = engine.get_portfolio()
+    p = portfolio.active_positions[0]
+    assert p.current_option_price == 172.5
+    assert p.pnl_points == 12.5 # 172.5 - 160.0
+    assert p.pnl_rupees == 12.5 * 130 # 1625.0
+    assert portfolio.total_unrealized_pnl == 1625.0
+
+    # Real option price hits Target 1 (195.0) -> partial profit booked on 1 lot
+    engine.update_market_prices(
+        price_map={"NIFTY 50": 22560.0},
+        option_price_map={"44608": 196.0}
+    )
+    portfolio = engine.get_portfolio()
+    p = portfolio.active_positions[0]
+    assert p.status == "TARGET_1"
+    assert p.lots == 1
+    assert p.quantity == 65
+    assert p.booked_lots == 1
+    assert p.booked_pnl_rupees == round(36.0 * 65, 2) # (196.0 - 160.0) * 65 = 2340.0
+
+
 

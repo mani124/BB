@@ -100,7 +100,9 @@ async def test_scanner_worker_session_credentials_and_live_mode():
         "close": [25005.0 + i for i in range(25)],
         "volume": [1000] * 25
     })
-    mock_dhan.fetch_intraday_candles = AsyncMock(return_value=dummy_df)
+    mock_dhan.fetch_marketfeed_quotes = AsyncMock(return_value={
+        "IDX_I": {"13": {"last_price": 22500.0, "ohlc": {"open": 22400.0, "high": 22550.0, "low": 22350.0, "close": 22380.0}}}
+    })
     mock_dhan.close = AsyncMock()
 
     worker = ScannerWorker(universe_mgr=UniverseManager(), dhan_client=mock_dhan)
@@ -108,7 +110,7 @@ async def test_scanner_worker_session_credentials_and_live_mode():
     state = await worker.run_single_scan_cycle()
 
     assert state.active_mode == "live"
-    assert mock_dhan.fetch_intraday_candles.called
+    assert mock_dhan.fetch_marketfeed_quotes.called
     await worker.stop()
 
 @pytest.mark.asyncio

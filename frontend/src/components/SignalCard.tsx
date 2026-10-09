@@ -102,14 +102,21 @@ export const SignalCard: React.FC<SignalCardProps> = ({ signal, onPaperBuy, isBo
           </div>
         </div>
 
-        {/* 2. Option Premium Levels (Delta ~ 0.55) */}
+        {/* 2. Option Premium Levels (Delta ~ 0.55 or Live Greeks) */}
         <div className="mb-3">
-          <div className="text-[10px] uppercase font-bold text-cyan-700 dark:text-cyan-500/80 mb-1 tracking-wider">
-            Option Premium Levels (Δ ~0.55)
+          <div className="flex items-center justify-between text-[10px] uppercase font-bold text-cyan-700 dark:text-cyan-500/80 mb-1 tracking-wider">
+            <span>Option Premium {rec.is_live_quote ? (rec.real_delta ? `(Δ ${rec.real_delta})` : '(Live Quote)') : '(Δ ~0.55)'}</span>
+            {rec.is_live_quote ? (
+              <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black text-[9px] border border-emerald-500/30">
+                LIVE NSE_FNO
+              </span>
+            ) : null}
           </div>
           <div className="grid grid-cols-4 gap-1.5 text-center text-xs">
             <div className="bg-cyan-50 dark:bg-cyan-950/20 border border-cyan-200 dark:border-cyan-900/40 rounded-lg p-1.5">
-              <span className="block text-[9px] text-cyan-700 dark:text-cyan-300 mb-0.5">Est. Entry</span>
+              <span className="block text-[9px] text-cyan-700 dark:text-cyan-300 mb-0.5">
+                {rec.is_live_quote ? 'Live Ask' : 'Est. Entry'}
+              </span>
               <span className="font-black font-mono text-cyan-700 dark:text-cyan-300 text-[11px]">₹{rec.estimated_option_entry}</span>
             </div>
 

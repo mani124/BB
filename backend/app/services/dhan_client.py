@@ -120,6 +120,83 @@ class DhanClient:
             logger.warning(f"Exception fetching marketfeed quotes: {e}")
             return {}
 
+    async def fetch_expiry_list(
+        self,
+        client_id: str,
+        access_token: str,
+        underlying_scrip: int,
+        underlying_seg: str
+    ) -> list[str]:
+        """
+        Fetch available option contract expiry dates from Dhan:
+        POST /optionchain/expirylist
+        Body: {"UnderlyingScrip": int, "UnderlyingSeg": str}
+        """
+        headers = {
+            "client-id": client_id,
+            "access-token": access_token,
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+        payload = {
+            "UnderlyingScrip": int(underlying_scrip),
+            "UnderlyingSeg": underlying_seg
+        }
+        try:
+            client = await self.get_client()
+            async with self._semaphore:
+                await self._throttle()
+                resp = await client.post("/optionchain/expirylist", headers=headers, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    expiries = data.get("data", [])
+                    if isinstance(expiries, list):
+                        return expiries
+                logger.warning(f"Expirylist returned HTTP {resp.status_code}: {resp.text[:200]}")
+                return []
+        except Exception as e:
+            logger.warning(f"Exception fetching expirylist: {e}")
+            return []
+
+    async def fetch_option_chain(
+        self,
+        client_id: str,
+        access_token: str,
+        underlying_scrip: int,
+        underlying_seg: str,
+        expiry: str
+    ) -> dict:
+        """
+        Fetch full option chain with real quotes and Greeks from Dhan:
+        POST /optionchain
+        Body: {"UnderlyingScrip": int, "UnderlyingSeg": str, "Expiry": str}
+        """
+        headers = {
+            "client-id": client_id,
+            "access-token": access_token,
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+        payload = {
+            "UnderlyingScrip": int(underlying_scrip),
+            "UnderlyingSeg": underlying_seg,
+            "Expiry": expiry
+        }
+        try:
+            client = await self.get_client()
+            async with self._semaphore:
+                await self._throttle()
+                resp = await client.post("/optionchain", headers=headers, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    d = data.get("data", {})
+                    return d.get("oc", {}) if isinstance(d, dict) else {}
+                logger.warning(f"Optionchain returned HTTP {resp.status_code}: {resp.text[:200]}")
+                return {}
+        except Exception as e:
+            logger.warning(f"Exception fetching optionchain: {e}")
+            return {}
+
     async def fetch_intraday_candles(
         self,
         client_id: str,

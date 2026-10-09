@@ -36,6 +36,7 @@ class PaperPosition(BaseModel):
     initial_quantity: Optional[int] = None
     booked_lots: int = 0
     booked_pnl_rupees: float = 0.0
+    option_security_id: Optional[str] = None
 
 class PaperPortfolio(BaseModel):
     active_positions: list[PaperPosition] = []
@@ -143,7 +144,8 @@ class PaperTradingEngine:
             current_option_price=rec.estimated_option_entry,
             pnl_points=0.0,
             pnl_rupees=0.0,
-            status="OPEN"
+            status="OPEN",
+            option_security_id=getattr(rec, "option_security_id", None)
         )
 
         self._portfolio.active_positions.append(pos)
@@ -163,29 +165,46 @@ class PaperTradingEngine:
                 # Open position for new signals
                 self.open_position_from_signal(sig)
 
-    def update_market_prices(self, price_map: dict[str, float]):
-        """Update active positions with current underlying prices and check SL/targets."""
+    def update_market_prices(
+        self,
+        price_map: dict[str, float],
+        option_price_map: Optional[dict[str, float]] = None
+    ):
+        """Update active positions with current underlying prices and live option prices from Dhan."""
         delta = 0.55
         now_str = datetime.now().strftime("%H:%M:%S")
         still_active = []
 
         for pos in self._portfolio.active_positions:
             curr_spot = price_map.get(pos.symbol)
-            if curr_spot is None:
+            if curr_spot is not None:
+                pos.current_underlying = round(curr_spot, 2)
+
+            # Check if live option quote is directly provided from Dhan (NSE_FNO)
+            real_opt_price = None
+            if option_price_map and pos.option_security_id:
+                real_opt_price = option_price_map.get(str(pos.option_security_id)) or option_price_map.get(pos.option_security_id)
+
+            if real_opt_price is not None and float(real_opt_price) > 0:
+                pos.current_option_price = round(float(real_opt_price), 2)
+                pos.pnl_points = round(pos.current_option_price - pos.option_entry, 2)
+            elif curr_spot is not None:
+                # Fallback to delta estimation only when offline or live option feed not available
+                if pos.option_type == "CE":
+                    spot_move = curr_spot - pos.underlying_entry
+                    est_opt = max(0.5, pos.option_entry + (spot_move * delta))
+                else:
+                    spot_move = pos.underlying_entry - curr_spot
+                    est_opt = max(0.5, pos.option_entry + (spot_move * delta))
+                pos.current_option_price = round(est_opt, 1)
+                pos.pnl_points = round(pos.current_option_price - pos.option_entry, 1)
+            else:
                 still_active.append(pos)
                 continue
 
-            pos.current_underlying = round(curr_spot, 2)
-            
-            # Estimate option price based on underlying delta
             if pos.option_type == "CE":
-                spot_move = curr_spot - pos.underlying_entry
-                est_opt = max(0.5, pos.option_entry + (spot_move * delta))
-                pos.current_option_price = round(est_opt, 1)
-                pos.pnl_points = round(pos.current_option_price - pos.option_entry, 1)
-
                 # Check SL
-                if curr_spot <= pos.underlying_sl or pos.current_option_price <= pos.option_sl:
+                if (curr_spot is not None and curr_spot <= pos.underlying_sl) or pos.current_option_price <= pos.option_sl:
                     is_breakeven = (pos.status == "TARGET_1")
                     reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
                     pos.status = "STOPPED_OUT"
@@ -204,7 +223,7 @@ class PaperTradingEngine:
                     continue
 
                 # Check Target 2
-                elif curr_spot >= pos.underlying_target_2 or pos.current_option_price >= pos.option_target_2:
+                elif (curr_spot is not None and curr_spot >= pos.underlying_target_2) or pos.current_option_price >= pos.option_target_2:
                     pos.status = "TARGET_2"
                     pos.exit_time = now_str
                     pos.exit_reason = "Target 2 (1:2.5) Hit"
@@ -216,9 +235,8 @@ class PaperTradingEngine:
                     continue
 
                 # Check Target 1
-                elif curr_spot >= pos.underlying_target_1 and pos.status == "OPEN":
+                elif ((curr_spot is not None and curr_spot >= pos.underlying_target_1) or pos.current_option_price >= pos.option_target_1) and pos.status == "OPEN":
                     pos.status = "TARGET_1"
-                    # Partial booking: if lots >= 2, book 50%
                     if pos.lots >= 2:
                         book_lots = pos.lots // 2
                         book_qty = book_lots * pos.lot_size
@@ -227,18 +245,12 @@ class PaperTradingEngine:
                         pos.booked_pnl_rupees = round(pos.booked_pnl_rupees + book_pnl, 2)
                         pos.lots -= book_lots
                         pos.quantity -= book_qty
-                    # Move SL to breakeven
                     pos.underlying_sl = pos.underlying_entry
                     pos.option_sl = pos.option_entry
 
             else:  # PE
-                spot_move = pos.underlying_entry - curr_spot
-                est_opt = max(0.5, pos.option_entry + (spot_move * delta))
-                pos.current_option_price = round(est_opt, 1)
-                pos.pnl_points = round(pos.current_option_price - pos.option_entry, 1)
-
                 # Check SL
-                if curr_spot >= pos.underlying_sl or pos.current_option_price <= pos.option_sl:
+                if (curr_spot is not None and curr_spot >= pos.underlying_sl) or pos.current_option_price <= pos.option_sl:
                     is_breakeven = (pos.status == "TARGET_1")
                     reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
                     pos.status = "STOPPED_OUT"
@@ -257,7 +269,7 @@ class PaperTradingEngine:
                     continue
 
                 # Check Target 2
-                elif curr_spot <= pos.underlying_target_2 or pos.current_option_price >= pos.option_target_2:
+                elif (curr_spot is not None and curr_spot <= pos.underlying_target_2) or pos.current_option_price >= pos.option_target_2:
                     pos.status = "TARGET_2"
                     pos.exit_time = now_str
                     pos.exit_reason = "Target 2 (1:2.5) Hit"
@@ -269,9 +281,8 @@ class PaperTradingEngine:
                     continue
 
                 # Check Target 1
-                elif curr_spot <= pos.underlying_target_1 and pos.status == "OPEN":
+                elif ((curr_spot is not None and curr_spot <= pos.underlying_target_1) or pos.current_option_price >= pos.option_target_1) and pos.status == "OPEN":
                     pos.status = "TARGET_1"
-                    # Partial booking: if lots >= 2, book 50%
                     if pos.lots >= 2:
                         book_lots = pos.lots // 2
                         book_qty = book_lots * pos.lot_size
@@ -280,7 +291,6 @@ class PaperTradingEngine:
                         pos.booked_pnl_rupees = round(pos.booked_pnl_rupees + book_pnl, 2)
                         pos.lots -= book_lots
                         pos.quantity -= book_qty
-                    # Move SL to breakeven
                     pos.underlying_sl = pos.underlying_entry
                     pos.option_sl = pos.option_entry
 

@@ -54,9 +54,16 @@ class PaperStorage:
                 initial_lots INTEGER,
                 initial_quantity INTEGER,
                 booked_lots INTEGER,
-                booked_pnl_rupees REAL
+                booked_pnl_rupees REAL,
+                option_security_id TEXT
             );
             """)
+
+            # Auto-migrate table if column does not exist
+            try:
+                cursor.execute("ALTER TABLE positions ADD COLUMN option_security_id TEXT;")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS settings (
@@ -83,8 +90,9 @@ class PaperStorage:
                 option_entry, option_sl, option_target_1, option_target_2,
                 lot_size, lots, quantity, current_underlying, current_option_price,
                 pnl_points, pnl_rupees, status, exit_time, exit_reason,
-                initial_lots, initial_quantity, booked_lots, booked_pnl_rupees
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                initial_lots, initial_quantity, booked_lots, booked_pnl_rupees,
+                option_security_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 lots=excluded.lots,
                 quantity=excluded.quantity,
@@ -96,14 +104,16 @@ class PaperStorage:
                 exit_time=excluded.exit_time,
                 exit_reason=excluded.exit_reason,
                 booked_lots=excluded.booked_lots,
-                booked_pnl_rupees=excluded.booked_pnl_rupees;
+                booked_pnl_rupees=excluded.booked_pnl_rupees,
+                option_security_id=COALESCE(excluded.option_security_id, positions.option_security_id);
             """, (
                 pos.id, pos.signal_id, pos.symbol, pos.option_type, pos.strike_symbol, pos.timeframe, pos.setup_type,
                 pos.entry_time, pos.underlying_entry, pos.underlying_sl, pos.underlying_target_1, pos.underlying_target_2,
                 pos.option_entry, pos.option_sl, pos.option_target_1, pos.option_target_2,
                 pos.lot_size, pos.lots, pos.quantity, pos.current_underlying, pos.current_option_price,
                 pos.pnl_points, pos.pnl_rupees, pos.status, pos.exit_time, pos.exit_reason,
-                pos.initial_lots, pos.initial_quantity, pos.booked_lots, pos.booked_pnl_rupees
+                pos.initial_lots, pos.initial_quantity, pos.booked_lots, pos.booked_pnl_rupees,
+                pos.option_security_id
             ))
             conn.commit()
 
