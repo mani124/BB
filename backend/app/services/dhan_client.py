@@ -125,6 +125,7 @@ class DhanClient:
             client = await self.get_client()
             async with self._semaphore:
                 await self._throttle()
+                logger.warning(f"Dhan request payload for {security_id}: {payload}")
                 resp = await client.post("/charts/intraday", headers=headers, json=payload)
                 
                 # Handle rate limiting with exponential backoff retry

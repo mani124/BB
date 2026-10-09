@@ -17,9 +17,9 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Restore and verify from sessionStorage on reload
-    const savedId = sessionStorage.getItem('dhan_client_id');
-    const savedToken = sessionStorage.getItem('dhan_access_token');
+    // Restore and verify from localStorage on reload/reopen
+    const savedId = localStorage.getItem('dhan_client_id');
+    const savedToken = localStorage.getItem('dhan_access_token');
     if (savedId && savedToken) {
       connect(savedId, savedToken);
     }
@@ -48,9 +48,9 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return false;
       }
 
-      // Store strictly in sessionStorage
-      sessionStorage.setItem('dhan_client_id', id.trim());
-      sessionStorage.setItem('dhan_access_token', token.trim());
+      // Store in localStorage for continuous intraday session
+      localStorage.setItem('dhan_client_id', id.trim());
+      localStorage.setItem('dhan_access_token', token.trim());
       setClientId(id.trim());
       setAccessToken(token.trim());
       return true;
@@ -61,8 +61,8 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const disconnect = () => {
-    sessionStorage.removeItem('dhan_client_id');
-    sessionStorage.removeItem('dhan_access_token');
+    localStorage.removeItem('dhan_client_id');
+    localStorage.removeItem('dhan_access_token');
     setClientId(null);
     setAccessToken(null);
     fetch('/api/auth/disconnect', { method: 'POST' }).catch(() => {});
