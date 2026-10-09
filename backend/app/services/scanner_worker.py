@@ -12,14 +12,28 @@ from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.services.universe_manager import UniverseManager, Instrument
 from app.services.dhan_client import DhanClient
+from app.services.dhan_websocket import DhanWebSocketManager
 from app.services.indicators import calculate_indicators
 from app.services.strategy_engine import evaluate_signals, Signal
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size
 from app.services.option_chart_strategy import evaluate_option_chart_signal
-from app.services.paper_trader import paper_trader, PaperPortfolio
+from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
 from app.services.momentum_ranker import MomentumRanker, MomentumRankings
 
 logger = logging.getLogger(__name__)
+
+SEGMENT_STR_TO_INT: dict[str, int] = {
+    "IDX_I": 0,
+    "INDEX": 0,
+    "IDX": 0,
+    "NSE_EQ": 1,
+    "NSE_FNO": 2,
+    "NSE_CURR": 3,
+    "BSE_EQ": 4,
+    "MCX_COMM": 5,
+    "BSE_CURR": 7,
+    "BSE_FNO": 8,
+}
 
 class IndexRadarItem(BaseModel):
     symbol: str
@@ -53,9 +67,20 @@ SESSION_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "active_
 class ScannerWorker:
     """Cyclic scanner worker cycling every ~8 seconds through the 4 indices and ~35 momentum stocks."""
 
-    def __init__(self, universe_mgr: UniverseManager, dhan_client: Optional[DhanClient] = None):
+    def __init__(
+        self,
+        universe_mgr: UniverseManager,
+        dhan_client: Optional[DhanClient] = None,
+        ws_manager: Optional[DhanWebSocketManager] = None,
+    ):
         self.universe_mgr = universe_mgr
         self.dhan_client = dhan_client or DhanClient()
+        self.ws_manager = ws_manager or DhanWebSocketManager(
+            on_tick_callback=self._handle_incoming_ws_tick
+        )
+        if self.ws_manager.on_tick_callback is None:
+            self.ws_manager.on_tick_callback = self._handle_incoming_ws_tick
+
         self.momentum_ranker = MomentumRanker(top_n=10)
         self._state = ScannerState(universe_count=len(universe_mgr.get_universe()))
         self._listeners: list[asyncio.Queue] = []
@@ -73,7 +98,179 @@ class ScannerWorker:
         self._last_session_date = datetime.now().date()
         self._last_successful_quote_time: Optional[float] = None
         self._scan_lock = asyncio.Lock()
+        self._ws_connect_task: Optional[asyncio.Task] = None
+        self._sec_id_to_instrument: dict[str, Instrument] = {
+            str(inst.security_id): inst for inst in universe_mgr.get_universe()
+        }
+
+        # Wire dynamic paper trading position subscription callback
+        paper_trader.on_position_opened = self._on_paper_position_opened
         self._load_saved_session()
+
+    def _on_paper_position_opened(self, pos: PaperPosition) -> None:
+        """Whenever a live paper trading position is opened, dynamically subscribe its option contract."""
+        if pos.feed_mode == "live" and pos.option_security_id:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self.subscribe_option_instrument(pos.option_security_id))
+            except RuntimeError:
+                pass
+
+    async def subscribe_option_instrument(self, option_security_id: str | int) -> None:
+        """Dynamically subscribe a single option instrument to live WebSocket feed."""
+        try:
+            sec_id_int = int(option_security_id)
+            if self.ws_manager:
+                await self.ws_manager.subscribe([(2, sec_id_int)])
+        except (ValueError, TypeError) as exc:
+            logger.warning("Invalid option security ID %s: %s", option_security_id, exc)
+
+    async def _subscribe_universe_instruments(self) -> None:
+        """Subscribe all universe instruments (indices + F&O stocks) to WebSocket feed."""
+        if not self.ws_manager:
+            return
+        instruments_to_sub: list[tuple[int, int]] = []
+        for inst in self.universe_mgr.get_universe():
+            try:
+                seg_int = (
+                    0
+                    if (inst.instrument_type == "INDEX" or "IDX" in inst.exchange_segment)
+                    else 1
+                )
+                sec_id_int = int(inst.security_id)
+                instruments_to_sub.append((seg_int, sec_id_int))
+            except (ValueError, TypeError):
+                continue
+        if instruments_to_sub:
+            await self.ws_manager.subscribe(instruments_to_sub)
+
+    async def _subscribe_active_positions(self) -> None:
+        """Subscribe all active live paper trading option contracts to WebSocket feed."""
+        if not self.ws_manager:
+            return
+        active_pos = paper_trader.get_portfolio(mode="live").active_positions
+        opt_instruments: list[tuple[int, int]] = []
+        for p in active_pos:
+            if p.option_security_id:
+                try:
+                    opt_instruments.append((2, int(p.option_security_id)))
+                except (ValueError, TypeError):
+                    pass
+        if opt_instruments:
+            await self.ws_manager.subscribe(opt_instruments)
+
+    async def _connect_websocket(self, client_id: str, access_token: str) -> None:
+        """Establish persistent binary streaming connection and subscribe universe."""
+        if not self.ws_manager:
+            return
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            from unittest.mock import AsyncMock, MagicMock
+
+            if not isinstance(self.ws_manager.connect, (AsyncMock, MagicMock)):
+                logger.debug("Skipping unmocked live WebSocket connect during pytest")
+                return
+
+        try:
+            await self.ws_manager.connect(client_id, access_token)
+            await self._subscribe_universe_instruments()
+            await self._subscribe_active_positions()
+            self._state.feed_status = "LIVE"
+            logger.info("Dhan WebSocket connected and universe instruments subscribed")
+        except Exception as exc:
+            logger.warning(
+                "Could not connect Dhan WebSocket: %s; falling back seamlessly to HTTP polling",
+                type(exc).__name__,
+            )
+
+    async def _handle_incoming_ws_tick(self, tick: dict) -> None:
+        """
+        Sub-second tick handler from Dhan WebSocket feed.
+        - Immediately updates active paper trading positions with live option ticks,
+          triggering instantaneous trailing stop-loss and profit target exits.
+        - Updates in-memory prices and radar for underlying instruments.
+        - Broadcasts real-time tick delta to connected SSE stream subscribers.
+        """
+        if not isinstance(tick, dict):
+            return
+
+        sec_id = tick.get("security_id")
+        ltp = tick.get("ltp")
+        if sec_id is None or ltp is None:
+            return
+
+        try:
+            ltp = float(ltp)
+        except (ValueError, TypeError):
+            return
+        if ltp <= 0:
+            return
+
+        sec_id_str = str(sec_id)
+        seg = tick.get("exchange_segment")
+        vol = int(tick.get("volume", 0)) if tick.get("volume") is not None else 0
+
+        # 1. Check if tick corresponds to active live paper trading option contract
+        active_live = paper_trader.get_portfolio(mode="live").active_positions
+        matching_opt_positions = [
+            p for p in active_live if p.option_security_id == sec_id_str
+        ]
+
+        is_option = bool(matching_opt_positions) or (seg == 2)
+        if is_option:
+            # Maintain live option candle formation
+            self._get_or_update_option_candles(sec_id_str, ltp, vol)
+
+            # Instantaneous position evaluation and exit execution
+            paper_trader.update_market_prices(
+                price_map={},
+                option_price_map={sec_id_str: ltp},
+                feed_mode="live",
+            )
+            self._state.paper_portfolio = paper_trader.get_portfolio(
+                mode=self._state.active_mode
+            )
+
+        # 2. Check if tick corresponds to an underlying instrument in universe
+        inst = self._sec_id_to_instrument.get(sec_id_str)
+        if inst:
+            # Update live intraday candles
+            self.get_or_update_live_candles(inst, {"last_price": ltp, "volume": vol})
+
+            # Update index radar if applicable
+            if inst.symbol in self._state.radar:
+                radar_item = self._state.radar[inst.symbol]
+                radar_item.close = round(ltp, 2)
+
+            # Update any active paper positions matching the underlying instrument
+            underlying_positions = [p for p in active_live if p.symbol == inst.symbol]
+            if underlying_positions:
+                paper_trader.update_market_prices(
+                    price_map={inst.symbol: ltp},
+                    option_price_map=None,
+                    feed_mode="live",
+                )
+                self._state.paper_portfolio = paper_trader.get_portfolio(
+                    mode=self._state.active_mode
+                )
+
+        # 3. Broadcast real-time tick delta to active SSE subscriber queues
+        broadcast_data: dict = {
+            "type": "tick",
+            "security_id": sec_id,
+            "ltp": round(ltp, 2),
+            "volume": vol,
+            "response_code": tick.get("response_code", 2),
+            "timestamp": tick.get("ltt"),
+        }
+        if inst:
+            broadcast_data["symbol"] = inst.symbol
+            broadcast_data["instrument_type"] = inst.instrument_type
+        elif matching_opt_positions:
+            broadcast_data["symbol"] = matching_opt_positions[0].symbol
+            broadcast_data["strike_symbol"] = matching_opt_positions[0].strike_symbol
+            broadcast_data["is_option"] = True
+
+        await self.broadcast(broadcast_data)
 
     def check_session_reset(self):
         today = datetime.now().date()
@@ -92,42 +289,47 @@ class ScannerWorker:
         return (current_time - failed_ts) >= 60.0
 
     def _load_saved_session(self):
-        # Do not load disk session during automated testing
-        if os.environ.get("PYTEST_CURRENT_TEST"):
-            return
+        # Zero-Token Persistence: Clean up any stale disk session file
         try:
             if SESSION_FILE.exists():
-                with open(SESSION_FILE, "r") as f:
-                    data = json.load(f)
-                    cid = data.get("client_id")
-                    tok = data.get("access_token")
-                    if cid and tok and cid != "TEST_CID":
-                        self._session_credentials = (cid, tok)
-                        self._state.active_mode = "live"
-                        logger.info("Restored active Dhan session into live scanner mode")
-        except Exception as e:
-            logger.warning(f"Could not load saved session: {e}")
+                SESSION_FILE.unlink(missing_ok=True)
+        except Exception:
+            pass
 
-    def set_session_credentials(self, client_id: Optional[str], access_token: Optional[str]):
+    def set_session_credentials(
+        self, client_id: Optional[str], access_token: Optional[str]
+    ):
         self._historical_disabled = False
         if client_id and access_token:
             self._session_credentials = (client_id, access_token)
             self._state.active_mode = "live"
+            # Launch async WebSocket connection
             try:
-                SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
-                with open(SESSION_FILE, "w") as f:
-                    json.dump({"client_id": client_id, "access_token": access_token}, f)
-                os.chmod(SESSION_FILE, 0o600)
-            except Exception as e:
-                logger.warning(f"Could not persist active session: {e}")
+                loop = asyncio.get_running_loop()
+                if self._ws_connect_task and not self._ws_connect_task.done():
+                    self._ws_connect_task.cancel()
+                self._ws_connect_task = loop.create_task(
+                    self._connect_websocket(client_id, access_token)
+                )
+            except RuntimeError:
+                pass
         else:
             self._session_credentials = None
             self._state.active_mode = "demo"
-            try:
-                if SESSION_FILE.exists():
-                    SESSION_FILE.unlink()
-            except Exception as e:
-                logger.warning(f"Could not clear session file: {e}")
+            self._state.feed_status = "DEMO"
+            if self.ws_manager and self.ws_manager.is_connected:
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self.ws_manager.disconnect())
+                except RuntimeError:
+                    pass
+
+        # Zero-Token Persistence: Strictly in-memory, remove file if present
+        try:
+            if SESSION_FILE.exists():
+                SESSION_FILE.unlink(missing_ok=True)
+        except Exception as e:
+            logger.debug(f"Could not clear session file: {e}")
 
     def get_state(self) -> ScannerState:
         return self._state
@@ -381,10 +583,11 @@ class ScannerWorker:
             except Exception as e:
                 logger.warning(f"Error fetching live marketfeed quotes: {e}")
 
-        # Derive active mode and feed health from quote success
+        # Derive active mode and feed health from quote success or active WebSocket feed
         loop_time = asyncio.get_running_loop().time()
+        ws_live = bool(self.ws_manager and self.ws_manager.is_connected)
         if has_creds:
-            if live_quotes and len(live_quotes) > 0:
+            if ws_live or (live_quotes and len(live_quotes) > 0):
                 self._last_successful_quote_time = loop_time
                 mode = "live"
                 self._state.active_mode = "live"
@@ -579,6 +782,8 @@ class ScannerWorker:
         # Update paper trading engine with latest market prices and real option prices
         paper_trader.update_market_prices(price_map, option_price_map)
         paper_trader.on_signals_cycle(new_signals, feed_mode=mode)
+        if mode == "live" and ws_live:
+            await self._subscribe_active_positions()
 
         self._state.signals = new_signals
         self._state.radar = new_radar
@@ -740,6 +945,15 @@ class ScannerWorker:
 
     async def stop(self):
         self._running = False
+        if paper_trader.on_position_opened == self._on_paper_position_opened:
+            paper_trader.on_position_opened = None
+        if self._ws_connect_task and not self._ws_connect_task.done():
+            self._ws_connect_task.cancel()
+            try:
+                await self._ws_connect_task
+            except asyncio.CancelledError:
+                pass
+            self._ws_connect_task = None
         if self._task:
             self._task.cancel()
             try:
@@ -747,6 +961,11 @@ class ScannerWorker:
             except asyncio.CancelledError:
                 pass
             self._task = None
+        if self.ws_manager and self.ws_manager.is_connected:
+            try:
+                await self.ws_manager.disconnect()
+            except Exception as e:
+                logger.debug(f"Error disconnecting ws_manager: {e}")
         close_fn = getattr(self.dhan_client, "close", None)
         if close_fn:
             import inspect

@@ -71,8 +71,8 @@ class DhanWebSocketManager:
         """
         Connect to Dhan WebSocket feed and complete binary login handshake.
         """
-        if self.is_connected:
-            logger.warning("WebSocket manager already connected; disconnecting first.")
+        if self.status != "DISCONNECTED" or (self._reconnect_task and not self._reconnect_task.done()):
+            logger.warning("WebSocket manager already active or reconnecting; disconnecting first.")
             await self.disconnect()
 
         self._client_id = str(client_id)
@@ -285,6 +285,15 @@ class DhanWebSocketManager:
 
             try:
                 self._reconnect_count += 1
+                if self._ws is not None:
+                    try:
+                        close_result = self._ws.close()
+                        if inspect.isawaitable(close_result):
+                            await close_result
+                    except Exception:
+                        pass
+                    self._ws = None
+
                 conn_result = websockets.connect(self.url)
                 if inspect.isawaitable(conn_result):
                     self._ws = await conn_result

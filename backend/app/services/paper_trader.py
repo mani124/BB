@@ -1,7 +1,8 @@
+import asyncio
 import uuid
 import logging
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Callable, Literal, Optional
 from pydantic import BaseModel
 from app.services.strategy_engine import Signal
 from app.services.strike_selector import get_lot_size
@@ -63,6 +64,7 @@ class PaperTradingEngine:
         self._portfolio = PaperPortfolio()
         self._processed_signal_ids: set[str] = set()
         self.storage = None
+        self.on_position_opened: Optional[Callable[[PaperPosition], Any]] = None
         if db_path is not None:
             from app.services.paper_storage import PaperStorage
             self.storage = PaperStorage(db_path)
@@ -256,6 +258,17 @@ class PaperTradingEngine:
         if self.storage:
             self.storage.upsert_position(pos)
             self.storage.add_processed_signal(signal.id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        if self.on_position_opened:
+            try:
+                res = self.on_position_opened(pos)
+                if asyncio.iscoroutine(res):
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(res)
+                    except RuntimeError:
+                        pass
+            except Exception as e:
+                logger.warning(f"Error executing on_position_opened callback: {e}")
         return pos
 
     def on_signals_cycle(self, signals: list[Signal], feed_mode: str = "demo"):
@@ -271,7 +284,8 @@ class PaperTradingEngine:
     def update_market_prices(
         self,
         price_map: dict[str, float],
-        option_price_map: Optional[dict[str, float]] = None
+        option_price_map: Optional[dict[str, float]] = None,
+        feed_mode: Optional[str] = None
     ):
         """Update active positions with current underlying prices and live option prices from Dhan."""
         delta = 0.55
@@ -279,6 +293,10 @@ class PaperTradingEngine:
         still_active = []
 
         for pos in self._portfolio.active_positions:
+            if feed_mode is not None and getattr(pos, "feed_mode", "demo") != feed_mode:
+                still_active.append(pos)
+                continue
+
             curr_spot = price_map.get(pos.symbol)
             if curr_spot is not None:
                 pos.current_underlying = round(curr_spot, 2)
