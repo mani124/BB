@@ -14,7 +14,8 @@ from app.services.universe_manager import UniverseManager, Instrument
 from app.services.dhan_client import DhanClient
 from app.services.indicators import calculate_indicators
 from app.services.strategy_engine import evaluate_signals, Signal
-from app.services.strike_selector import resolve_live_strike_from_chain
+from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size
+from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.paper_trader import paper_trader, PaperPortfolio
 from app.services.momentum_ranker import MomentumRanker, MomentumRankings
 
@@ -453,11 +454,12 @@ class ScannerWorker:
             # Maintain and update 100% real candles
             df = self.get_or_update_live_candles(inst, inst_quote)
             live_ltp = float(inst_quote.get("last_price", 0.0)) if inst_quote else None
-
             # Compute Indicators
             ind_df = calculate_indicators(df)
+            current_price = float(live_ltp) if (live_ltp and live_ltp > 0) else 0.0
             if not ind_df.empty:
-                current_price = live_ltp if (live_ltp and live_ltp > 0) else float(ind_df.iloc[-1]["close"])
+                if current_price <= 0:
+                    current_price = float(ind_df.iloc[-1]["close"])
                 price_map[inst.symbol] = current_price
                 # If Dhan provides official session VWAP (average_price), use it
                 if inst_quote and float(inst_quote.get("average_price", 0.0)) > 0:
@@ -547,6 +549,16 @@ class ScannerWorker:
                 except Exception as e:
                     logger.warning(f"Error enriching signal with live option chain for {inst.symbol}: {e}")
 
+            # Also evaluate Setup 5 (Option Chart BB Scalp) directly on live option candles
+            if mode == "live" and cid and tok and current_price > 0:
+                try:
+                    expiry, oc = await self.get_or_fetch_option_chain(cid, tok, inst)
+                    if oc:
+                        opt_signals = await self._evaluate_option_chart_setups(cid, tok, inst, oc, expiry, current_price)
+                        detected.extend(opt_signals)
+                except Exception as e:
+                    logger.warning(f"Error evaluating Setup 5 option chart for {inst.symbol}: {e}")
+
             new_signals.extend(detected)
 
             # Update progress
@@ -570,6 +582,76 @@ class ScannerWorker:
         # Broadcast update to connected SSE subscribers
         await self.broadcast(self._state.model_dump())
         return self._state
+
+    async def _evaluate_option_chart_setups(
+        self,
+        cid: str,
+        tok: str,
+        inst: Instrument,
+        oc: dict,
+        expiry: str,
+        underlying_price: float
+    ) -> list[Signal]:
+        results: list[Signal] = []
+        if not oc or underlying_price <= 0:
+            return results
+
+        strikes = []
+        for k in oc.keys():
+            try:
+                strikes.append(float(k))
+            except ValueError:
+                pass
+        if not strikes:
+            return results
+
+        atm_strike = min(strikes, key=lambda s: abs(s - underlying_price))
+        atm_key = f"{atm_strike:.6f}" if f"{atm_strike:.6f}" in oc else str(atm_strike)
+        strike_data = oc.get(atm_key, oc.get(f"{atm_strike:.6f}", {}))
+        if not isinstance(strike_data, dict):
+            return results
+
+        lot_size = get_lot_size(inst.symbol)
+        inst_type_dhan = "OPTIDX" if inst.instrument_type == "INDEX" else "OPTSTK"
+
+        for opt_type in ("CE", "PE"):
+            opt_info = strike_data.get(opt_type.lower(), {})
+            if not isinstance(opt_info, dict):
+                continue
+            sec_id = opt_info.get("security_id")
+            if not sec_id:
+                continue
+
+            strike_symbol = f"{inst.symbol} {int(atm_strike)} {opt_type}"
+            try:
+                opt_candles = await self.dhan_client.fetch_intraday_candles(
+                    client_id=cid,
+                    access_token=tok,
+                    security_id=str(sec_id),
+                    exchange_segment="NSE_FNO",
+                    instrument_type=inst_type_dhan,
+                    interval=5
+                )
+                if not opt_candles.empty and len(opt_candles) >= 20:
+                    ind_opt = calculate_indicators(opt_candles)
+                    sig = evaluate_option_chart_signal(
+                        symbol=inst.symbol,
+                        strike_symbol=strike_symbol,
+                        option_type=opt_type,
+                        option_df=ind_opt,
+                        underlying_price=underlying_price,
+                        strike_price=atm_strike,
+                        expiry_date=expiry,
+                        lot_size=lot_size,
+                        option_security_id=str(sec_id),
+                        timeframe="5m"
+                    )
+                    if sig:
+                        results.append(sig)
+            except Exception as e:
+                logger.debug(f"Error checking option chart candles for {strike_symbol}: {e}")
+
+        return results
 
     async def _loop(self):
         while self._running:

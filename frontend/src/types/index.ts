@@ -4,7 +4,8 @@ export type SetupType =
   | 'Setup 1: BB Squeeze Breakout'
   | 'Setup 2: Walking the Bands (9 EMA)'
   | 'Setup 3: W/M Reversal'
-  | 'Setup 4: 9:30 AM Opening Range Breakout';
+  | 'Setup 4: 9:30 AM Opening Range Breakout'
+  | 'Setup 5: Option Chart BB Scalp';
 
 export interface OptionStrikeRecommendation {
   symbol: string;

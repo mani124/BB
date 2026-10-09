@@ -10,6 +10,7 @@ class SetupType(str, enum.Enum):
     SETUP_2_WALKING = "Setup 2: Walking the Bands (9 EMA)"
     SETUP_3_REVERSAL = "Setup 3: W/M Reversal"
     SETUP_4_ORB = "Setup 4: 9:30 AM Opening Range Breakout"
+    SETUP_5_OPTION_BB = "Setup 5: Option Chart BB Scalp"
 
 class Signal(BaseModel):
     id: str
