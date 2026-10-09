@@ -201,6 +201,20 @@ async def verify_token(request: Request, creds: tuple[str, str] = Depends(get_dh
         "error": result.get("error")
     }
 
+@router.get("/status")
+def get_auth_status():
+    from app.main import worker
+    has_creds = bool(worker._session_credentials)
+    client_id = worker._session_credentials[0] if has_creds else None
+    return {
+        "authenticated": has_creds,
+        "client_id": client_id,
+        "feed_status": worker.get_state().feed_status,
+        "active_mode": worker.get_state().active_mode,
+        "ws_connected": bool(worker.ws_manager and worker.ws_manager.is_connected),
+    }
+
+
 @router.post("/disconnect")
 def disconnect_session():
     from app.main import worker

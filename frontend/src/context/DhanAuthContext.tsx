@@ -71,7 +71,7 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     if (savedId && savedToken) {
-      if (savedToken.includes('*')) {
+      if (savedToken.includes('*') || savedToken === 'server_active') {
         // OAuth masked session, already authenticated on server
         setClientId(savedId);
         setAccessToken(savedToken);
@@ -79,6 +79,20 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // Raw token session
         connect(savedId, savedToken);
       }
+    } else {
+      // Check if server already has an active session (e.g. browser reopen)
+      fetch('/api/auth/status')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && data.authenticated) {
+            const cid = data.client_id || 'Active';
+            setClientId(cid);
+            setAccessToken('server_active');
+            sessionStorage.setItem('dhan_client_id', cid);
+            sessionStorage.setItem('dhan_access_token', 'server_active');
+          }
+        })
+        .catch(() => {});
     }
   }, []);
 
