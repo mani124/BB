@@ -107,13 +107,16 @@ class DhanClient:
         headers = {
             "client-id": client_id,
             "access-token": access_token,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Accept": "application/json"
         }
         payload = {
+            "dhanClientId": str(client_id),
             "securityId": str(security_id),
             "exchangeSegment": exchange_segment,
             "instrument": instrument_type,
             "interval": interval,
+            "oi": False,
             "fromDate": from_date,
             "toDate": to_date
         }
@@ -132,7 +135,7 @@ class DhanClient:
                     resp = await client.post("/charts/intraday", headers=headers, json=payload)
 
                 if resp.status_code != 200:
-                    logger.warning(f"Dhan intraday chart error: HTTP {resp.status_code} for sec_id={security_id}")
+                    logger.warning(f"Dhan intraday chart error: HTTP {resp.status_code} for sec_id={security_id}: {resp.text}")
                     return pd.DataFrame()
 
                 data = resp.json()
