@@ -81,7 +81,7 @@ class DhanWebSocketManager:
         self.status = "CONNECTING"
 
         try:
-            conn_result = websockets.connect(self.url)
+            conn_result = websockets.connect(self.url, ping_interval=None)
             if inspect.isawaitable(conn_result):
                 self._ws = await conn_result
             else:
@@ -294,7 +294,7 @@ class DhanWebSocketManager:
                         pass
                     self._ws = None
 
-                conn_result = websockets.connect(self.url)
+                conn_result = websockets.connect(self.url, ping_interval=None)
                 if inspect.isawaitable(conn_result):
                     self._ws = await conn_result
                 else:

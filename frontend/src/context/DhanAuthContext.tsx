@@ -180,7 +180,6 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       sessionStorage.setItem('dhan_client_id', cId);
       sessionStorage.setItem('dhan_access_token', maskedToken);
       sessionStorage.setItem('dhan_token_expiry', expiryMs.toString());
-      sessionStorage.removeItem('dhan_oauth_app_secret');
 
       setClientId(cId);
       setAccessToken(maskedToken);
@@ -190,6 +189,8 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (err: any) {
       setError(err.message || 'OAuth token exchange network error');
       return false;
+    } finally {
+      sessionStorage.removeItem('dhan_oauth_app_secret');
     }
   };
 

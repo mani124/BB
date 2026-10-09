@@ -45,11 +45,19 @@ def test_decode_ticker_packet_code_2():
 
 
 def test_decode_quote_packet_code_4():
-    # 50-byte Quote packet: Code 4, Len 50, Seg 2, SecId 44608, LTP 160.5, VWAP 158.0, Vol 250000
-    dummy = struct.pack("<BBHiififiiii", 4, 0, 50, 44608, 1728500000, 160.5, 100, 158.0, 250000, 150, 165, 148)
+    # 50-byte Quote packet: Code 4, Len 50, Seg 2, SecId 44608, LTP 160.5, VWAP 158.0, Vol 250000, Close 152
+    dummy = (
+        struct.pack(
+            "<BBHiififiiiii",
+            4, 2, 50, 44608, 1728500000, 160.5, 100, 158.0, 250000, 150, 165, 148, 152
+        )
+        + b"\x00" * 6
+    )
+    assert len(dummy) == 50
     parsed = decode_packet(dummy)
     assert parsed is not None
     assert parsed["response_code"] == 4
+    assert parsed["exchange_segment"] == 2
     assert parsed["security_id"] == 44608
     assert pytest.approx(parsed["ltp"], 0.01) == 160.5
     assert pytest.approx(parsed["vwap"], 0.01) == 158.0
@@ -57,6 +65,8 @@ def test_decode_quote_packet_code_4():
     assert parsed["open"] == 150.0
     assert parsed["high"] == 165.0
     assert parsed["low"] == 148.0
+    assert parsed["close"] is not None
+    assert parsed["close"] == 152.0
 
 
 def test_decode_login_ack_code_11():

@@ -131,4 +131,35 @@ describe('DhanAuthContext OAuth and Zero-Persistence Flow', () => {
     expect(sessionStorage.getItem('dhan_access_token')).toBeNull();
     expect(sessionStorage.getItem('dhan_token_expiry')).toBeNull();
   });
+
+  it('clears dhan_oauth_app_secret from sessionStorage even if exchange fails', async () => {
+    sessionStorage.setItem('dhan_oauth_app_id', 'my_app_123');
+    sessionStorage.setItem('dhan_oauth_app_secret', 'sec_456');
+
+    delete (window as any).location;
+    (window as any).location = {
+      search: '?consentId=consent_invalid',
+      pathname: '/',
+      origin: 'http://localhost',
+    };
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ detail: 'Invalid consent ID' }),
+    });
+    global.fetch = mockFetch;
+
+    const wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+      <DhanAuthProvider>{children}</DhanAuthProvider>
+    );
+
+    const { result } = renderHook(() => useDhanAuth(), { wrapper });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(result.current.isLoggedIn).toBe(false);
+    expect(sessionStorage.getItem('dhan_oauth_app_secret')).toBeNull();
+  });
 });

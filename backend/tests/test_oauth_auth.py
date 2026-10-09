@@ -12,7 +12,7 @@ def test_oauth_login_url_generation():
     data = res.json()
     assert "https://auth.dhan.co/login/consent" in data["login_url"]
     assert "client_id=APP123" in data["login_url"]
-    assert "redirect_uri=http://localhost:5174/" in data["login_url"]
+    assert "redirect_uri=http%3A%2F%2Flocalhost%3A5174%2F" in data["login_url"]
 
 def test_oauth_login_url_without_redirect_uri():
     res = client.get("/api/auth/oauth/login-url?app_id=APP123")

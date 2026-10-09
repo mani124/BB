@@ -32,8 +32,9 @@ async def test_websocket_manager_lifecycle():
     )
     mock_ws.close = AsyncMock()
 
-    with patch("websockets.connect", return_value=mock_ws):
+    with patch("websockets.connect", return_value=mock_ws) as mock_connect:
         await mgr.connect("1000000000", "TEST_TOKEN")
+        mock_connect.assert_called_with(mgr.url, ping_interval=None)
         assert mgr.is_connected is True
         assert mgr.status == "CONNECTED"
         await mgr.subscribe([(1, 1330), (2, 44608)])
@@ -56,9 +57,13 @@ async def test_websocket_reader_dispatches_ticks():
 
     # 16-byte Ticker packet: Code 2, Seg 1, Len 16, SecId 1330, LTT 1728500000, LTP 25050.25
     ticker_bytes = struct.pack("<BBHiif", 2, 1, 16, 1330, 1728500000, 25050.25)
-    # 50-byte Quote packet: Code 4, Seg 2, Len 50, SecId 44608, LTT 1728500000, LTP 160.5, LTQ 100, VWAP 158.0, Vol 250000
-    quote_bytes = struct.pack(
-        "<BBHiififiiii", 4, 2, 50, 44608, 1728500000, 160.5, 100, 158.0, 250000, 150, 165, 148
+    # 50-byte Quote packet: Code 4, Seg 2, Len 50, SecId 44608, LTT 1728500000, LTP 160.5, LTQ 100, VWAP 158.0, Vol 250000, Close 152
+    quote_bytes = (
+        struct.pack(
+            "<BBHiififiiiii",
+            4, 2, 50, 44608, 1728500000, 160.5, 100, 158.0, 250000, 150, 165, 148, 152
+        )
+        + b"\x00" * 6
     )
     # Malformed packet
     malformed_bytes = b"\x02\x00"

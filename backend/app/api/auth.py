@@ -1,5 +1,6 @@
 import logging
 from typing import Optional
+import urllib.parse
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
@@ -25,11 +26,10 @@ def get_oauth_login_url(
     app_id: str = Query(..., min_length=1, description="Dhan App ID / Client ID"),
     redirect_uri: Optional[str] = Query(None, description="Redirect URI after consent"),
 ):
-    app_id_clean = app_id.strip()
-    query_parts = [f"client_id={app_id_clean}"]
+    params = {"client_id": app_id.strip()}
     if redirect_uri and redirect_uri.strip():
-        query_parts.append(f"redirect_uri={redirect_uri.strip()}")
-    query_str = "&".join(query_parts)
+        params["redirect_uri"] = redirect_uri.strip()
+    query_str = urllib.parse.urlencode(params)
     login_url = f"{settings.DHAN_LOGIN_URL}?{query_str}"
     return {"login_url": login_url}
 
