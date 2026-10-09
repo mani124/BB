@@ -1,6 +1,18 @@
-import React from 'react';
-import { PaperPortfolio } from '../types';
-import { ArrowUpRight, ArrowDownRight, CheckCircle2, XCircle, TrendingUp, TrendingDown, RefreshCcw, Power, Activity, Receipt } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { PaperPortfolio, PaperPosition } from '../types';
+import { 
+  ArrowUpRight, 
+  ArrowDownRight, 
+  CheckCircle2, 
+  XCircle, 
+  TrendingUp, 
+  TrendingDown, 
+  RefreshCcw, 
+  Power, 
+  Activity, 
+  Receipt,
+  X
+} from 'lucide-react';
 
 interface PaperPortfolioViewProps {
   portfolio?: PaperPortfolio;
@@ -10,6 +22,37 @@ interface PaperPortfolioViewProps {
   onResetPortfolio: () => void;
 }
 
+const SETUP_FILTER_OPTIONS = [
+  { id: 'ALL', label: 'All Setups' },
+  { id: 'SETUP_1', label: 'Setup 1 (Squeeze)' },
+  { id: 'SETUP_2', label: 'Setup 2 (Walking Bands)' },
+  { id: 'SETUP_3', label: 'Setup 3 (W/M Reversal)' },
+  { id: 'SETUP_4', label: 'Setup 4 (ORB 9:30 AM)' },
+  { id: 'SETUP_5', label: 'Setup 5 (Option Chart)' },
+];
+
+const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
+  if (filterId === 'ALL') return true;
+  if (!tradeSetup) return false;
+  const s = tradeSetup.toUpperCase();
+  if (filterId === 'SETUP_1') {
+    return s.includes('SETUP_1') || s.includes('SETUP 1') || s.includes('SQUEEZE');
+  }
+  if (filterId === 'SETUP_2') {
+    return s.includes('SETUP_2') || s.includes('SETUP 2') || s.includes('WALKING');
+  }
+  if (filterId === 'SETUP_3') {
+    return s.includes('SETUP_3') || s.includes('SETUP 3') || s.includes('REVERSAL') || s.includes('W/M');
+  }
+  if (filterId === 'SETUP_4') {
+    return s.includes('SETUP_4') || s.includes('SETUP 4') || s.includes('ORB') || s.includes('OPENING RANGE');
+  }
+  if (filterId === 'SETUP_5') {
+    return s.includes('SETUP_5') || s.includes('SETUP 5') || s.includes('OPTION');
+  }
+  return false;
+};
+
 export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
   portfolio,
   onClosePosition,
@@ -17,6 +60,21 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
   onChangeLots,
   onResetPortfolio,
 }) => {
+  const [selectedSetupFilter, setSelectedSetupFilter] = useState<string>('ALL');
+  const [selectedTradeForReceipt, setSelectedTradeForReceipt] = useState<PaperPosition | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedTradeForReceipt(null);
+      }
+    };
+    if (selectedTradeForReceipt) {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [selectedTradeForReceipt]);
+
   if (!portfolio) {
     return <div className="p-8 text-center text-slate-500">Loading paper portfolio...</div>;
   }
@@ -40,6 +98,23 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
     if (val < 0) return `-₹${formatted}`;
     return `₹${formatted}`;
   };
+
+  // Filtered trades and metrics
+  const closedTrades = portfolio.closed_trades ?? [];
+  const filteredTrades = closedTrades.filter((t) => matchSetup(t.setup_type, selectedSetupFilter));
+  
+  const winningFilteredTrades = filteredTrades.filter((t) => {
+    const pnl = t.net_pnl !== undefined ? t.net_pnl : (t.gross_pnl !== undefined ? t.gross_pnl : t.pnl_rupees);
+    return pnl > 0;
+  }).length;
+
+  const filteredWinRate = filteredTrades.length > 0 
+    ? ((winningFilteredTrades / filteredTrades.length) * 100).toFixed(1) 
+    : '0.0';
+
+  const filteredGross = filteredTrades.reduce((acc, t) => acc + (t.gross_pnl ?? t.pnl_rupees ?? 0), 0);
+  const filteredNet = filteredTrades.reduce((acc, t) => acc + (t.net_pnl ?? t.pnl_rupees ?? 0), 0);
+  const filteredSlippage = filteredTrades.reduce((acc, t) => acc + (t.total_slippage_cost ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -276,15 +351,73 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
 
       {/* 4. Closed Trades History */}
       <div className="bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 rounded-2xl overflow-hidden shadow-sm">
-        <div className="px-5 py-3.5 border-b border-slate-200 dark:border-dark-700 bg-slate-50 dark:bg-dark-900">
+        <div className="px-5 py-3.5 border-b border-slate-200 dark:border-dark-700 bg-slate-50 dark:bg-dark-900 flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
-            Closed Trades Journal ({portfolio.closed_trades.length})
+            Closed Trades Journal ({filteredTrades.length}{selectedSetupFilter !== 'ALL' ? ` of ${closedTrades.length}` : ''})
           </h3>
         </div>
 
-        {portfolio.closed_trades.length === 0 ? (
+        {/* Setup Filter Tabs & Dynamic Summary Strip */}
+        <div className="p-4 border-b border-slate-200 dark:border-dark-700 space-y-3 bg-white dark:bg-dark-800">
+          <div className="flex flex-wrap items-center gap-2">
+            {SETUP_FILTER_OPTIONS.map((opt) => {
+              const isActive = selectedSetupFilter === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => setSelectedSetupFilter(opt.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                    isActive
+                      ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30'
+                      : 'bg-slate-100 hover:bg-slate-200 dark:bg-dark-900 dark:hover:bg-dark-700 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-dark-700'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Dynamic Setup Summary Strip */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-dark-900/60 px-4 py-2.5 rounded-xl border border-slate-200/80 dark:border-dark-700/80 text-xs">
+            <div className="flex items-center gap-5 flex-wrap">
+              <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
+                <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
+                <span>{filteredTrades.length} Trades</span>
+              </div>
+              <div className="text-slate-600 dark:text-slate-400">
+                <span>Win Rate: </span>
+                <strong className="text-cyan-600 dark:text-cyan-400 font-mono font-bold">
+                  {filteredWinRate}% Win Rate
+                </strong>
+              </div>
+              <div className="text-slate-600 dark:text-slate-400">
+                <span>Gross P&L: </span>
+                <strong className={`font-mono font-bold ${filteredGross >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                  {formatCurrency(filteredGross, true)}
+                </strong>
+              </div>
+              <div className="text-slate-600 dark:text-slate-400">
+                <span>Net P&L: </span>
+                <strong className={`font-mono font-bold ${filteredNet >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                  {formatCurrency(filteredNet, true)}
+                </strong>
+              </div>
+              <div className="text-slate-600 dark:text-slate-400">
+                <span>Slippage Drag: </span>
+                <strong className="text-amber-600 dark:text-amber-400 font-mono font-bold">
+                  {filteredSlippage > 0 ? `-₹${filteredSlippage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₹0.00'}
+                </strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {filteredTrades.length === 0 ? (
           <div className="p-6 text-center text-xs text-slate-500">
-            No closed trades yet. Trades will record here when targets or stop-losses are triggered.
+            {closedTrades.length === 0
+              ? 'No closed trades yet. Trades will record here when targets or stop-losses are triggered.'
+              : 'No closed trades matching the selected setup filter.'}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -296,13 +429,16 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                   <th className="py-2.5 px-4">Exit Reason</th>
                   <th className="py-2.5 px-4">Entry ₹</th>
                   <th className="py-2.5 px-4">Exit ₹</th>
-                  <th className="py-2.5 px-4">Net P&L (₹)</th>
+                  <th className="py-2.5 px-4">Gross vs Net P&L</th>
                   <th className="py-2.5 px-4">Outcome</th>
+                  <th className="py-2.5 px-4 text-center">Receipt</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-dark-700/60">
-                {portfolio.closed_trades.slice().reverse().map((trade) => {
-                  const isWin = trade.pnl_rupees > 0;
+                {filteredTrades.slice().reverse().map((trade) => {
+                  const grossVal = trade.gross_pnl ?? trade.pnl_rupees ?? 0;
+                  const netVal = trade.net_pnl ?? trade.pnl_rupees ?? 0;
+                  const isWin = netVal > 0;
 
                   return (
                     <tr key={trade.id} className="hover:bg-slate-50 dark:hover:bg-dark-700/30 transition">
@@ -322,15 +458,30 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                       </td>
 
                       <td className="py-2.5 px-4 font-mono text-slate-700 dark:text-slate-300">
-                        ₹{trade.option_entry.toFixed(1)}
+                        <div>₹{trade.option_entry.toFixed(1)}</div>
+                        {trade.entry_slippage !== undefined && trade.entry_slippage !== null && (
+                          <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                            (Slip: {trade.entry_slippage >= 0 ? `+${trade.entry_slippage.toFixed(1)}` : `${trade.entry_slippage.toFixed(1)}`} pts)
+                          </div>
+                        )}
                       </td>
 
                       <td className="py-2.5 px-4 font-mono text-slate-900 dark:text-white font-bold">
-                        ₹{trade.current_option_price.toFixed(1)}
+                        <div>₹{trade.current_option_price.toFixed(1)}</div>
+                        {trade.exit_slippage !== undefined && trade.exit_slippage !== null && (
+                          <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                            (Slip: -{trade.exit_slippage.toFixed(1)} pts)
+                          </div>
+                        )}
                       </td>
 
-                      <td className={`py-2.5 px-4 font-mono font-black text-sm ${isWin ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {isWin ? '+' : ''}₹{trade.pnl_rupees.toLocaleString('en-IN', { minimumFractionDigits: 1 })}
+                      <td className="py-2.5 px-4 font-mono">
+                        <div className={`font-semibold text-xs ${grossVal >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                          {formatCurrency(grossVal, true)} Gross
+                        </div>
+                        <div className={`font-black text-xs ${netVal >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                          {formatCurrency(netVal, true)} Net
+                        </div>
                       </td>
 
                       <td className="py-2.5 px-4">
@@ -344,6 +495,20 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                           </span>
                         )}
                       </td>
+
+                      <td className="py-2.5 px-4 text-center">
+                        {trade.charges_breakdown ? (
+                          <button
+                            onClick={() => setSelectedTradeForReceipt(trade)}
+                            title="View Charges Breakdown"
+                            className="inline-flex items-center justify-center p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 transition shadow-sm"
+                          >
+                            <Receipt className="h-3.5 w-3.5" />
+                          </button>
+                        ) : (
+                          <span className="text-slate-300 dark:text-slate-600 text-xs">—</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -352,6 +517,124 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* 5. Itemized Tax Popover / Modal */}
+      {selectedTradeForReceipt && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
+          onClick={() => setSelectedTradeForReceipt(null)}
+        >
+          <div 
+            className="bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 rounded-2xl max-w-md w-full shadow-2xl p-5 overflow-hidden text-slate-800 dark:text-slate-100 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-dark-700">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                  <Receipt className="h-4 w-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Dhan & Statutory Taxes Receipt
+                  </h4>
+                  <p className="text-[11px] text-slate-500 font-mono">
+                    {selectedTradeForReceipt.strike_symbol} • {selectedTradeForReceipt.setup_type}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedTradeForReceipt(null)}
+                aria-label="Close"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-dark-700 transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {(() => {
+              const cb = selectedTradeForReceipt.charges_breakdown ?? {
+                buy_turnover: selectedTradeForReceipt.option_entry * selectedTradeForReceipt.quantity,
+                sell_turnover: selectedTradeForReceipt.current_option_price * selectedTradeForReceipt.quantity,
+                total_turnover: (selectedTradeForReceipt.option_entry + selectedTradeForReceipt.current_option_price) * selectedTradeForReceipt.quantity,
+                orders_count: 2,
+                brokerage: 40.0,
+                stt: 0,
+                exchange_fee: 0,
+                sebi_fee: 0,
+                stamp_duty: 0,
+                gst: 0,
+                total_charges: selectedTradeForReceipt.total_charges ?? 0,
+              };
+
+              return (
+                <>
+                  {/* Turnover Summary */}
+                  <div className="grid grid-cols-2 gap-2 my-3 p-3 bg-slate-50 dark:bg-dark-900/60 rounded-xl border border-slate-100 dark:border-dark-700 text-xs font-mono">
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase block font-sans">Buy Turnover</span>
+                      <span className="font-bold">₹{cb.buy_turnover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase block font-sans">Sell Turnover</span>
+                      <span className="font-bold">₹{cb.sell_turnover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase block font-sans">Total Turnover</span>
+                      <span className="font-bold">₹{cb.total_turnover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase block font-sans">Orders Executed</span>
+                      <span className="font-bold">{cb.orders_count} orders</span>
+                    </div>
+                  </div>
+
+                  {/* Itemized Fees & Taxes */}
+                  <div className="space-y-2 text-xs divide-y divide-slate-100 dark:divide-dark-700">
+                    <div className="flex justify-between items-center pt-1.5">
+                      <span className="text-slate-600 dark:text-slate-400">Brokerage (Dhan ₹20/order)</span>
+                      <span className="font-mono font-bold">₹{cb.brokerage.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-1.5">
+                      <span className="text-slate-600 dark:text-slate-400">STT (0.1% on Sell)</span>
+                      <span className="font-mono font-bold">₹{cb.stt.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-1.5">
+                      <span className="text-slate-600 dark:text-slate-400">NSE Exchange Fee (0.05%)</span>
+                      <span className="font-mono font-bold">₹{cb.exchange_fee.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-1.5">
+                      <span className="text-slate-600 dark:text-slate-400">GST (18%)</span>
+                      <span className="font-mono font-bold">₹{cb.gst.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-1.5">
+                      <span className="text-slate-600 dark:text-slate-400">Stamp Duty (0.003% on Buy)</span>
+                      <span className="font-mono font-bold">₹{cb.stamp_duty.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-1.5">
+                      <span className="text-slate-600 dark:text-slate-400">SEBI Turnover Fee</span>
+                      <span className="font-mono font-bold">₹{cb.sebi_fee.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {/* Total Deductions */}
+                  <div className="mt-4 pt-3 border-t border-slate-200 dark:border-dark-700 flex justify-between items-center">
+                    <div>
+                      <span className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+                        Total Deductions
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-sans">Dhan F&O Rate Card</span>
+                    </div>
+                    <span className="text-sm font-black font-mono text-rose-600 dark:text-rose-400">
+                      -₹{cb.total_charges.toFixed(2)}
+                    </span>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
