@@ -1,9 +1,12 @@
 import uuid
+import logging
 from datetime import datetime
 from typing import Literal, Optional
 from pydantic import BaseModel
 from app.services.strategy_engine import Signal
 from app.services.strike_selector import get_lot_size
+
+logger = logging.getLogger(__name__)
 
 class PaperPosition(BaseModel):
     id: str
@@ -121,6 +124,29 @@ class PaperTradingEngine:
         # Avoid duplicate trades on same signal ID
         if signal.id in self._processed_signal_ids:
             return None
+
+        # Check re-entry gate: prevent consecutive stop-out churn in the same chop box
+        last_closed = next(
+            (p for p in reversed(self._portfolio.closed_trades) if p.symbol == signal.symbol and p.option_type == signal.option_type),
+            None
+        )
+        if last_closed and last_closed.status == "STOPPED_OUT":
+            if signal.option_type == "CE":
+                failed_peak = last_closed.underlying_entry
+                if signal.entry_price <= failed_peak:
+                    logger.info(
+                        f"Re-entry blocked for {signal.symbol} CE: entry {signal.entry_price} <= previous failed high {failed_peak} (Chop box protection)"
+                    )
+                    self._processed_signal_ids.add(signal.id)
+                    return None
+            elif signal.option_type == "PE":
+                failed_trough = last_closed.underlying_entry
+                if signal.entry_price >= failed_trough:
+                    logger.info(
+                        f"Re-entry blocked for {signal.symbol} PE: entry {signal.entry_price} >= previous failed low {failed_trough} (Chop box protection)"
+                    )
+                    self._processed_signal_ids.add(signal.id)
+                    return None
 
         rec = signal.strike_recommendation
         lot_size = rec.lot_size

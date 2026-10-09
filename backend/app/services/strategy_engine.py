@@ -144,11 +144,15 @@ def evaluate_signals(
     if len(df) >= 22 and adx >= 23.0:
         prev2 = df.iloc[last_idx - 2]
         # CE Walking: Prior 2 candles had strong closes near or above upper band AND trading above session VWAP
+        # Must have expanding upper band (not curling downward into chop) and bullish directional movement (+DI >= -DI)
+        upper_expanding = curr["bb_upper"] >= prev["bb_upper"]
+        di_bull = curr.get("plus_di", 25.0) >= curr.get("minus_di", 20.0) if ("plus_di" in curr and "minus_di" in curr) else True
         prior_bull = (prev["close"] >= prev["bb_upper"] * 0.998) or (prev2["close"] >= prev2["bb_upper"] * 0.998)
-        if prior_bull and ema_9 > mid and close > ema_9 and close > vwap:
+        if prior_bull and upper_expanding and di_bull and ema_9 > mid and close > ema_9 and close > vwap:
             # Low retested near 9 EMA and closed green
             if curr["low"] <= max(ema_9 * 1.004, ema_9 + 0.5) and curr["close"] >= curr["open"]:
-                sl = round(ema_9 - (curr["high"] - curr["low"]) * 0.3, 2)
+                bar_range = max(curr["high"] - curr["low"], close * 0.0015)
+                sl = round(ema_9 - max(bar_range * 0.4, close * 0.001), 2)
                 strike_rec = recommend_strike(symbol, close, "CE", sl)
                 signals.append(Signal(
                     id=f"{symbol}_{timeframe}_S2_CE_{ts_clean}",
@@ -167,11 +171,15 @@ def evaluate_signals(
                 ))
 
         # PE Walking: Prior 2 candles had strong closes near or below lower band AND trading below session VWAP
+        # Must have expanding lower band (not curling upward into chop) and bearish directional movement (-DI >= +DI)
+        lower_expanding = curr["bb_lower"] <= prev["bb_lower"]
+        di_bear = curr.get("minus_di", 25.0) >= curr.get("plus_di", 20.0) if ("plus_di" in curr and "minus_di" in curr) else True
         prior_bear = (prev["close"] <= prev["bb_lower"] * 1.002) or (prev2["close"] <= prev2["bb_lower"] * 1.002)
-        if prior_bear and ema_9 < mid and close < ema_9 and close < vwap:
+        if prior_bear and lower_expanding and di_bear and ema_9 < mid and close < ema_9 and close < vwap:
             # High retested near 9 EMA and closed red
             if curr["high"] >= min(ema_9 * 0.996, ema_9 - 0.5) and curr["close"] <= curr["open"]:
-                sl = round(ema_9 + (curr["high"] - curr["low"]) * 0.3, 2)
+                bar_range = max(curr["high"] - curr["low"], close * 0.0015)
+                sl = round(ema_9 + max(bar_range * 0.4, close * 0.001), 2)
                 strike_rec = recommend_strike(symbol, close, "PE", sl)
                 signals.append(Signal(
                     id=f"{symbol}_{timeframe}_S2_PE_{ts_clean}",
