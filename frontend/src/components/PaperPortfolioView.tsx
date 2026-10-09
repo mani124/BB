@@ -1,6 +1,6 @@
 import React from 'react';
 import { PaperPortfolio } from '../types';
-import { ArrowUpRight, ArrowDownRight, CheckCircle2, XCircle, TrendingUp, TrendingDown, RefreshCcw, Power } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, CheckCircle2, XCircle, TrendingUp, TrendingDown, RefreshCcw, Power, Activity, Receipt } from 'lucide-react';
 
 interface PaperPortfolioViewProps {
   portfolio?: PaperPortfolio;
@@ -21,61 +21,95 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
     return <div className="p-8 text-center text-slate-500">Loading paper portfolio...</div>;
   }
 
-  const isNetPositive = portfolio.total_pnl >= 0;
+  const grossRealized = portfolio.total_gross_pnl ?? portfolio.total_realized_pnl ?? 0;
+  const slippageCost = portfolio.total_slippage_cost ?? 0;
+  const avgSlippagePts = portfolio.avg_slippage_points ?? 0;
+  const totalCharges = portfolio.total_charges ?? 0;
+  const netRealized = portfolio.total_net_pnl ?? portfolio.total_realized_pnl ?? 0;
+
+  const isGrossPositive = grossRealized >= 0;
+  const isNetPositive = netRealized >= 0;
+
+  const formatCurrency = (val: number, showPlus = false) => {
+    const absVal = Math.abs(val);
+    const formatted = absVal.toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    if (val > 0) return `${showPlus ? '+' : ''}₹${formatted}`;
+    if (val < 0) return `-₹${formatted}`;
+    return `₹${formatted}`;
+  };
 
   return (
     <div className="space-y-6">
-      {/* 1. Hero Performance Stats Bar */}
+      {/* 1. 4-Metric Glassmorphism Hero Performance Stats Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Net P&L */}
-        <div className={`p-4 rounded-2xl border shadow-sm ${
+        {/* Gross Realized P&L */}
+        <div className={`p-4 rounded-2xl border backdrop-blur-md shadow-sm transition-all duration-200 ${
+          isGrossPositive 
+            ? 'bg-gradient-to-br from-emerald-50/70 via-white/80 to-emerald-50/30 border-emerald-300/80 dark:from-dark-800/80 dark:via-dark-800/60 dark:to-emerald-950/20 dark:border-emerald-800/60' 
+            : 'bg-gradient-to-br from-rose-50/70 via-white/80 to-rose-50/30 border-rose-300/80 dark:from-dark-800/80 dark:via-dark-800/60 dark:to-rose-950/20 dark:border-rose-800/60'
+        }`}>
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[11px]">Gross Realized P&L</span>
+            {isGrossPositive ? <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> : <TrendingDown className="h-4 w-4 text-rose-600 dark:text-rose-400" />}
+          </div>
+          <div className={`text-2xl font-black font-mono ${isGrossPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+            {formatCurrency(grossRealized, true)}
+          </div>
+          <div className="flex justify-between items-center text-[11px] text-slate-500 dark:text-slate-400 mt-2">
+            <span>Pure Strategy Edge</span>
+            <span className="font-semibold text-slate-700 dark:text-slate-300">{portfolio.winning_trades_count}W / {portfolio.losing_trades_count}L</span>
+          </div>
+        </div>
+
+        {/* Execution Slippage Impact */}
+        <div className="p-4 rounded-2xl border backdrop-blur-md shadow-sm transition-all duration-200 bg-gradient-to-br from-amber-50/70 via-white/80 to-orange-50/30 border-amber-300/80 dark:from-dark-800/80 dark:via-dark-800/60 dark:to-amber-950/20 dark:border-amber-800/60">
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[11px]">Execution Slippage Impact</span>
+            <Activity className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div className="text-2xl font-black font-mono text-amber-600 dark:text-amber-400">
+            {slippageCost > 0 ? `-₹${slippageCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₹0.00'}
+          </div>
+          <div className="flex justify-between items-center text-[11px] text-slate-500 dark:text-slate-400 mt-2">
+            <span>Avg Drag: <strong className="text-amber-600 dark:text-amber-400">{avgSlippagePts > 0 ? `-${avgSlippagePts.toFixed(1)}` : '0.0'} pts</strong></span>
+            <span className="text-slate-500 dark:text-slate-400">Spread & Latency</span>
+          </div>
+        </div>
+
+        {/* Brokerage & Regulatory Taxes */}
+        <div className="p-4 rounded-2xl border backdrop-blur-md shadow-sm transition-all duration-200 bg-gradient-to-br from-indigo-50/70 via-white/80 to-purple-50/30 border-indigo-300/80 dark:from-dark-800/80 dark:via-dark-800/60 dark:to-indigo-950/20 dark:border-indigo-800/60">
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[11px]">Brokerage & Regulatory Taxes</span>
+            <Receipt className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+          </div>
+          <div className="text-2xl font-black font-mono text-indigo-600 dark:text-indigo-400">
+            {totalCharges > 0 ? `-₹${totalCharges.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₹0.00'}
+          </div>
+          <div className="flex justify-between items-center text-[11px] text-slate-500 dark:text-slate-400 mt-2">
+            <span>STT, GST, Exch & SEBI</span>
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Dhan Rate Card</span>
+          </div>
+        </div>
+
+        {/* Net Realized P&L */}
+        <div className={`p-4 rounded-2xl border backdrop-blur-md shadow-sm transition-all duration-200 ${
           isNetPositive 
             ? 'bg-gradient-to-br from-emerald-50 via-white to-emerald-50/30 border-emerald-300 dark:from-dark-800 dark:to-emerald-950/30 dark:border-emerald-800/80' 
             : 'bg-gradient-to-br from-rose-50 via-white to-rose-50/30 border-rose-300 dark:from-dark-800 dark:to-rose-950/30 dark:border-rose-800/80'
         }`}>
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-            <span>Total Forward P&L</span>
+            <span className="font-semibold uppercase tracking-wider text-[11px]">Net Realized P&L</span>
             {isNetPositive ? <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> : <TrendingDown className="h-4 w-4 text-rose-600 dark:text-rose-400" />}
           </div>
           <div className={`text-2xl font-black font-mono ${isNetPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-            {isNetPositive ? '+' : ''}₹{portfolio.total_pnl.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            {formatCurrency(netRealized, true)}
           </div>
-          <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-2">
-            <span>Realized: <strong className={portfolio.total_realized_pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>₹{portfolio.total_realized_pnl.toFixed(2)}</strong></span>
+          <div className="flex justify-between items-center text-[11px] text-slate-500 dark:text-slate-400 mt-2">
+            <span>Win Rate: <strong className="text-cyan-600 dark:text-cyan-400">{portfolio.win_rate_pct.toFixed(1)}%</strong></span>
             <span>Floating: <strong className={portfolio.total_unrealized_pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>₹{portfolio.total_unrealized_pnl.toFixed(2)}</strong></span>
-          </div>
-        </div>
-
-        {/* Win Rate */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 shadow-sm">
-          <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Win Rate %</div>
-          <div className="text-2xl font-black font-mono text-cyan-600 dark:text-cyan-400">
-            {portfolio.win_rate_pct.toFixed(1)}%
-          </div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
-            {portfolio.winning_trades_count} Wins / {portfolio.losing_trades_count} Losses
-          </div>
-        </div>
-
-        {/* Active Open Trades */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 shadow-sm">
-          <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Active Open Positions</div>
-          <div className="text-2xl font-black font-mono text-slate-900 dark:text-white">
-            {portfolio.active_positions.length}
-          </div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
-            Live monitoring on 8s cycle
-          </div>
-        </div>
-
-        {/* Total Trades Completed */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 shadow-sm">
-          <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Closed Trades Logged</div>
-          <div className="text-2xl font-black font-mono text-slate-800 dark:text-slate-200">
-            {portfolio.total_trades_count}
-          </div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
-            Automated TP / SL execution
           </div>
         </div>
       </div>

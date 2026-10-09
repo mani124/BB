@@ -76,6 +76,20 @@ export interface IndexRadarItem {
   trend_state: 'BULLISH_WALK' | 'BEARISH_WALK' | 'SQUEEZE' | 'RANGE';
 }
 
+export interface TradeChargesBreakdown {
+  buy_turnover: number;
+  sell_turnover: number;
+  total_turnover: number;
+  orders_count: number;
+  brokerage: number;
+  stt: number;
+  exchange_fee: number;
+  sebi_fee: number;
+  stamp_duty: number;
+  gst: number;
+  total_charges: number;
+}
+
 export interface PaperPosition {
   id: string;
   signal_id: string;
@@ -108,6 +122,15 @@ export interface PaperPosition {
   booked_lots?: number;
   booked_pnl_rupees?: number;
   option_security_id?: string;
+  theoretical_entry?: number;
+  entry_slippage?: number;
+  theoretical_exit?: number;
+  exit_slippage?: number;
+  total_slippage_cost?: number;
+  gross_pnl?: number;
+  total_charges?: number;
+  net_pnl?: number;
+  charges_breakdown?: TradeChargesBreakdown;
 }
 
 export interface PaperPortfolio {
@@ -123,6 +146,11 @@ export interface PaperPortfolio {
   total_trades_count: number;
   winning_trades_count: number;
   losing_trades_count: number;
+  total_gross_pnl?: number;
+  total_slippage_cost?: number;
+  avg_slippage_points?: number;
+  total_charges?: number;
+  total_net_pnl?: number;
 }
 
 export interface ScannerState {
