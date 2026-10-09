@@ -44,9 +44,7 @@ const DashboardContent: React.FC = () => {
         if (res.ok) {
           const data = await res.json();
           setState((prev) => ({ ...prev, ...data }));
-          if (data.feed_status === 'WS_LIVE' || data.ws_connected) {
-            setWsConnected(true);
-          }
+          setWsConnected(Boolean(data.feed_status === 'WS_LIVE' || data.ws_connected));
           if (data.active_mode === 'demo' && !reconnectingRef.current) {
             const savedId = sessionStorage.getItem('dhan_client_id');
             const savedToken = sessionStorage.getItem('dhan_access_token');
@@ -72,7 +70,8 @@ const DashboardContent: React.FC = () => {
         try {
           const tickData = JSON.parse(event.data);
           setWsConnected(true);
-          if (tickData.symbol && tickData.ltp) {
+          // Only update radar spot prices for underlying spot ticks, never option contracts
+          if (tickData.symbol && tickData.ltp && !tickData.is_option) {
             setState((prev) => {
               const sym = tickData.symbol;
               const prevRadar = prev.radar[sym];
@@ -99,9 +98,8 @@ const DashboardContent: React.FC = () => {
         try {
           const data: ScannerState = JSON.parse(event.data);
           setState(data);
-          if (data.feed_status === 'WS_LIVE' || data.ws_connected) {
-            setWsConnected(true);
-          }
+          // Sync wsConnected with state snapshot to enable HTTP polling fallback
+          setWsConnected(Boolean(data.feed_status === 'WS_LIVE' || data.ws_connected));
           if (data.active_mode === 'demo' && !reconnectingRef.current) {
             const savedId = sessionStorage.getItem('dhan_client_id');
             const savedToken = sessionStorage.getItem('dhan_access_token');

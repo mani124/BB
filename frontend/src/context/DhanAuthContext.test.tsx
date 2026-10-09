@@ -106,6 +106,7 @@ describe('DhanAuthContext OAuth and Zero-Persistence Flow', () => {
     expect(sessionStorage.getItem('dhan_client_id')).toBe('1000000001');
     expect(sessionStorage.getItem('dhan_access_token')).toBe('dhan_***');
     expect(sessionStorage.getItem('dhan_token_expiry')).toBeTruthy();
+    expect(sessionStorage.getItem('dhan_oauth_app_secret')).toBeNull();
     expect(replaceStateSpy).toHaveBeenCalledWith({}, document.title, '/');
   });
 

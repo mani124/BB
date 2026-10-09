@@ -124,5 +124,48 @@ describe('Header Theme Toggle', () => {
     expect(screen.getByText(/1-Click Dhan OAuth/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Connect with Dhan/i })).toBeInTheDocument();
   });
+
+  it('renders HTTP Polling badge when wsConnected is false in live mode', () => {
+    const { rerender } = render(
+      <ThemeProvider>
+        <DhanAuthProvider>
+          <Header
+            activeMode="live"
+            feedStatus="WS_LIVE"
+            wsConnected={true}
+            scanCycleCount={5}
+            lastScanTime="12:00:00"
+            isScanning={false}
+            scanProgress={100}
+            onScanNow={vi.fn()}
+          />
+        </DhanAuthProvider>
+      </ThemeProvider>
+    );
+
+    expect(screen.getByText(/WS LIVE/i)).toBeInTheDocument();
+
+    // Re-render with WebSocket disconnected / HTTP fallback
+    rerender(
+      <ThemeProvider>
+        <DhanAuthProvider>
+          <Header
+            activeMode="live"
+            feedStatus="LIVE"
+            wsConnected={false}
+            scanCycleCount={6}
+            lastScanTime="12:00:08"
+            isScanning={false}
+            scanProgress={100}
+            onScanNow={vi.fn()}
+          />
+        </DhanAuthProvider>
+      </ThemeProvider>
+    );
+
+    expect(screen.queryByText(/WS LIVE/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/HTTP Polling/i)).toBeInTheDocument();
+  });
 });
+
 
