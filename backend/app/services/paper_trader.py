@@ -614,17 +614,25 @@ class PaperTradingEngine:
             for p in still_active:
                 self.storage.upsert_position(p)
 
-    def close_position(self, position_id: str, reason: str = "MANUAL_EXIT") -> Optional[PaperPosition]:
+    def close_position(
+        self,
+        position_id: str,
+        reason: str = "MANUAL_EXIT",
+        exit_price: Optional[float] = None,
+        real_bid_price: Optional[float] = None,
+        real_opt_price: Optional[float] = None,
+    ) -> Optional[PaperPosition]:
         for i, pos in enumerate(self._portfolio.active_positions):
             if pos.id == position_id:
+                theo_exit = exit_price if (exit_price is not None and exit_price > 0) else pos.current_option_price
                 self._finalize_closed_position(
                     pos=pos,
-                    theoretical_exit=pos.current_option_price,
+                    theoretical_exit=theo_exit,
                     status="CLOSED",
                     reason=reason,
                     exit_time=datetime.now().strftime("%H:%M:%S"),
-                    real_bid_price=None,
-                    real_opt_price=None,
+                    real_bid_price=real_bid_price,
+                    real_opt_price=real_opt_price,
                 )
                 closed = self._portfolio.active_positions.pop(i)
                 self._portfolio.closed_trades.append(closed)

@@ -213,14 +213,39 @@ class ScannerWorker:
             # Maintain live option candle formation
             self._get_or_update_option_candles(sec_id_str, ltp, vol)
 
+            # Extract real bid price from tick for live exit slippage measurement
+            bid = (
+                tick.get("bid_price")
+                if tick.get("bid_price") is not None
+                else (
+                    tick.get("bid")
+                    if tick.get("bid") is not None
+                    else (
+                        tick.get("best_bid_price")
+                        if tick.get("best_bid_price") is not None
+                        else tick.get("top_bid_price")
+                    )
+                )
+            )
+            option_bid_map: Optional[dict[str, float]] = None
+            if bid is not None:
+                try:
+                    bid_f = float(bid)
+                    if bid_f > 0:
+                        option_bid_map = {sec_id_str: bid_f}
+                except (ValueError, TypeError):
+                    pass
+
             # Instantaneous position evaluation and exit execution
             paper_trader.update_market_prices(
                 price_map={},
                 option_price_map={sec_id_str: ltp},
                 feed_mode="live",
+                option_bid_map=option_bid_map,
             )
+            mode_to_query = "live" if matching_opt_positions else self._state.active_mode
             self._state.paper_portfolio = paper_trader.get_portfolio(
-                mode=self._state.active_mode
+                mode=mode_to_query
             )
 
         # 2. Check if tick corresponds to an underlying instrument in universe
@@ -611,16 +636,41 @@ class ScannerWorker:
             self._state.active_mode = "demo"
             self._state.feed_status = "DEMO"
 
-        # Extract live option quotes from NSE_FNO
+        # Extract live option quotes and bid prices from NSE_FNO
         option_price_map: dict[str, float] = {}
+        option_bid_map: dict[str, float] = {}
         if live_quotes:
             quotes_dict = live_quotes.get("data", live_quotes) if isinstance(live_quotes.get("data"), dict) else live_quotes
             fno_quotes = quotes_dict.get("NSE_FNO", {})
             for sec_k, q in fno_quotes.items():
-                if isinstance(q, dict) and "last_price" in q:
-                    opt_ltp = float(q["last_price"])
-                    if opt_ltp > 0:
-                        option_price_map[str(sec_k)] = opt_ltp
+                if isinstance(q, dict):
+                    if "last_price" in q:
+                        try:
+                            opt_ltp = float(q["last_price"])
+                            if opt_ltp > 0:
+                                option_price_map[str(sec_k)] = opt_ltp
+                        except (ValueError, TypeError):
+                            pass
+                    bid_val = (
+                        q.get("top_bid_price")
+                        if q.get("top_bid_price") is not None
+                        else (
+                            q.get("bid")
+                            if q.get("bid") is not None
+                            else (
+                                q.get("best_bid_price")
+                                if q.get("best_bid_price") is not None
+                                else q.get("bid_price")
+                            )
+                        )
+                    )
+                    if bid_val is not None:
+                        try:
+                            b_f = float(bid_val)
+                            if b_f > 0:
+                                option_bid_map[str(sec_k)] = b_f
+                        except (ValueError, TypeError):
+                            pass
 
         # Rank momentum stocks across the entire F&O universe based on real-time marketfeed quotes
         stock_quotes_for_ranking: dict[str, dict] = {}
@@ -755,6 +805,44 @@ class ScannerWorker:
                 try:
                     expiry, oc = await self.get_or_fetch_option_chain(cid, tok, inst)
                     if oc:
+                        # Extract strike quotes (LTP, bid) from option chain into option_price_map & option_bid_map
+                        for strike_k, strike_data in oc.items():
+                            if isinstance(strike_data, dict):
+                                for side in ("ce", "pe"):
+                                    contract = strike_data.get(side)
+                                    if isinstance(contract, dict):
+                                        c_sec_id = contract.get("security_id")
+                                        if c_sec_id is not None:
+                                            c_sec_id_str = str(c_sec_id)
+                                            c_ltp = contract.get("last_price")
+                                            if c_ltp is not None:
+                                                try:
+                                                    c_ltp_f = float(c_ltp)
+                                                    if c_ltp_f > 0:
+                                                        option_price_map[c_sec_id_str] = c_ltp_f
+                                                except (ValueError, TypeError):
+                                                    pass
+                                            c_bid = (
+                                                contract.get("top_bid_price")
+                                                if contract.get("top_bid_price") is not None
+                                                else (
+                                                    contract.get("bid")
+                                                    if contract.get("bid") is not None
+                                                    else (
+                                                        contract.get("best_bid_price")
+                                                        if contract.get("best_bid_price") is not None
+                                                        else contract.get("bid_price")
+                                                    )
+                                                )
+                                            )
+                                            if c_bid is not None:
+                                                try:
+                                                    c_bid_f = float(c_bid)
+                                                    if c_bid_f > 0:
+                                                        option_bid_map[c_sec_id_str] = c_bid_f
+                                                except (ValueError, TypeError):
+                                                    pass
+
                         # Enrich Setups 1-4 with live option quotes
                         if detected:
                             for sig in detected:
@@ -781,7 +869,11 @@ class ScannerWorker:
             self._state.scan_progress = round(((idx + 1) / max(1, len(deep_scan_targets))) * 100.0, 1)
 
         # Update paper trading engine with latest market prices and real option prices
-        paper_trader.update_market_prices(price_map, option_price_map)
+        paper_trader.update_market_prices(
+            price_map,
+            option_price_map,
+            option_bid_map=option_bid_map,
+        )
         paper_trader.on_signals_cycle(new_signals, feed_mode=mode)
         if mode == "live" and ws_live:
             await self._subscribe_active_positions()

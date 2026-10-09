@@ -26,9 +26,25 @@ def open_manual_trade(body: ManualTradeRequest) -> PaperPosition:
         raise HTTPException(status_code=400, detail="Position already exists for this signal")
     return pos
 
+class ClosePositionRequest(BaseModel):
+    reason: Optional[str] = "Manual User Exit"
+    exit_price: Optional[float] = None
+    real_bid_price: Optional[float] = None
+    real_opt_price: Optional[float] = None
+
 @router.post("/close/{position_id}")
-def close_trade(position_id: str):
-    closed = paper_trader.close_position(position_id, reason="Manual User Exit")
+def close_trade(position_id: str, body: Optional[ClosePositionRequest] = None):
+    reason = body.reason if (body and body.reason) else "Manual User Exit"
+    exit_price = body.exit_price if body else None
+    real_bid_price = body.real_bid_price if body else None
+    real_opt_price = body.real_opt_price if body else None
+    closed = paper_trader.close_position(
+        position_id,
+        reason=reason,
+        exit_price=exit_price,
+        real_bid_price=real_bid_price,
+        real_opt_price=real_opt_price,
+    )
     if not closed:
         raise HTTPException(status_code=404, detail="Position not found")
     return closed
