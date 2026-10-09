@@ -28,6 +28,8 @@ const DashboardContent: React.FC = () => {
   const [selectedInstrumentType, setSelectedInstrumentType] = useState<string>('ALL');
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const { connect } = useDhanAuth();
+  const reconnectingRef = React.useRef(false);
 
   // Fetch initial snapshot and connect to SSE stream on mount
   useEffect(() => {
@@ -41,6 +43,16 @@ const DashboardContent: React.FC = () => {
         if (res.ok) {
           const data = await res.json();
           setState((prev) => ({ ...prev, ...data }));
+          if (data.active_mode === 'demo' && !reconnectingRef.current) {
+            const savedId = localStorage.getItem('dhan_client_id');
+            const savedToken = localStorage.getItem('dhan_access_token');
+            if (savedId && savedToken) {
+              reconnectingRef.current = true;
+              connect(savedId, savedToken).finally(() => {
+                setTimeout(() => { reconnectingRef.current = false; }, 15000);
+              });
+            }
+          }
         }
       } catch (e) {
         // SSE will hydrate state
@@ -55,6 +67,16 @@ const DashboardContent: React.FC = () => {
         try {
           const data: ScannerState = JSON.parse(event.data);
           setState(data);
+          if (data.active_mode === 'demo' && !reconnectingRef.current) {
+            const savedId = localStorage.getItem('dhan_client_id');
+            const savedToken = localStorage.getItem('dhan_access_token');
+            if (savedId && savedToken) {
+              reconnectingRef.current = true;
+              connect(savedId, savedToken).finally(() => {
+                setTimeout(() => { reconnectingRef.current = false; }, 15000);
+              });
+            }
+          }
         } catch (err) {
           console.error('Failed to parse SSE payload', err);
         }

@@ -8,4 +8,6 @@ node_modules/
 dist/
 .DS_Store
 *.db
+backend/data/
 backend/data/*.db
+backend/data/*.json

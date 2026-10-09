@@ -81,6 +81,45 @@ class DhanClient:
             logger.error(f"Unexpected error verifying Dhan credentials: {exc}")
             return {"valid": False, "error": f"Unexpected verification error: {str(exc)}"}
 
+    async def fetch_marketfeed_quotes(
+        self,
+        client_id: str,
+        access_token: str,
+        securities: dict[str, list[int]]
+    ) -> dict:
+        """
+        Fetch full real-time market quotes (LTP, OHLC, volume, net_change) for multiple securities
+        across segments in a single API call via POST /marketfeed/quote.
+        """
+        headers = {
+            "client-id": client_id,
+            "access-token": access_token,
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+        try:
+            client = await self.get_client()
+            async with self._semaphore:
+                await self._throttle()
+                resp = await client.post("/marketfeed/quote", headers=headers, json=securities)
+                if resp.status_code == 429:
+                    logger.warning("Marketfeed quote hit 429 rate limit. Backing off 2.5s and retrying...")
+                    await asyncio.sleep(2.5)
+                    await self._throttle()
+                    resp = await client.post("/marketfeed/quote", headers=headers, json=securities)
+
+                if resp.status_code == 200:
+                    data = resp.json()
+                    res_data = data.get("data", {})
+                    if isinstance(res_data, dict) and "data" in res_data and isinstance(res_data["data"], dict):
+                        res_data = res_data["data"]
+                    return res_data
+                logger.warning(f"Marketfeed quote returned HTTP {resp.status_code}: {resp.text[:200]}")
+                return {}
+        except Exception as e:
+            logger.warning(f"Exception fetching marketfeed quotes: {e}")
+            return {}
+
     async def fetch_intraday_candles(
         self,
         client_id: str,
@@ -98,11 +137,17 @@ class DhanClient:
         Body: {"securityId": str, "exchangeSegment": str, "instrument": str, "interval": int, "fromDate": str, "toDate": str}
         """
         now = datetime.now()
+        # Dhan v2 /charts/intraday requires datetime format: 'YYYY-MM-DD HH:MM:SS'
         if not to_date:
-            to_date = now.strftime("%Y-%m-%d")
+            to_date = now.strftime("%Y-%m-%d %H:%M:%S")
+        elif len(to_date) == 10:
+            to_date = f"{to_date} 15:30:00"
+
         if not from_date:
-            # Default to rolling 5 days to ensure ample intraday candles
-            from_date = (now - timedelta(days=5)).strftime("%Y-%m-%d")
+            # Default to rolling 5 days starting from market open
+            from_date = (now - timedelta(days=5)).strftime("%Y-%m-%d 09:15:00")
+        elif len(from_date) == 10:
+            from_date = f"{from_date} 09:15:00"
 
         headers = {
             "client-id": client_id,
@@ -110,36 +155,58 @@ class DhanClient:
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
-        payload = {
-            "dhanClientId": str(client_id),
+
+        # Primary payload according to official Dhan v2 documentation
+        primary_payload = {
             "securityId": str(security_id),
             "exchangeSegment": exchange_segment,
             "instrument": instrument_type,
-            "interval": interval,
+            "interval": str(interval),
             "oi": False,
             "fromDate": from_date,
             "toDate": to_date
         }
 
+        candidate_payloads = [
+            primary_payload,
+            # Permutation 2: integer interval
+            {**primary_payload, "interval": int(interval)},
+            # Permutation 3: with dhanClientId as per python SDK
+            {**primary_payload, "dhanClientId": str(client_id), "interval": int(interval)},
+            # Permutation 4: date only (YYYY-MM-DD)
+            {**primary_payload, "fromDate": from_date.split()[0], "toDate": to_date.split()[0], "interval": int(interval)}
+        ]
+
+        data = None
         try:
             client = await self.get_client()
             async with self._semaphore:
                 await self._throttle()
-                logger.warning(f"Dhan request payload for {security_id}: {payload}")
-                resp = await client.post("/charts/intraday", headers=headers, json=payload)
                 
-                # Handle rate limiting with exponential backoff retry
-                if resp.status_code == 429:
-                    logger.warning(f"Dhan rate limit (429) hit for sec_id={security_id}. Retrying after backoff...")
-                    await asyncio.sleep(1.0)
-                    await self._throttle()
+                for idx, payload in enumerate(candidate_payloads):
                     resp = await client.post("/charts/intraday", headers=headers, json=payload)
+                    
+                    # Handle rate limiting with exponential backoff retry
+                    if resp.status_code == 429:
+                        logger.warning(f"Dhan rate limit (429) hit for sec_id={security_id}. Retrying after backoff...")
+                        await asyncio.sleep(1.0)
+                        await self._throttle()
+                        resp = await client.post("/charts/intraday", headers=headers, json=payload)
 
-                if resp.status_code != 200:
-                    logger.warning(f"Dhan intraday chart error: HTTP {resp.status_code} for sec_id={security_id}: {resp.text}")
+                    if resp.status_code == 200:
+                        if idx > 0:
+                            logger.info(f"Dhan intraday success with candidate payload {idx} for sec_id={security_id}")
+                        data = resp.json()
+                        break
+                    elif resp.status_code == 400:
+                        logger.warning(f"Dhan intraday payload candidate {idx} returned HTTP 400: {resp.text}")
+                        continue
+                    else:
+                        logger.warning(f"Dhan intraday chart error: HTTP {resp.status_code} for sec_id={security_id}: {resp.text}")
+                        break
+
+                if data is None:
                     return pd.DataFrame()
-
-                data = resp.json()
         except Exception as e:
             logger.warning(f"Exception fetching intraday candles for sec_id={security_id}: {e}")
             return pd.DataFrame()
