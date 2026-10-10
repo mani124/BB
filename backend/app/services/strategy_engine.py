@@ -347,7 +347,11 @@ def evaluate_signals(
         )
         if is_pe_pinbar:
             sl = round(curr_high + max(1.0, 0.0005 * curr_close), 2)
-            strike_rec = recommend_strike(symbol, curr_close, "PE", sl)
+            strike_rec = recommend_strike(
+                symbol, curr_close, "PE", sl,
+                target_1=round(mid, 2), target_2=round(lower, 2),
+                strike_preference="ITM_1"
+            )
             signals.append(Signal(
                 id=f"{symbol}_{timeframe}_S6_PE_{ts_clean}",
                 symbol=symbol,
@@ -357,8 +361,8 @@ def evaluate_signals(
                 timestamp=ts_str,
                 entry_price=round(curr_close, 2),
                 stop_loss=strike_rec.stop_loss,
-                target_1=round(mid, 2),
-                target_2=round(lower, 2),
+                target_1=strike_rec.target_1,
+                target_2=strike_rec.target_2,
                 strike_recommendation=strike_rec,
                 indicators_snapshot=snap,
                 rationale="Pin Bar exhaustion at Upper BB with RSI overbought and ADX non-trend snapback"
@@ -375,7 +379,11 @@ def evaluate_signals(
         )
         if is_ce_pinbar:
             sl = round(curr_low - max(1.0, 0.0005 * curr_close), 2)
-            strike_rec = recommend_strike(symbol, curr_close, "CE", sl)
+            strike_rec = recommend_strike(
+                symbol, curr_close, "CE", sl,
+                target_1=round(mid, 2), target_2=round(upper, 2),
+                strike_preference="ITM_1"
+            )
             signals.append(Signal(
                 id=f"{symbol}_{timeframe}_S6_CE_{ts_clean}",
                 symbol=symbol,
@@ -385,8 +393,8 @@ def evaluate_signals(
                 timestamp=ts_str,
                 entry_price=round(curr_close, 2),
                 stop_loss=strike_rec.stop_loss,
-                target_1=round(mid, 2),
-                target_2=round(upper, 2),
+                target_1=strike_rec.target_1,
+                target_2=strike_rec.target_2,
                 strike_recommendation=strike_rec,
                 indicators_snapshot=snap,
                 rationale="Pin Bar exhaustion at Lower BB with RSI oversold and ADX non-trend snapback"
@@ -425,7 +433,11 @@ def evaluate_signals(
 
         if is_pe_inside_curr:
             sl = round(pe_mother_high + max(0.5, 0.0005 * curr_close), 2)
-            strike_rec = recommend_strike(symbol, curr_close, "PE", sl)
+            strike_rec = recommend_strike(
+                symbol, curr_close, "PE", sl,
+                target_1=round(mid, 2), target_2=round(lower, 2),
+                strike_preference="ITM_1"
+            )
             signals.append(Signal(
                 id=f"{symbol}_{timeframe}_S7_PE_{ts_clean}",
                 symbol=symbol,
@@ -435,8 +447,8 @@ def evaluate_signals(
                 timestamp=ts_str,
                 entry_price=round(curr_close, 2),
                 stop_loss=strike_rec.stop_loss,
-                target_1=round(mid, 2),
-                target_2=round(lower, 2),
+                target_1=strike_rec.target_1,
+                target_2=strike_rec.target_2,
                 strike_recommendation=strike_rec,
                 indicators_snapshot=snap,
                 rationale="Extreme 2.5σ puncture and Inside Bar breakdown snapback to 20-SMA"
@@ -466,7 +478,11 @@ def evaluate_signals(
 
         if is_ce_inside_curr:
             sl = round(ce_mother_low - max(0.5, 0.0005 * curr_close), 2)
-            strike_rec = recommend_strike(symbol, curr_close, "CE", sl)
+            strike_rec = recommend_strike(
+                symbol, curr_close, "CE", sl,
+                target_1=round(mid, 2), target_2=round(upper, 2),
+                strike_preference="ITM_1"
+            )
             signals.append(Signal(
                 id=f"{symbol}_{timeframe}_S7_CE_{ts_clean}",
                 symbol=symbol,
@@ -476,8 +492,8 @@ def evaluate_signals(
                 timestamp=ts_str,
                 entry_price=round(curr_close, 2),
                 stop_loss=strike_rec.stop_loss,
-                target_1=round(mid, 2),
-                target_2=round(upper, 2),
+                target_1=strike_rec.target_1,
+                target_2=strike_rec.target_2,
                 strike_recommendation=strike_rec,
                 indicators_snapshot=snap,
                 rationale="Extreme 2.5σ puncture and Inside Bar breakout snapback to 20-SMA"
@@ -506,7 +522,11 @@ def evaluate_signals(
                 and curr_close < upper
             ):
                 sl = round(max(float(row_p2["high"]), curr_high) + max(0.5, 0.0005 * curr_close), 2)
-                strike_rec = recommend_strike(symbol, curr_close, "PE", sl)
+                strike_rec = recommend_strike(
+                    symbol, curr_close, "PE", sl,
+                    target_1=round(mid, 2), target_2=round(lower, 2),
+                    strike_preference="ITM_1"
+                )
                 signals.append(Signal(
                     id=f"{symbol}_{timeframe}_S8_PE_{ts_clean}",
                     symbol=symbol,
@@ -516,8 +536,8 @@ def evaluate_signals(
                     timestamp=ts_str,
                     entry_price=round(curr_close, 2),
                     stop_loss=strike_rec.stop_loss,
-                    target_1=round(mid, 2),
-                    target_2=round(lower, 2),
+                    target_1=strike_rec.target_1,
+                    target_2=strike_rec.target_2,
                     strike_recommendation=strike_rec,
                     indicators_snapshot=snap,
                     rationale="Climax swing high with Bearish RSI Divergence snapback to 20-SMA"
@@ -536,7 +556,11 @@ def evaluate_signals(
                 and curr_close > lower
             ):
                 sl = round(min(float(row_t2["low"]), curr_low) - max(0.5, 0.0005 * curr_close), 2)
-                strike_rec = recommend_strike(symbol, curr_close, "CE", sl)
+                strike_rec = recommend_strike(
+                    symbol, curr_close, "CE", sl,
+                    target_1=round(mid, 2), target_2=round(upper, 2),
+                    strike_preference="ITM_1"
+                )
                 signals.append(Signal(
                     id=f"{symbol}_{timeframe}_S8_CE_{ts_clean}",
                     symbol=symbol,
@@ -546,8 +570,8 @@ def evaluate_signals(
                     timestamp=ts_str,
                     entry_price=round(curr_close, 2),
                     stop_loss=strike_rec.stop_loss,
-                    target_1=round(mid, 2),
-                    target_2=round(upper, 2),
+                    target_1=strike_rec.target_1,
+                    target_2=strike_rec.target_2,
                     strike_recommendation=strike_rec,
                     indicators_snapshot=snap,
                     rationale="Climax swing low with Bullish RSI Divergence snapback to 20-SMA"

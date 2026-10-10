@@ -174,7 +174,10 @@ def recommend_strike(
     symbol: str,
     underlying_price: float,
     option_type: Literal["CE", "PE"],
-    stop_loss: Optional[float] = None
+    stop_loss: Optional[float] = None,
+    target_1: Optional[float] = None,
+    target_2: Optional[float] = None,
+    strike_preference: str = "DEFAULT",
 ) -> OptionStrikeRecommendation:
     step = get_strike_step(symbol, underlying_price)
     lot_size = get_lot_size(symbol)
@@ -182,10 +185,26 @@ def recommend_strike(
     
     # ATM strike
     atm_strike = int(round(underlying_price / step) * step)
+
+    pref = (strike_preference or "DEFAULT").upper()
+    if pref == "ATM":
+        recommended_strike = atm_strike
+        delta = 0.50
+    elif pref == "ITM_1":
+        if option_type == "CE":
+            recommended_strike = atm_strike - step
+        else:
+            recommended_strike = atm_strike + step
+        delta = 0.54
+    else:  # "DEFAULT"
+        if option_type == "CE":
+            recommended_strike = atm_strike - step
+        else:
+            recommended_strike = atm_strike + step
+        delta = 0.55
     
-    # 1-strike ITM selection and mathematical SL guarantees
+    # Mathematical SL guarantees
     if option_type == "CE":
-        recommended_strike = atm_strike - step
         # Mathematical guarantee: SL must strictly be < entry for CE
         if stop_loss is None or stop_loss >= underlying_price:
             stop_loss = underlying_price - max(step * 0.5, min_risk)
@@ -194,7 +213,6 @@ def recommend_strike(
             risk = min_risk
             stop_loss = underlying_price - risk
     else:
-        recommended_strike = atm_strike + step
         # Mathematical guarantee: SL must strictly be > entry for PE
         if stop_loss is None or stop_loss <= underlying_price:
             stop_loss = underlying_price + max(step * 0.5, min_risk)
@@ -208,20 +226,29 @@ def recommend_strike(
     strike_symbol = f"{symbol} {recommended_strike} {option_type}"
     
     # Dual Risk/Reward target calculations on underlying price
-    if option_type == "CE":
-        target_1 = round(underlying_price + 1.5 * risk, 2)
-        target_2 = round(underlying_price + 2.5 * risk, 2)
+    if target_1 is not None:
+        calc_target_1 = float(target_1)
     else:
-        target_1 = round(underlying_price - 1.5 * risk, 2)
-        target_2 = round(underlying_price - 2.5 * risk, 2)
+        calc_target_1 = round(underlying_price + 1.5 * risk, 2) if option_type == "CE" else round(underlying_price - 1.5 * risk, 2)
 
-    # Option premium levels (Delta ~0.55)
-    delta = 0.55
+    if target_2 is not None:
+        calc_target_2 = float(target_2)
+    else:
+        calc_target_2 = round(underlying_price + 2.5 * risk, 2) if option_type == "CE" else round(underlying_price - 2.5 * risk, 2)
+
     est_entry = estimate_option_entry(symbol, underlying_price, step)
     # Cap option points risk at max 70% of premium
     opt_sl_pts = round(min(risk * delta, est_entry * 0.7), 1)
-    opt_t1_pts = round(risk * delta * 1.5, 1)
-    opt_t2_pts = round(risk * delta * 2.5, 1)
+
+    if target_1 is not None:
+        opt_t1_pts = round(abs(underlying_price - target_1) * delta, 1)
+    else:
+        opt_t1_pts = round(risk * delta * 1.5, 1)
+
+    if target_2 is not None:
+        opt_t2_pts = round(abs(underlying_price - target_2) * delta, 1)
+    else:
+        opt_t2_pts = round(risk * delta * 2.5, 1)
     
     opt_sl_price = round(max(1.0, est_entry - opt_sl_pts), 1)
     opt_t1_price = round(est_entry + opt_t1_pts, 1)
@@ -237,8 +264,8 @@ def recommend_strike(
         lot_size=lot_size,
         risk=risk,
         stop_loss=stop_loss,
-        target_1=target_1,
-        target_2=target_2,
+        target_1=round(calc_target_1, 2),
+        target_2=round(calc_target_2, 2),
         estimated_option_entry=est_entry,
         option_sl_pts=opt_sl_pts,
         option_target_1_pts=opt_t1_pts,
@@ -256,9 +283,12 @@ def resolve_live_strike_from_chain(
     option_chain_oc: dict,
     expiry_date: str = "",
     stop_loss: Optional[float] = None,
+    target_1: Optional[float] = None,
+    target_2: Optional[float] = None,
+    strike_preference: str = "DEFAULT",
 ) -> OptionStrikeRecommendation:
     """
-    Given a live Dhan option chain 'oc' dictionary, find the exact 1-strike ITM contract,
+    Given a live Dhan option chain 'oc' dictionary, find the exact strike contract based on preference,
     extract its real market quotes (Ask/LTP, Greeks), and calculate mathematically sound
     Option SL and Target levels based on real entry price and real Delta.
     """
@@ -268,8 +298,24 @@ def resolve_live_strike_from_chain(
 
     atm_strike = int(round(underlying_price / step) * step)
 
+    pref = (strike_preference or "DEFAULT").upper()
+    if pref == "ATM":
+        recommended_strike = atm_strike
+        default_delta = 0.50
+    elif pref == "ITM_1":
+        if option_type == "CE":
+            recommended_strike = atm_strike - step
+        else:
+            recommended_strike = atm_strike + step
+        default_delta = 0.54
+    else:  # "DEFAULT"
+        if option_type == "CE":
+            recommended_strike = atm_strike - step
+        else:
+            recommended_strike = atm_strike + step
+        default_delta = 0.55
+
     if option_type == "CE":
-        recommended_strike = atm_strike - step
         if stop_loss is None or stop_loss >= underlying_price:
             stop_loss = underlying_price - max(step * 0.5, min_risk)
         risk = underlying_price - stop_loss
@@ -277,7 +323,6 @@ def resolve_live_strike_from_chain(
             risk = min_risk
             stop_loss = underlying_price - risk
     else:
-        recommended_strike = atm_strike + step
         if stop_loss is None or stop_loss <= underlying_price:
             stop_loss = underlying_price + max(step * 0.5, min_risk)
         risk = stop_loss - underlying_price
@@ -290,12 +335,15 @@ def resolve_live_strike_from_chain(
     strike_symbol = f"{symbol} {recommended_strike} {option_type}"
 
     # Spot targets
-    if option_type == "CE":
-        target_1 = round(underlying_price + 1.5 * risk, 2)
-        target_2 = round(underlying_price + 2.5 * risk, 2)
+    if target_1 is not None:
+        calc_target_1 = float(target_1)
     else:
-        target_1 = round(underlying_price - 1.5 * risk, 2)
-        target_2 = round(underlying_price - 2.5 * risk, 2)
+        calc_target_1 = round(underlying_price + 1.5 * risk, 2) if option_type == "CE" else round(underlying_price - 1.5 * risk, 2)
+
+    if target_2 is not None:
+        calc_target_2 = float(target_2)
+    else:
+        calc_target_2 = round(underlying_price + 2.5 * risk, 2) if option_type == "CE" else round(underlying_price - 2.5 * risk, 2)
 
     # Search in oc for matching strike
     target_f = float(recommended_strike)
@@ -311,6 +359,19 @@ def resolve_live_strike_from_chain(
     opt_contract = None
     if matched_data and isinstance(matched_data, dict):
         opt_contract = matched_data.get(option_type.lower())
+        if not opt_contract:
+            # Handle alternative flat format e.g. call_close / put_close
+            close_key = "call_close" if option_type == "CE" else "put_close"
+            sec_key = "call_security_id" if option_type == "CE" else "put_security_id"
+            if close_key in matched_data:
+                price_val = float(matched_data.get(close_key, 0.0))
+                opt_contract = {
+                    "security_id": matched_data.get(sec_key, ""),
+                    "last_price": price_val,
+                    "top_ask_price": price_val,
+                    "top_bid_price": price_val,
+                    "greeks": {"delta": default_delta}
+                }
 
     if opt_contract and isinstance(opt_contract, dict):
         sec_id = str(opt_contract.get("security_id", ""))
@@ -319,15 +380,23 @@ def resolve_live_strike_from_chain(
         bid = float(opt_contract.get("top_bid_price", 0.0))
         greeks = opt_contract.get("greeks") or {}
         raw_delta = float(greeks.get("delta", 0.0))
-        delta = abs(raw_delta) if (0.05 <= abs(raw_delta) <= 0.95) else 0.55
+        delta = abs(raw_delta) if (0.05 <= abs(raw_delta) <= 0.95) else default_delta
 
         # For buying an option: entry is the real Ask price (or LTP if Ask is 0)
         entry_price = ask if ask > 0 else (ltp if ltp > 0 else estimate_option_entry(symbol, underlying_price, step))
         entry_price = round(entry_price, 2)
 
         opt_sl_pts = round(min(risk * delta, entry_price * 0.7), 1)
-        opt_t1_pts = round(risk * delta * 1.5, 1)
-        opt_t2_pts = round(risk * delta * 2.5, 1)
+
+        if target_1 is not None:
+            opt_t1_pts = round(abs(underlying_price - target_1) * delta, 1)
+        else:
+            opt_t1_pts = round(risk * delta * 1.5, 1)
+
+        if target_2 is not None:
+            opt_t2_pts = round(abs(underlying_price - target_2) * delta, 1)
+        else:
+            opt_t2_pts = round(risk * delta * 2.5, 1)
 
         opt_sl_price = round(max(0.5, entry_price - opt_sl_pts), 1)
         opt_t1_price = round(entry_price + opt_t1_pts, 1)
@@ -343,8 +412,8 @@ def resolve_live_strike_from_chain(
             lot_size=lot_size,
             risk=risk,
             stop_loss=stop_loss,
-            target_1=target_1,
-            target_2=target_2,
+            target_1=round(calc_target_1, 2),
+            target_2=round(calc_target_2, 2),
             estimated_option_entry=entry_price,
             option_sl_pts=opt_sl_pts,
             option_target_1_pts=opt_t1_pts,
@@ -362,6 +431,14 @@ def resolve_live_strike_from_chain(
         )
 
     # Fallback if strike not resolved from chain
-    rec = recommend_strike(symbol, underlying_price, option_type, stop_loss)
+    rec = recommend_strike(
+        symbol=symbol,
+        underlying_price=underlying_price,
+        option_type=option_type,
+        stop_loss=stop_loss,
+        target_1=target_1,
+        target_2=target_2,
+        strike_preference=strike_preference
+    )
     rec.expiry_date = expiry_date
     return rec
