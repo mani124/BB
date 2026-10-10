@@ -747,7 +747,12 @@ class PaperTradingEngine:
     ) -> Optional[PaperPosition]:
         for i, pos in enumerate(self._portfolio.active_positions):
             if pos.id == position_id:
-                theo_exit = exit_price if (exit_price is not None and exit_price > 0) else pos.current_option_price
+                if exit_price is not None and exit_price > 0:
+                    theo_exit = exit_price
+                elif real_opt_price is not None and float(real_opt_price) > 0:
+                    theo_exit = float(real_opt_price)
+                else:
+                    theo_exit = pos.current_option_price
                 self._finalize_closed_position(
                     pos=pos,
                     theoretical_exit=theo_exit,

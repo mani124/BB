@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 import numpy as np
@@ -11,6 +12,13 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
+
+@dataclass
+class OptionQuote:
+    ltp: float
+    bid: Optional[float]
+    timestamp: float
+    source: str  # "ws" or "chain"
 from app.services.universe_manager import UniverseManager, Instrument
 from app.services.dhan_client import DhanClient
 from app.services.dhan_websocket import DhanWebSocketManager
@@ -95,6 +103,7 @@ class ScannerWorker:
         self._bar_completed_symbols: set[str] = set()
         self._instrument_last_quote_time: dict[str, float] = {}
         self._option_last_quote_time: dict[str, float] = {}
+        self._latest_option_quotes: dict[str, OptionQuote] = {}
         self._last_cumulative_volume: dict[str, int] = {}
         self._sec_id_to_instrument: dict[str, Instrument] = {}
         self._seg_sec_id_to_instrument: dict[tuple[int, str], Instrument] = {}
@@ -106,6 +115,53 @@ class ScannerWorker:
         # Wire dynamic paper trading position subscription callback
         paper_trader.on_position_opened = self._on_paper_position_opened
         self._load_saved_session()
+
+    def record_option_quote(
+        self,
+        sec_id: str,
+        ltp: float,
+        bid: Optional[float] = None,
+        source: str = "ws"
+    ) -> None:
+        """Store an atomic OptionQuote record with observed price, bid, timestamp, and source."""
+        sec_id_str = str(sec_id)
+        now = time.time()
+        bid_f = None
+        if bid is not None:
+            try:
+                b = float(bid)
+                if b > 0:
+                    bid_f = b
+            except (ValueError, TypeError):
+                pass
+        self._latest_option_quotes[sec_id_str] = OptionQuote(
+            ltp=float(ltp),
+            bid=bid_f,
+            timestamp=now,
+            source=source
+        )
+        self._option_last_quote_time[sec_id_str] = now
+
+    def get_option_quote(self, sec_id: str, max_age_s: float = 15.0) -> Optional[OptionQuote]:
+        """Retrieve the latest OptionQuote if within max_age_s freshness window."""
+        sec_id_str = str(sec_id)
+        quote = self._latest_option_quotes.get(sec_id_str)
+        if quote:
+            if (time.time() - quote.timestamp) <= max_age_s:
+                return quote
+            return None
+
+        # Fallback for forming candle if last quote time is fresh
+        quote_time = self._option_last_quote_time.get(sec_id_str, 0.0)
+        candle = self._option_forming_candle.get(sec_id_str)
+        if candle and candle.get("close", 0) > 0 and (time.time() - quote_time) <= max_age_s:
+            return OptionQuote(
+                ltp=float(candle["close"]),
+                bid=None,
+                timestamp=quote_time,
+                source="candle"
+            )
+        return None
 
     def _on_paper_position_opened(self, pos: PaperPosition) -> None:
         """Whenever a live paper trading position is opened, dynamically subscribe its option contract."""
@@ -235,10 +291,6 @@ class ScannerWorker:
         is_option = bool(matching_opt_positions) or (seg == 2) or (seg == "NSE_FNO")
 
         if is_option:
-            self._option_last_quote_time[sec_id_str] = time.time()
-            # Maintain live option candle formation
-            self._get_or_update_option_candles(sec_id_str, ltp, vol or 0)
-
             # Extract real bid price from tick for live exit slippage measurement
             bid = (
                 tick.get("bid_price")
@@ -253,6 +305,10 @@ class ScannerWorker:
                     )
                 )
             )
+            if ltp > 0:
+                self.record_option_quote(sec_id_str, ltp=ltp, bid=bid, source="ws")
+            # Maintain live option candle formation
+            self._get_or_update_option_candles(sec_id_str, ltp, vol or 0)
             option_bid_map: Optional[dict[str, float]] = None
             if bid is not None:
                 try:
@@ -357,6 +413,7 @@ class ScannerWorker:
         self._historical_seed_attempts.clear()
         self._historical_seed_fail_count.clear()
         self._option_last_quote_time.clear()
+        self._latest_option_quotes.clear()
 
         if client_id and access_token:
             self._session_credentials = (client_id, access_token)
@@ -377,6 +434,9 @@ class ScannerWorker:
             self._state.active_mode = "demo"
             self._state.feed_status = "DEMO"
             self._state.ws_connected = False
+            # F3: Purge radar and signals on session disconnect
+            self._state.signals = []
+            self._state.radar = {}
             # Finding 5: Explicitly cancel pending connection task upon disconnect
             if self._ws_connect_task and not self._ws_connect_task.done():
                 self._ws_connect_task.cancel()
@@ -1032,16 +1092,6 @@ class ScannerWorker:
                                         c_sec_id = contract.get("security_id")
                                         if c_sec_id is not None:
                                             c_sec_id_str = str(c_sec_id)
-                                            c_ltp = contract.get("last_price")
-                                            if c_ltp is not None:
-                                                try:
-                                                    c_ltp_f = float(c_ltp)
-                                                    if c_ltp_f > 0:
-                                                        option_price_map[c_sec_id_str] = c_ltp_f
-                                                        # Finding 6: Refresh quote age only when an authentic positive quote is received
-                                                        self._option_last_quote_time[c_sec_id_str] = time.time()
-                                                except (ValueError, TypeError):
-                                                    pass
                                             c_bid = (
                                                 contract.get("top_bid_price")
                                                 if contract.get("top_bid_price") is not None
@@ -1055,11 +1105,23 @@ class ScannerWorker:
                                                     )
                                                 )
                                             )
+                                            c_bid_f = None
                                             if c_bid is not None:
                                                 try:
-                                                    c_bid_f = float(c_bid)
-                                                    if c_bid_f > 0:
-                                                        option_bid_map[c_sec_id_str] = c_bid_f
+                                                    b = float(c_bid)
+                                                    if b > 0:
+                                                        c_bid_f = b
+                                                        option_bid_map[c_sec_id_str] = b
+                                                except (ValueError, TypeError):
+                                                    pass
+
+                                            c_ltp = contract.get("last_price")
+                                            if c_ltp is not None:
+                                                try:
+                                                    c_ltp_f = float(c_ltp)
+                                                    if c_ltp_f > 0:
+                                                        option_price_map[c_sec_id_str] = c_ltp_f
+                                                        self.record_option_quote(c_sec_id_str, ltp=c_ltp_f, bid=c_bid_f, source="chain")
                                                 except (ValueError, TypeError):
                                                     pass
 

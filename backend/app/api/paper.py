@@ -96,47 +96,45 @@ class ClosePositionRequest(BaseModel):
 def _close_position_with_freshness(
     position_id: str,
     reason: str,
-    exit_price: Optional[float],
-    real_bid_price: Optional[float],
-    real_opt_price: Optional[float],
+    modeled_exit_price: Optional[float] = None,
 ) -> "PaperPosition":
     """Shared close logic for both /api/paper/close and /api/signals/close.
 
-    F2 (post-fix): Both close routes must apply identical quote-freshness checking
-    and modeled-fill labeling so that neither path can bypass staleness detection.
-    F6 (post-fix): Only trust _option_last_quote_time when a positive price was
-    actually stored; see scanner_worker.py for the write-side guard.
+    F2, F4: Enforces server-owned pricing. All fill prices and bids are resolved
+    strictly from worker.get_option_quote (atomic OptionQuote record). Caller-supplied
+    market price fields are stripped to prevent inflated paper P&L.
     """
     pos_to_close = next(
         (p for p in paper_trader.get_portfolio().active_positions if p.id == position_id), None
     )
-    if pos_to_close and pos_to_close.feed_mode == "live":
-        is_fresh = False
-        try:
-            from app.main import worker
-            import time
-            sec_id = pos_to_close.option_security_id
-            if sec_id:
-                sec_id_str = str(sec_id)
-                quote_time = getattr(worker, "_option_last_quote_time", {}).get(sec_id_str, 0.0)
-                is_fresh = (time.time() - quote_time) <= 15.0 if quote_time else False
-                candle_forming = getattr(worker, "_option_forming_candle", {}).get(sec_id_str)
-                if candle_forming and candle_forming.get("close", 0) > 0 and real_opt_price is None:
-                    if is_fresh:
-                        real_opt_price = float(candle_forming["close"])
-        except Exception:
-            pass
+    if not pos_to_close:
+        raise HTTPException(status_code=404, detail="Position not found")
 
-        if real_bid_price is None and (real_opt_price is None or not is_fresh) and exit_price is None:
+    server_bid: Optional[float] = None
+    server_ltp: Optional[float] = None
+
+    try:
+        from app.main import worker
+        sec_id = pos_to_close.option_security_id
+        if sec_id:
+            quote = worker.get_option_quote(str(sec_id), max_age_s=15.0)
+            if quote:
+                server_bid = quote.bid
+                server_ltp = quote.ltp
+    except Exception:
+        pass
+
+    if pos_to_close.feed_mode == "live":
+        if server_bid is None and server_ltp is None:
             if "(Modeled" not in reason:
                 reason = f"{reason} (Modeled: Unquoted)"
 
     closed = paper_trader.close_position(
         position_id,
         reason=reason,
-        exit_price=exit_price,
-        real_bid_price=real_bid_price,
-        real_opt_price=real_opt_price,
+        exit_price=modeled_exit_price if (server_bid is None and server_ltp is None) else None,
+        real_bid_price=server_bid,
+        real_opt_price=server_ltp,
     )
     if not closed:
         raise HTTPException(status_code=404, detail="Position not found")
@@ -147,9 +145,7 @@ def _close_position_with_freshness(
 def close_trade(position_id: str, body: Optional[ClosePositionRequest] = None):
     reason = body.reason if (body and body.reason) else "Manual User Exit"
     exit_price = body.exit_price if body else None
-    real_bid_price = body.real_bid_price if body else None
-    real_opt_price = body.real_opt_price if body else None
-    return _close_position_with_freshness(position_id, reason, exit_price, real_bid_price, real_opt_price)
+    return _close_position_with_freshness(position_id, reason, exit_price)
 
 
 @router.post("/settings")

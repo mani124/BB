@@ -217,13 +217,16 @@ def test_api_manual_close_with_bid_and_charges():
     assert trade_res.status_code == 200
     pos_id = trade_res.json()["id"]
 
+    # Server records legitimate option quote
+    from app.main import worker
+    worker.record_option_quote("66123", ltp=155.0, bid=153.5)
+
     # Manual close with real bid price passed in request
     close_res = client.post(
         f"/api/paper/close/{pos_id}",
         json={
             "reason": "Manual Close Test",
             "exit_price": 155.0,
-            "real_bid_price": 153.5,
         }
     )
     assert close_res.status_code == 200
@@ -262,9 +265,12 @@ def test_api_signals_close_alias():
     assert trade_res.status_code == 200
     pos_id = trade_res.json()["id"]
 
+    from app.main import worker
+    worker.record_option_quote("66125", ltp=151.0, bid=149.0)
+
     close_res = client.post(
         f"/api/signals/close/{pos_id}",
-        json={"reason": "Signals API Exit", "real_bid_price": 149.0}
+        json={"reason": "Signals API Exit"}
     )
     assert close_res.status_code == 200
     data = close_res.json()

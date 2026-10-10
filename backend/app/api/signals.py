@@ -75,32 +75,21 @@ async def stream_signals(request: Request, max_events: Optional[int] = None):
 
 @router.post("/close/{position_id}")
 def close_trade_signal(position_id: str, body: Optional[ClosePositionRequest] = None):
-    # F2 (post-fix): Route through the shared freshness-checking close logic
-    # so both /api/paper/close and /api/signals/close apply identical staleness
-    # detection and modeled-fill labeling. Do NOT call paper_trader.close_position
-    # directly here — that skips freshness gates and lets callers set arbitrary P&L.
+    # F2, F4: Enforces server-owned pricing via shared freshness-checking close logic.
     from app.api.paper import _close_position_with_freshness
     if isinstance(body, dict):
         reason = body.get("reason", "Manual User Exit")
         exit_price = body.get("exit_price")
-        real_bid_price = body.get("real_bid_price")
-        real_opt_price = body.get("real_opt_price")
     elif body is not None:
         reason = body.reason or "Manual User Exit"
         exit_price = body.exit_price
-        real_bid_price = body.real_bid_price
-        real_opt_price = body.real_opt_price
     else:
         reason = "Manual User Exit"
         exit_price = None
-        real_bid_price = None
-        real_opt_price = None
 
     return _close_position_with_freshness(
         position_id,
         reason,
         float(exit_price) if exit_price is not None else None,
-        float(real_bid_price) if real_bid_price is not None else None,
-        float(real_opt_price) if real_opt_price is not None else None,
     )
 
