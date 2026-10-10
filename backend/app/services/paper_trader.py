@@ -436,8 +436,16 @@ class PaperTradingEngine:
         delta = 0.55
         now_str = datetime.now().strftime("%H:%M:%S")
         still_active = []
+        changed_active: list[PaperPosition] = []
 
         for pos in self._portfolio.active_positions:
+            orig_state = (
+                pos.current_underlying, pos.current_option_price, pos.pnl_points,
+                pos.pnl_rupees, pos.status, pos.lots, pos.quantity, pos.underlying_sl,
+                pos.option_sl, getattr(pos, "pending_spot_exit", None),
+                getattr(pos, "pending_spot_tp1", False)
+            )
+
             if feed_mode is not None and getattr(pos, "feed_mode", "demo") != feed_mode:
                 still_active.append(pos)
                 continue
@@ -714,13 +722,20 @@ class PaperTradingEngine:
 
             runner_pnl = round(pos.pnl_points * pos.quantity, 2)
             pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
+            new_state = (
+                pos.current_underlying, pos.current_option_price, pos.pnl_points,
+                pos.pnl_rupees, pos.status, pos.lots, pos.quantity, pos.underlying_sl,
+                pos.option_sl, getattr(pos, "pending_spot_exit", None),
+                getattr(pos, "pending_spot_tp1", False)
+            )
+            if orig_state != new_state:
+                changed_active.append(pos)
             still_active.append(pos)
 
         self._portfolio.active_positions = still_active
         self._recalculate_metrics()
-        if self.storage:
-            for p in still_active:
-                self.storage.upsert_position(p)
+        if self.storage and changed_active:
+            self.storage.batch_upsert_positions(changed_active)
 
     def close_position(
         self,

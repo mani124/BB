@@ -12,14 +12,14 @@ def test_standard_round_trip_trade_charges():
     assert breakdown.brokerage == 40.0
     # STT = 9750 * 0.0015 = 14.625 -> 14.62 or 14.63
     assert abs(breakdown.stt - 14.63) <= 0.02
-    # Exchange Fee = 16250 * 0.0005 = 8.125 -> round 8.13 or 8.12
-    assert abs(breakdown.exchange_fee - 8.13) <= 0.02
+    # Exchange Fee = 16250 * 0.0003553 = 5.7736 -> round 5.77
+    assert abs(breakdown.exchange_fee - 5.77) <= 0.02
     # SEBI Fee = 16250 * 0.000001 = 0.016 -> 0.02
     assert abs(breakdown.sebi_fee - 0.02) <= 0.01
     # Stamp Duty = 6500 * 0.00003 = 0.195 -> 0.20
     assert abs(breakdown.stamp_duty - 0.20) <= 0.02
-    # GST = (40 + 8.13 + 0.02) * 0.18 = 8.67
-    assert abs(breakdown.gst - 8.67) <= 0.03
+    # GST = (40 + 5.77 + 0.02) * 0.18 = 8.24
+    assert abs(breakdown.gst - 8.24) <= 0.03
     expected_total = round(breakdown.brokerage + breakdown.stt + breakdown.exchange_fee + breakdown.sebi_fee + breakdown.stamp_duty + breakdown.gst, 2)
     assert breakdown.total_charges == expected_total
 

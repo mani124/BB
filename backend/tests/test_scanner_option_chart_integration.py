@@ -47,7 +47,7 @@ async def test_scanner_worker_evaluates_setup_5_from_live_option_candles():
     # 3. Option candles: 30 candles with candle 30 breaking out above Option Upper BB
     opt_candles = create_option_candles(n=30, base_premium=100.0)
     opt_candles.loc[29] = {
-        "timestamp": datetime(2026, 10, 9, 12, 30),
+        "timestamp": datetime.now(),
         "open": 101.0,
         "high": 116.0,
         "low": 100.5,

@@ -168,6 +168,70 @@ class PaperStorage:
             ))
             conn.commit()
 
+    def batch_upsert_positions(self, positions: list[PaperPosition]):
+        """Persist multiple positions in a single SQLite transaction."""
+        if not positions:
+            return
+        params_list = []
+        for pos in positions:
+            charges_json = json.dumps(pos.charges_breakdown) if pos.charges_breakdown else ""
+            params_list.append((
+                pos.id, pos.signal_id, pos.symbol, pos.option_type, pos.strike_symbol, pos.timeframe, pos.setup_type,
+                pos.entry_time, pos.underlying_entry, pos.underlying_sl, pos.underlying_target_1, pos.underlying_target_2,
+                pos.option_entry, pos.option_sl, pos.option_target_1, pos.option_target_2,
+                pos.lot_size, pos.lots, pos.quantity, pos.current_underlying, pos.current_option_price,
+                pos.pnl_points, pos.pnl_rupees, pos.status, pos.exit_time, pos.exit_reason,
+                pos.initial_lots, pos.initial_quantity, pos.booked_lots, pos.booked_pnl_rupees,
+                pos.option_security_id, getattr(pos, "feed_mode", "demo"),
+                pos.theoretical_entry, pos.entry_slippage, pos.theoretical_exit, pos.exit_slippage,
+                pos.total_slippage_cost, pos.gross_pnl, pos.total_charges, pos.net_pnl, charges_json,
+                getattr(pos, "booked_slippage_cost", 0.0), getattr(pos, "pending_spot_exit", None),
+                1 if getattr(pos, "pending_spot_tp1", False) else 0
+            ))
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.executemany("""
+            INSERT INTO positions (
+                id, signal_id, symbol, option_type, strike_symbol, timeframe, setup_type,
+                entry_time, underlying_entry, underlying_sl, underlying_target_1, underlying_target_2,
+                option_entry, option_sl, option_target_1, option_target_2,
+                lot_size, lots, quantity, current_underlying, current_option_price,
+                pnl_points, pnl_rupees, status, exit_time, exit_reason,
+                initial_lots, initial_quantity, booked_lots, booked_pnl_rupees,
+                option_security_id, feed_mode,
+                theoretical_entry, entry_slippage, theoretical_exit, exit_slippage,
+                total_slippage_cost, gross_pnl, total_charges, net_pnl, charges_json,
+                booked_slippage_cost, pending_spot_exit, pending_spot_tp1
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                lots=excluded.lots,
+                quantity=excluded.quantity,
+                current_underlying=excluded.current_underlying,
+                current_option_price=excluded.current_option_price,
+                pnl_points=excluded.pnl_points,
+                pnl_rupees=excluded.pnl_rupees,
+                status=excluded.status,
+                exit_time=excluded.exit_time,
+                exit_reason=excluded.exit_reason,
+                booked_lots=excluded.booked_lots,
+                booked_pnl_rupees=excluded.booked_pnl_rupees,
+                option_security_id=COALESCE(excluded.option_security_id, positions.option_security_id),
+                feed_mode=excluded.feed_mode,
+                theoretical_entry=excluded.theoretical_entry,
+                entry_slippage=excluded.entry_slippage,
+                theoretical_exit=excluded.theoretical_exit,
+                exit_slippage=excluded.exit_slippage,
+                total_slippage_cost=excluded.total_slippage_cost,
+                gross_pnl=excluded.gross_pnl,
+                total_charges=excluded.total_charges,
+                net_pnl=excluded.net_pnl,
+                charges_json=excluded.charges_json,
+                booked_slippage_cost=excluded.booked_slippage_cost,
+                pending_spot_exit=excluded.pending_spot_exit,
+                pending_spot_tp1=excluded.pending_spot_tp1;
+            """, params_list)
+            conn.commit()
+
     def load_all_positions(self):
         """Returns (active_positions, closed_trades)."""
         from app.services.paper_trader import PaperPosition

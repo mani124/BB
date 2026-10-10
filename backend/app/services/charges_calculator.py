@@ -67,8 +67,9 @@ def calculate_option_trade_charges(
     # STT: 0.15% (0.0015) on Sell Turnover only (effective 1 April 2026)
     stt = round(sell_turnover * 0.0015, 2)
 
-    # NSE Exchange Fee: 0.05% (0.0005) on Total Turnover
-    exchange_fee = round(total_turnover * 0.0005, 2)
+    # NSE Exchange Transaction Fee: ₹3,552.99/crore (~0.03553% inclusive of IPFT per NSE circular FA73061)
+    NSE_OPTION_EXCHANGE_TXN_RATE = 0.0003553
+    exchange_fee = round(total_turnover * NSE_OPTION_EXCHANGE_TXN_RATE, 2)
 
     # SEBI Turnover Fee: ₹10 per crore (0.000001) on Total Turnover
     sebi_fee = round(total_turnover * 0.000001, 2)

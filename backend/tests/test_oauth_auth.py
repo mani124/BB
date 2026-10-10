@@ -64,6 +64,7 @@ async def test_oauth_token_exchange_success():
         assert body["expires_in_hours"] == 24
         assert worker._session_credentials == ("1000000000", "eyJh...sample_token")
         assert worker.get_state().active_mode == "live"
+        worker.set_session_credentials(None, None)
 
 @pytest.mark.asyncio
 async def test_oauth_token_exchange_failure_status_code():
@@ -82,3 +83,8 @@ def test_oauth_token_exchange_missing_fields():
         "app_id": "APP123"
     })
     assert res.status_code == 422
+
+def test_oauth_login_url_get_rejects_app_secret():
+    res = client.get("/api/auth/oauth/login-url?app_id=APP123&app_secret=SECRET123")
+    assert res.status_code == 400
+    assert "prohibited" in res.json()["detail"].lower()

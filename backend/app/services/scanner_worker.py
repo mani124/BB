@@ -78,6 +78,7 @@ class ScannerWorker:
         self._task: Optional[asyncio.Task] = None
         self._session_credentials: Optional[tuple[str, str]] = None
         self._historical_disabled: bool = False
+        self._session_generation: int = 0
         self._expiry_cache: dict[str, str] = {}
         self._option_chain_cache: dict[str, tuple[float, dict]] = {}
         self._candle_history: dict[str, list[dict]] = {}
@@ -85,12 +86,15 @@ class ScannerWorker:
         self._option_candle_history: dict[str, list[dict]] = {}
         self._option_forming_candle: dict[str, dict] = {}
         self._failed_candle_sec_ids: dict[str, float] = {}
+        self._historical_seed_attempts: dict[str, float] = {}
+        self._historical_seed_fail_count: dict[str, int] = {}
         self._last_session_date = datetime.now().date()
         self._last_successful_quote_time: Optional[float] = None
         self._scan_lock = asyncio.Lock()
         self._ws_connect_task: Optional[asyncio.Task] = None
         self._bar_completed_symbols: set[str] = set()
         self._instrument_last_quote_time: dict[str, float] = {}
+        self._option_last_quote_time: dict[str, float] = {}
         self._last_cumulative_volume: dict[str, int] = {}
         self._sec_id_to_instrument: dict[str, Instrument] = {}
         self._seg_sec_id_to_instrument: dict[tuple[int, str], Instrument] = {}
@@ -208,7 +212,8 @@ class ScannerWorker:
 
         sec_id_str = str(sec_id)
         seg = tick.get("exchange_segment")
-        vol = int(tick.get("volume", 0)) if tick.get("volume") is not None else 0
+        raw_vol = tick.get("volume")
+        vol = int(raw_vol) if raw_vol is not None else None
 
         # 1. Check if tick corresponds to active live paper trading option contract
         active_live = paper_trader.get_portfolio(mode="live").active_positions
@@ -218,8 +223,9 @@ class ScannerWorker:
         is_option = bool(matching_opt_positions) or (seg == 2) or (seg == "NSE_FNO")
 
         if is_option:
+            self._option_last_quote_time[sec_id_str] = time.time()
             # Maintain live option candle formation
-            self._get_or_update_option_candles(sec_id_str, ltp, vol)
+            self._get_or_update_option_candles(sec_id_str, ltp, vol or 0)
 
             # Extract real bid price from tick for live exit slippage measurement
             bid = (
@@ -335,6 +341,11 @@ class ScannerWorker:
         self, client_id: Optional[str], access_token: Optional[str]
     ):
         self._historical_disabled = False
+        self._session_generation += 1
+        self._historical_seed_attempts.clear()
+        self._historical_seed_fail_count.clear()
+        self._option_last_quote_time.clear()
+
         if client_id and access_token:
             self._session_credentials = (client_id, access_token)
             self._state.active_mode = "live"
@@ -454,6 +465,16 @@ class ScannerWorker:
         if not client_id or not access_token:
             return False
 
+        # Finding 15: Exponential backoff for failed historical seed attempts
+        now_time = time.time()
+        fail_count = self._historical_seed_fail_count.get(sym, 0)
+        last_attempt = self._historical_seed_attempts.get(sym, 0.0)
+        backoff_delay = min(300.0, 30.0 * (2 ** min(fail_count, 4)))
+        if (now_time - last_attempt) < backoff_delay:
+            return False
+
+        self._historical_seed_attempts[sym] = now_time
+
         try:
             interval = 5 if inst.default_timeframe == "5m" else 15
             df = await self.dhan_client.fetch_intraday_candles(
@@ -465,10 +486,15 @@ class ScannerWorker:
                 interval=interval,
             )
             if df is not None and not df.empty and len(df) >= 20:
+                # Finding 1: Deduplicate and sort bars chronologically
+                df = df.copy()
+                df["parsed_ts"] = pd.to_datetime(df["timestamp"])
+                df = df.drop_duplicates(subset=["parsed_ts"]).sort_values("parsed_ts")
+
                 records = []
                 for _, row in df.iterrows():
                     records.append({
-                        "timestamp": pd.to_datetime(row["timestamp"]),
+                        "timestamp": row["parsed_ts"],
                         "open": float(row["open"]),
                         "high": float(row["high"]),
                         "low": float(row["low"]),
@@ -476,9 +502,14 @@ class ScannerWorker:
                         "volume": int(row.get("volume", 0)),
                     })
                 self._candle_history[sym] = records
+                self._historical_seed_attempts.pop(sym, None)
+                self._historical_seed_fail_count.pop(sym, None)
                 logger.info(f"Successfully seeded {len(records)} historical candles for {sym}")
                 return True
+            else:
+                self._historical_seed_fail_count[sym] = fail_count + 1
         except Exception as e:
+            self._historical_seed_fail_count[sym] = fail_count + 1
             logger.debug(f"Could not seed historical candles for {sym}: {e}")
         return False
 
@@ -501,16 +532,18 @@ class ScannerWorker:
 
         live_ltp = float(inst_quote["last_price"])
         self._instrument_last_quote_time[sym] = time.time()
-        quote_vol = int(inst_quote.get("volume", 0)) if inst_quote.get("volume") is not None else 0
-
-        # Calculate incremental bar volume from cumulative day volume
-        last_cum_vol = self._last_cumulative_volume.get(sym)
+        
+        # Findings 8 & 9: Real incremental volume calculation from cumulative day volume
+        raw_vol = inst_quote.get("volume")
         incremental_vol = 0
-        if last_cum_vol is not None and quote_vol >= last_cum_vol:
-            incremental_vol = quote_vol - last_cum_vol
-        elif quote_vol > 0:
-            incremental_vol = quote_vol
-        self._last_cumulative_volume[sym] = quote_vol
+        if raw_vol is not None:
+            quote_vol = int(raw_vol)
+            last_cum_vol = self._last_cumulative_volume.get(sym)
+            if last_cum_vol is not None and quote_vol >= last_cum_vol:
+                incremental_vol = quote_vol - last_cum_vol
+            elif quote_vol > 0 and last_cum_vol is None:
+                incremental_vol = 0 if self._candle_history.get(sym) else quote_vol
+            self._last_cumulative_volume[sym] = quote_vol
 
         # Initialize intraday history if not present
         if sym not in self._candle_history:
@@ -526,7 +559,7 @@ class ScannerWorker:
                 "high": live_ltp,
                 "low": live_ltp,
                 "close": live_ltp,
-                "volume": max(0, incremental_vol),
+                "volume": 0,
             }
 
         # Update the forming candle with the live tick
@@ -546,14 +579,16 @@ class ScannerWorker:
                 "high": live_ltp,
                 "low": live_ltp,
                 "close": live_ltp,
-                "volume": max(0, incremental_vol),
+                "volume": 0,
             }
             self._current_forming_candle[sym] = forming
         else:
             forming["high"] = max(forming["high"], live_ltp)
             forming["low"] = min(forming["low"], live_ltp)
             forming["close"] = live_ltp
-            forming["volume"] = max(0, forming.get("volume", 0) + incremental_vol)
+
+        # Finding 9: Increment volume exactly once on the unified path
+        forming["volume"] = max(0, forming.get("volume", 0) + incremental_vol)
 
         all_bars = self._candle_history[sym] + [forming]
         return pd.DataFrame(all_bars)
@@ -636,6 +671,7 @@ class ScannerWorker:
         self._state.is_scanning = True
         self._state.scan_progress = 0.0
         self.check_session_reset()
+        gen = self._session_generation
 
         cid = client_id or (self._session_credentials[0] if self._session_credentials else None)
         tok = access_token or (self._session_credentials[1] if self._session_credentials else None)
@@ -679,11 +715,19 @@ class ScannerWorker:
             except Exception as e:
                 logger.warning(f"Error fetching live marketfeed quotes: {e}")
 
+        # Finding 6: Abort if disconnected or session generation changed during await
+        if self._session_generation != gen or (cid and not self._session_credentials and not client_id):
+            logger.info("Scan cycle aborted: credentials disconnected in-flight")
+            self._state.is_scanning = False
+            self._state.active_mode = "demo"
+            self._state.feed_status = "DEMO"
+            return self._state
+
         # Derive active mode and feed health from quote success or active WebSocket feed
         loop_time = asyncio.get_running_loop().time()
         ws_healthy = bool(self.ws_manager and self.ws_manager.is_healthy)
         self._state.ws_connected = bool(self.ws_manager and self.ws_manager.is_connected)
-        if has_creds:
+        if has_creds and (self._session_credentials or client_id):
             if ws_healthy:
                 self._last_successful_quote_time = loop_time
                 mode = "live"
@@ -799,6 +843,8 @@ class ScannerWorker:
 
             if mode == "live" and cid and tok and len(self._candle_history.get(inst.symbol, [])) < 20:
                 await self.seed_historical_candles_if_needed(cid, tok, inst)
+                if self._session_generation != gen or (cid and not self._session_credentials and not client_id):
+                    return self._state
 
             # Maintain and update 100% real candles
             df = self.get_or_update_live_candles(inst, inst_quote)
@@ -811,7 +857,18 @@ class ScannerWorker:
             if not ind_df.empty:
                 if current_price <= 0:
                     current_price = float(ind_df.iloc[-1]["close"])
-                price_map[inst.symbol] = current_price
+
+                # Finding 4: In non-demo modes, only populate trade price_map if this instrument has a fresh quote
+                if mode != "demo":
+                    is_fresh = (
+                        inst_quote is not None and float(inst_quote.get("last_price", 0.0)) > 0
+                        and (time.time() - self._instrument_last_quote_time.get(inst.symbol, 0.0)) <= 15.0
+                    )
+                    if is_fresh:
+                        price_map[inst.symbol] = float(inst_quote["last_price"])
+                else:
+                    price_map[inst.symbol] = current_price
+
                 # If Dhan provides official session VWAP (average_price), use it
                 if inst_quote and float(inst_quote.get("average_price", 0.0)) > 0:
                     ind_df.iloc[-1, ind_df.columns.get_loc("vwap")] = float(inst_quote["average_price"])
@@ -887,9 +944,16 @@ class ScannerWorker:
                     stock_bias=stock_bias,
                     market_bias=market_bias
                 )
+                today_date = datetime.now().date()
                 for s in signals_on_closed:
-                    s.is_confirmed = True
-                    confirmed_signals.append(s)
+                    # Finding 1: Only bars completed in today's active session can generate confirmed signals
+                    try:
+                        s_dt = pd.to_datetime(s.timestamp)
+                        if s_dt.date() == today_date:
+                            s.is_confirmed = True
+                            confirmed_signals.append(s)
+                    except Exception:
+                        pass
 
             # 2. Forming bar: evaluate on ind_df (which includes active forming candle)
             provisional_signals = evaluate_signals(
@@ -900,12 +964,8 @@ class ScannerWorker:
                 market_bias=market_bias
             )
             for sig in provisional_signals:
-                is_snapback = sig.setup_type in (
-                    SetupType.SETUP_6_PINBAR_SNAPBACK,
-                    SetupType.SETUP_7_INSIDE_BAR_SNAPBACK,
-                    SetupType.SETUP_8_DIVERGENCE_SNAPBACK,
-                ) or "Setup 6" in str(sig.setup_type) or "Setup 7" in str(sig.setup_type) or "Setup 8" in str(sig.setup_type)
-                if is_snapback and mode == "live":
+                # Finding 3: In live mode, ANY signal evaluated on the active forming candle is provisional
+                if mode == "live":
                     sig.is_confirmed = False
                 else:
                     sig.is_confirmed = True
@@ -920,6 +980,8 @@ class ScannerWorker:
             if mode == "live" and cid and tok:
                 try:
                     expiry, oc = await self.get_or_fetch_option_chain(cid, tok, inst)
+                    if self._session_generation != gen or (cid and not self._session_credentials and not client_id):
+                        return self._state
                     if oc:
                         # Extract strike quotes (LTP, bid) from option chain into option_price_map & option_bid_map
                         for strike_k, strike_data in oc.items():
@@ -930,6 +992,7 @@ class ScannerWorker:
                                         c_sec_id = contract.get("security_id")
                                         if c_sec_id is not None:
                                             c_sec_id_str = str(c_sec_id)
+                                            self._option_last_quote_time[c_sec_id_str] = time.time()
                                             c_ltp = contract.get("last_price")
                                             if c_ltp is not None:
                                                 try:
@@ -998,6 +1061,7 @@ class ScannerWorker:
         paper_trader.update_market_prices(
             price_map,
             option_price_map,
+            feed_mode=mode,
             option_bid_map=option_bid_map,
         )
         if mode in ("live", "demo"):
@@ -1142,7 +1206,14 @@ class ScannerWorker:
                     expiry_date=expiry,
                     lot_size=lot_size,
                     option_security_id=sec_id_str,
-                    timeframe="5m"
+                    timeframe="5m",
+                    current_quote={
+                        "last_price": opt_ltp,
+                        "volume": opt_vol,
+                        "ask_price": float(opt_info.get("top_ask_price", 0.0) or opt_info.get("ask_price", 0.0) or 0.0),
+                        "bid_price": float(opt_info.get("top_bid_price", 0.0) or opt_info.get("bid_price", 0.0) or 0.0),
+                        "is_live_quote": bool(opt_ltp > 0 or float(opt_info.get("top_ask_price", 0.0) or 0.0) > 0)
+                    }
                 )
                 if sig:
                     results.append(sig)

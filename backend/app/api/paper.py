@@ -22,29 +22,44 @@ def get_portfolio() -> PaperPortfolio:
 
 @router.post("/trade")
 def open_manual_trade(body: ManualTradeRequest) -> PaperPosition:
-    mode = body.feed_mode
-    if not mode:
-        try:
-            from app.main import worker
-            if hasattr(worker, "_state") and getattr(worker._state, "active_mode", None):
-                mode = worker._state.active_mode
-            elif hasattr(worker, "active_mode"):
-                mode = getattr(worker, "active_mode")
-        except Exception:
-            mode = None
-    if not mode:
-        if getattr(body.signal.strike_recommendation, "is_live_quote", False):
-            mode = "live"
-        else:
-            mode = "demo"
-
-    if mode == "live" and not getattr(body.signal, "is_confirmed", True):
+    # Finding 3: Reject unconfirmed provisional setups immediately
+    if not getattr(body.signal, "is_confirmed", True):
         raise HTTPException(
             status_code=400,
             detail="Cannot enter trade on unconfirmed provisional candle setup. Please await candle completion."
         )
 
-    rec = body.signal.strike_recommendation
+    mode = body.feed_mode
+    if not mode:
+        try:
+            from app.main import worker
+            if worker._session_credentials is not None and getattr(worker._state, "active_mode", None) == "live":
+                mode = "live"
+            else:
+                mode = "demo"
+        except Exception:
+            mode = "demo"
+
+    target_signal = body.signal
+    if mode == "live":
+        try:
+            from app.main import worker
+            active_signals = getattr(worker._state, "signals", [])
+            matched = next((s for s in active_signals if s.id == body.signal.id), None)
+            if matched:
+                target_signal = matched
+            else:
+                # Finding 5: Reject forged or unobserved signals in live mode
+                raise HTTPException(
+                    status_code=400,
+                    detail="Live signal not found or has expired in active scan radar. Cannot trade unobserved signals in live mode."
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    rec = target_signal.strike_recommendation
     if mode == "live":
         sec_id = getattr(rec, "option_security_id", None)
         is_live = getattr(rec, "is_live_quote", False)
@@ -56,7 +71,7 @@ def open_manual_trade(body: ManualTradeRequest) -> PaperPosition:
                 detail="Cannot open live position without a resolved option contract and real live quote."
             )
 
-    pos = paper_trader.open_position_from_signal(body.signal, lots=body.lots, feed_mode=mode)
+    pos = paper_trader.open_position_from_signal(target_signal, lots=body.lots, feed_mode=mode)
     if not pos:
         raise HTTPException(status_code=400, detail="Position already exists or was skipped for this signal")
     return pos
@@ -76,17 +91,22 @@ def close_trade(position_id: str, body: Optional[ClosePositionRequest] = None):
 
     pos_to_close = next((p for p in paper_trader.get_portfolio().active_positions if p.id == position_id), None)
     if pos_to_close and pos_to_close.feed_mode == "live":
+        is_fresh = False
         try:
             from app.main import worker
+            import time
             sec_id = pos_to_close.option_security_id
             if sec_id:
-                candle_forming = getattr(worker, "_option_forming_candle", {}).get(sec_id)
+                quote_time = getattr(worker, "_option_last_quote_time", {}).get(str(sec_id), 0.0)
+                is_fresh = (time.time() - quote_time) <= 15.0 if quote_time else False
+                candle_forming = getattr(worker, "_option_forming_candle", {}).get(str(sec_id))
                 if candle_forming and candle_forming.get("close", 0) > 0 and real_opt_price is None:
-                    real_opt_price = float(candle_forming["close"])
+                    if is_fresh:
+                        real_opt_price = float(candle_forming["close"])
         except Exception:
             pass
 
-        if real_bid_price is None and real_opt_price is None and exit_price is None:
+        if real_bid_price is None and (real_opt_price is None or not is_fresh) and exit_price is None:
             if "(Modeled" not in reason:
                 reason = f"{reason} (Modeled: Unquoted)"
 

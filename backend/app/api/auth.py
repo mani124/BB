@@ -99,13 +99,18 @@ async def create_oauth_login_url(body: OAuthLoginUrlRequest):
 @router.get("/oauth/login-url")
 async def get_oauth_login_url(
     app_id: str = Query(..., min_length=1, description="Dhan App ID / API Key"),
-    app_secret: Optional[str] = Query(None, description="Dhan App Secret"),
+    app_secret: Optional[str] = Query(None, description="Dhan App Secret (prohibited in GET)"),
     client_id: Optional[str] = Query(None, description="Dhan Client ID"),
     redirect_uri: Optional[str] = Query(None, description="Redirect URI after consent"),
 ):
+    if app_secret:
+        raise HTTPException(
+            status_code=400,
+            detail="Passing app_secret in GET query parameters is prohibited for credential security. Use POST /api/auth/oauth/login-url with a JSON body."
+        )
     return await _generate_oauth_login_url(
         app_id=app_id,
-        app_secret=app_secret,
+        app_secret=None,
         client_id=client_id,
         redirect_uri=redirect_uri,
     )

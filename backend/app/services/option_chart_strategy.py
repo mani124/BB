@@ -17,7 +17,8 @@ def evaluate_option_chart_signal(
     expiry_date: Optional[str] = None,
     lot_size: int = 50,
     option_security_id: Optional[str] = None,
-    timeframe: str = "5m"
+    timeframe: str = "5m",
+    current_quote: Optional[dict] = None
 ) -> Optional[Signal]:
     """
     Setup 5: Standalone Option Chart Bollinger Scalper.
@@ -74,9 +75,33 @@ def evaluate_option_chart_signal(
     opt_t2 = round(close + (actual_risk * 2.5), 1)
 
     ts_raw = curr.get("timestamp", last_idx)
+    try:
+        candle_dt = pd.to_datetime(ts_raw)
+        if candle_dt.date() < datetime.now().date():
+            # Finding 1 & 2: Prior session breakout candles must not trigger signals
+            return None
+    except Exception:
+        pass
+
     ts_str = str(ts_raw)
     ts_clean = ts_str.replace(":", "").replace("-", "").replace(" ", "_").replace(".", "")
     sig_id = f"{symbol}_{timeframe}_S5_{option_type}_{ts_clean}"
+
+    # Finding 2: Require authentic current live quote before labelling as live quote
+    is_live = False
+    real_ltp = None
+    real_ask = None
+    real_bid = None
+    if current_quote and isinstance(current_quote, dict):
+        q_ltp = float(current_quote.get("last_price", 0.0) or 0.0)
+        q_ask = float(current_quote.get("ask_price", 0.0) or current_quote.get("top_ask_price", 0.0) or 0.0)
+        q_bid = float(current_quote.get("bid_price", 0.0) or current_quote.get("top_bid_price", 0.0) or 0.0)
+        q_is_live = bool(current_quote.get("is_live_quote", False))
+        if q_is_live or q_ask > 0 or q_ltp > 0:
+            is_live = q_is_live
+            real_ltp = q_ltp if q_ltp > 0 else close
+            real_ask = q_ask if q_ask > 0 else None
+            real_bid = q_bid if q_bid > 0 else None
 
     rec = OptionStrikeRecommendation(
         symbol=symbol,
@@ -99,8 +124,10 @@ def evaluate_option_chart_signal(
         option_target_2_price=opt_t2,
         option_security_id=option_security_id,
         expiry_date=expiry_date,
-        real_ltp=close,
-        is_live_quote=True
+        real_ltp=real_ltp,
+        real_ask_price=real_ask,
+        real_bid_price=real_bid,
+        is_live_quote=is_live
     )
 
     indicators_snap = {
