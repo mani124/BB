@@ -41,6 +41,8 @@ def create_app() -> FastAPI:
         "http://localhost:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:5173",
+        "https://options.34-14-178-224.sslip.io",
+        "http://options.34-14-178-224.sslip.io",
     ]
     _deployed_origin = os.getenv("ALLOWED_ORIGIN", "")
     if _deployed_origin:
