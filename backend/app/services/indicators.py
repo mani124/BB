@@ -6,6 +6,8 @@ INDICATOR_COLUMNS = [
     "bb_std",
     "bb_upper",
     "bb_lower",
+    "bb_upper_25",
+    "bb_lower_25",
     "bandwidth",
     "bandwidth_20_min",
     "percent_b",
@@ -52,11 +54,13 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     n_bars = len(res)
     window = min(20, n_bars)
 
-    # 1. Bollinger Bands (20, 2.0)
+    # 1. Bollinger Bands (20, 2.0 & 2.5)
     res["bb_middle"] = res["close"].rolling(window=window, min_periods=window).mean()
     res["bb_std"] = res["close"].rolling(window=window, min_periods=window).std(ddof=0)
     res["bb_upper"] = res["bb_middle"] + 2.0 * res["bb_std"]
     res["bb_lower"] = res["bb_middle"] - 2.0 * res["bb_std"]
+    res["bb_upper_25"] = res["bb_middle"] + 2.5 * res["bb_std"]
+    res["bb_lower_25"] = res["bb_middle"] - 2.5 * res["bb_std"]
 
     # BandWidth = (Upper - Lower) / Middle * 100
     denom = res["bb_middle"].replace(0, np.nan)
