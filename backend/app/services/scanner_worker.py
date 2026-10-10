@@ -14,7 +14,7 @@ from app.services.universe_manager import UniverseManager, Instrument
 from app.services.dhan_client import DhanClient
 from app.services.dhan_websocket import DhanWebSocketManager
 from app.services.indicators import calculate_indicators
-from app.services.strategy_engine import evaluate_signals, Signal
+from app.services.strategy_engine import evaluate_signals, Signal, SetupType
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size
 from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
@@ -843,16 +843,25 @@ class ScannerWorker:
                                                 except (ValueError, TypeError):
                                                     pass
 
-                        # Enrich Setups 1-4 with live option quotes
+                        # Enrich detected signals with live option quotes
                         if detected:
                             for sig in detected:
+                                is_snapback = sig.setup_type in (
+                                    SetupType.SETUP_6_PINBAR_SNAPBACK,
+                                    SetupType.SETUP_7_INSIDE_BAR_SNAPBACK,
+                                    SetupType.SETUP_8_DIVERGENCE_SNAPBACK,
+                                ) or "Setup 6" in str(sig.setup_type) or "Setup 7" in str(sig.setup_type) or "Setup 8" in str(sig.setup_type)
+                                pref = "ITM_1" if is_snapback else "DEFAULT"
                                 live_rec = resolve_live_strike_from_chain(
                                     symbol=sig.symbol,
                                     underlying_price=sig.entry_price,
                                     option_type=sig.option_type,
                                     option_chain_oc=oc,
                                     expiry_date=expiry,
-                                    stop_loss=sig.stop_loss
+                                    stop_loss=sig.stop_loss,
+                                    target_1=sig.target_1,
+                                    target_2=sig.target_2,
+                                    strike_preference=pref,
                                 )
                                 sig.strike_recommendation = live_rec
 

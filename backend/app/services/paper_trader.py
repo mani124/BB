@@ -178,6 +178,9 @@ class PaperTradingEngine:
         if self.storage:
             self.storage.clear_all()
 
+    def reset_portfolio(self):
+        self.reset()
+
     def open_position_from_signal(
         self,
         signal: Signal,
