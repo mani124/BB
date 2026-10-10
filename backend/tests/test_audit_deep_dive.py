@@ -142,21 +142,39 @@ def test_finding_1_prior_session_historical_candles_cannot_open_live_trade():
         })
     worker._candle_history[inst.symbol] = bars
 
-    # Evaluate scan cycle in live mode with a mock
-    with patch.object(worker.dhan_client, "fetch_marketfeed_quotes", new_callable=AsyncMock) as mock_mf:
+    dummy_rec = OptionStrikeRecommendation(
+        symbol=inst.symbol, underlying_price=22050.0, option_type="CE",
+        atm_strike=22050, recommended_strike=22050, strike_symbol=f"{inst.symbol} 22050 CE",
+        lot_size=50, risk=10.0, stop_loss=22040.0, target_1=22065.0, target_2=22075.0,
+        estimated_option_entry=100.0, option_sl_pts=10.0, option_target_1_pts=15.0,
+        option_target_2_pts=25.0, option_sl_price=90.0, option_target_1_price=115.0,
+        option_target_2_price=125.0
+    )
+
+    # Create a synthetic prior-session candidate signal
+    mock_candidate = Signal(
+        id="SIG_PAST_CANDIDATE", symbol=inst.symbol, timeframe="5m",
+        setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+        timestamp=(yesterday + timedelta(minutes=100)).strftime("%Y-%m-%d %H:%M:%S"),
+        entry_price=22050.0, stop_loss=22040.0, target_1=22065.0, target_2=22075.0,
+        strike_recommendation=dummy_rec, is_confirmed=False,
+        indicators_snapshot={}, rationale="past candidate"
+    )
+
+    with patch("app.services.scanner_worker.evaluate_signals", return_value=[mock_candidate]), \
+         patch.object(worker.dhan_client, "fetch_marketfeed_quotes", new_callable=AsyncMock) as mock_mf:
         mock_mf.return_value = {
             inst.exchange_segment: {
                 str(inst.security_id): {"last_price": 22100.0, "volume": 50000}
             }
         }
-        # Run scan
         state = asyncio.run(worker._execute_scan_cycle(client_id="CID", access_token="TOK"))
-        # Any signal generated on yesterday's bars must NOT be confirmed
-        for s in state.signals:
-            if s.symbol == inst.symbol:
-                s_dt = pd.to_datetime(s.timestamp)
-                if s_dt.date() < datetime.now().date():
-                    assert not s.is_confirmed, f"Past-session signal {s.id} was marked confirmed!"
+        found = [s for s in state.signals if s.id == "SIG_PAST_CANDIDATE"]
+        assert len(found) > 0, "Candidate signal must be present in evaluated signals"
+        for s in found:
+            s_dt = pd.to_datetime(s.timestamp)
+            assert s_dt.date() < datetime.now().date()
+            assert not s.is_confirmed, f"Past-session signal {s.id} was marked confirmed!"
 
 
 def test_finding_2_setup5_prior_session_breakout_rejected():
@@ -202,42 +220,72 @@ def test_finding_3_forming_candle_signals_are_provisional_in_live_mode():
     worker._candle_history[inst.symbol] = []
     worker.get_or_update_live_candles(inst, {"last_price": 22500.0, "volume": 1000})
 
-    # Execute scan cycle
-    with patch.object(worker.dhan_client, "fetch_marketfeed_quotes", new_callable=AsyncMock) as mock_mf:
+    dummy_rec = OptionStrikeRecommendation(
+        symbol=inst.symbol, underlying_price=22500.0, option_type="CE",
+        atm_strike=22500, recommended_strike=22500, strike_symbol=f"{inst.symbol} 22500 CE",
+        lot_size=50, risk=10.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+        estimated_option_entry=100.0, option_sl_pts=10.0, option_target_1_pts=15.0,
+        option_target_2_pts=25.0, option_sl_price=90.0, option_target_1_price=115.0,
+        option_target_2_price=125.0
+    )
+
+    mock_forming_sig = Signal(
+        id="SIG_FORMING_CANDIDATE", symbol=inst.symbol, timeframe="5m",
+        setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        entry_price=22500.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+        strike_recommendation=dummy_rec, is_confirmed=False,
+        indicators_snapshot={}, rationale="forming candidate"
+    )
+
+    with patch("app.services.scanner_worker.evaluate_signals", return_value=[mock_forming_sig]), \
+         patch.object(worker.dhan_client, "fetch_marketfeed_quotes", new_callable=AsyncMock) as mock_mf:
         mock_mf.return_value = {
             inst.exchange_segment: {
                 str(inst.security_id): {"last_price": 22500.0, "volume": 1000}
             }
         }
         state = asyncio.run(worker._execute_scan_cycle(client_id="CID", access_token="TOK"))
-        for s in state.signals:
-            if s.symbol == inst.symbol:
-                assert s.is_confirmed is False, f"Forming candle signal {s.id} must be provisional in live mode"
+        found = [s for s in state.signals if s.id == "SIG_FORMING_CANDIDATE"]
+        assert len(found) > 0, "Forming candidate signal must be in state signals"
+        for s in found:
+            assert s.is_confirmed is False, f"Forming candle signal {s.id} must be provisional in live mode"
+
+
 
 
 def test_finding_4_missing_quote_omitted_from_price_map_in_live_mode():
-    """Finding 4: When an instrument is not quoted in live mode, it is omitted from trade price_map."""
+    """Finding 4: In a partial live response, unquoted instruments are omitted from price_map while quoted ones are included."""
     worker = ScannerWorker(universe_mgr=UniverseManager())
-    inst = worker.universe_mgr.get_indices()[0]
+    indices = worker.universe_mgr.get_indices()
+    inst_missing = indices[0]
+    inst_quoted = indices[1]
 
-    # Pre-populate historical candles
     now = datetime.now()
-    worker._candle_history[inst.symbol] = [{
-        "timestamp": now - timedelta(minutes=5 * i),
-        "open": 22000.0, "high": 22010.0, "low": 21990.0, "close": 22005.0, "volume": 1000
-    } for i in range(25)]
+    for inst in (inst_missing, inst_quoted):
+        worker._candle_history[inst.symbol] = [{
+            "timestamp": now - timedelta(minutes=5 * i),
+            "open": 22000.0, "high": 22010.0, "low": 21990.0, "close": 22005.0, "volume": 1000
+        } for i in range(25)]
 
-    # Mock marketfeed returning EMPTY quotes for this instrument
+    # Mock marketfeed returning quote ONLY for inst_quoted, omitting inst_missing
     worker.set_session_credentials("CID", "TOK")
     with patch.object(worker.dhan_client, "fetch_marketfeed_quotes", new_callable=AsyncMock) as mock_mf, \
          patch.object(paper_trader, "update_market_prices") as mock_update:
-        mock_mf.return_value = {}
-        asyncio.run(worker._execute_scan_cycle())
-        # Check what was passed to paper_trader.update_market_prices
+        mock_mf.return_value = {
+            inst_quoted.exchange_segment: {
+                str(inst_quoted.security_id): {"last_price": 48500.0, "volume": 10000}
+            }
+        }
+        state = asyncio.run(worker._execute_scan_cycle())
         called_args = mock_update.call_args
         assert called_args is not None
         called_price_map = called_args[0][0] if called_args.args else called_args.kwargs.get("price_map", {})
-        assert inst.symbol not in called_price_map, f"Stale {inst.symbol} was erroneously included in live trade price_map"
+        assert inst_missing.symbol not in called_price_map, f"Stale {inst_missing.symbol} was erroneously included in live price_map"
+        assert inst_quoted.symbol in called_price_map, f"Quoted {inst_quoted.symbol} was missing from live price_map"
+        assert called_price_map[inst_quoted.symbol] == 48500.0
+        assert state.active_mode == "live", "Scan cycle with partial live feed should remain in live mode"
+
 
 
 def test_finding_5_manual_live_entry_rejects_forged_signal():
