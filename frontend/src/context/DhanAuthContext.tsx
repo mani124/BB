@@ -201,8 +201,19 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return false;
       }
 
-      const hours = Number(data.expires_in_hours) || 24;
-      const expiryMs = Date.now() + hours * 3600 * 1000;
+      let expiryMs: number;
+      if (data.expiry_time) {
+        const parsed = Date.parse(data.expiry_time);
+        if (!isNaN(parsed) && parsed > Date.now()) {
+          expiryMs = parsed;
+        } else {
+          const hours = Number(data.expires_in_hours) || 24;
+          expiryMs = Date.now() + hours * 3600 * 1000;
+        }
+      } else {
+        const hours = Number(data.expires_in_hours) || 24;
+        expiryMs = Date.now() + hours * 3600 * 1000;
+      }
       const maskedToken = data.masked_token || 'oauth_connected';
 
       sessionStorage.setItem('dhan_client_id', cId);

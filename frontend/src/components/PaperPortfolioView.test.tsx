@@ -166,7 +166,7 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
     fireEvent.click(receiptBtn);
 
     expect(screen.getByText(/Dhan & Statutory Taxes Receipt/i)).toBeInTheDocument();
-    const modal = screen.getByText(/Dhan & Statutory Taxes Receipt/i).closest('.shadow-2xl')!;
+    const modal = screen.getByText(/Dhan & Statutory Taxes Receipt/i).closest('.shadow-2xl') as HTMLElement;
     expect(modal).toBeInTheDocument();
     expect(within(modal).getByText(/Brokerage/i)).toBeInTheDocument();
     expect(within(modal).getByText(/STT/i)).toBeInTheDocument();

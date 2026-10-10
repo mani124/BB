@@ -1,13 +1,10 @@
 import asyncio
+import json
 import struct
 from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
 
 from app.services.dhan_websocket import DhanWebSocketManager
-from app.services.dhan_packet_codec import (
-    encode_login_packet,
-    encode_subscription_packet,
-)
 
 
 @pytest.mark.asyncio
@@ -19,14 +16,13 @@ async def test_websocket_manager_lifecycle():
 
     mgr = DhanWebSocketManager(on_tick_callback=on_tick)
     assert mgr.is_connected is False
+    assert mgr.is_healthy is False
     assert mgr.status == "DISCONNECTED"
 
-    # Mock connection and tick delivery
     mock_ws = AsyncMock()
     mock_ws.send = AsyncMock()
     mock_ws.recv = AsyncMock(
         side_effect=[
-            b"\x0b\x00\x53\x00",  # Login Ack (Code 11)
             asyncio.CancelledError(),  # Stop loop
         ]
     )
@@ -41,11 +37,15 @@ async def test_websocket_manager_lifecycle():
         assert "authType=2" in mgr._build_ws_url()
         assert mgr.is_connected is True
         assert mgr.status == "CONNECTED"
+        assert mgr.is_healthy is False  # No ticks yet
+
         await mgr.subscribe([(1, 1330), (2, 44608)])
         assert mock_ws.send.called
-        # Check login packet was sent first
-        first_call_arg = mock_ws.send.call_args_list[0][0][0]
-        assert first_call_arg == encode_login_packet("1000000000", "TEST_TOKEN")
+        # Check subscription was sent as JSON RequestCode 15
+        sub_arg = mock_ws.send.call_args_list[0][0][0]
+        parsed_sub = json.loads(sub_arg)
+        assert parsed_sub["RequestCode"] == 15
+        assert parsed_sub["InstrumentCount"] == 2
 
         await mgr.disconnect()
         assert mgr.is_connected is False
@@ -59,15 +59,14 @@ async def test_websocket_reader_dispatches_ticks():
     async def on_tick(tick):
         ticks_received.append(tick)
 
-    # 16-byte Ticker packet: Code 2, Seg 1, Len 16, SecId 1330, LTT 1728500000, LTP 25050.25
-    ticker_bytes = struct.pack("<BBHiif", 2, 1, 16, 1330, 1728500000, 25050.25)
-    # 50-byte Quote packet: Code 4, Seg 2, Len 50, SecId 44608, LTT 1728500000, LTP 160.5, LTQ 100, VWAP 158.0, Vol 250000, Close 152
-    quote_bytes = (
-        struct.pack(
-            "<BBHiififiiiii",
-            4, 2, 50, 44608, 1728500000, 160.5, 100, 158.0, 250000, 150, 165, 148, 152
-        )
-        + b"\x00" * 6
+    # Dhan v2 Ticker packet (Code 2, 16 bytes): <BhBifi
+    ticker_bytes = struct.pack("<BhBifi", 2, 16, 1, 1330, 25050.25, 1728500000)
+    # Dhan v2 Quote packet (Code 4, 50 bytes): <BhBifhifiiiffff
+    quote_bytes = struct.pack(
+        "<BhBifhifiiiffff",
+        4, 50, 2, 44608,
+        160.5, 100, 1728500000, 158.0, 250000,
+        5000, 6000, 150.0, 152.0, 165.0, 148.0
     )
     # Malformed packet
     malformed_bytes = b"\x02\x00"
@@ -76,7 +75,6 @@ async def test_websocket_reader_dispatches_ticks():
     mock_ws.send = AsyncMock()
     mock_ws.recv = AsyncMock(
         side_effect=[
-            b"\x0b\x00\x53\x00",  # Login Ack (Code 11)
             ticker_bytes,         # Ticker
             malformed_bytes,      # Should be dropped cleanly without error
             quote_bytes,          # Quote
@@ -101,6 +99,7 @@ async def test_websocket_reader_dispatches_ticks():
         assert ticks_received[1]["security_id"] == 44608
         assert pytest.approx(ticks_received[1]["ltp"], 0.01) == 160.5
         assert ticks_received[1]["volume"] == 250000
+        assert mgr.is_healthy is True
 
         await mgr.disconnect()
 
@@ -120,8 +119,8 @@ async def test_websocket_batch_subscription():
         instruments = [(1, i) for i in range(1, 151)]
         await mgr.subscribe(instruments, mode=2)
 
-        # Login packet (call 0) + 2 subscription packets (call 1: 100 items, call 2: 50 items)
-        assert mock_ws.send.call_count == 3
+        # 2 subscription packets (call 0: 100 items, call 1: 50 items)
+        assert mock_ws.send.call_count == 2
         assert len(mgr.subscribed_instruments) == 150
 
         await mgr.disconnect()
@@ -132,7 +131,6 @@ async def test_websocket_auto_reconnect_and_resubscribe():
     first_ws = AsyncMock()
     first_ws.send = AsyncMock()
     first_ws.recv = AsyncMock(side_effect=[
-        b"\x0b\x00\x53\x00",
         ConnectionResetError("Socket reset by peer"),
     ])
     first_ws.close = AsyncMock()
@@ -140,7 +138,6 @@ async def test_websocket_auto_reconnect_and_resubscribe():
     second_ws = AsyncMock()
     second_ws.send = AsyncMock()
     second_ws.recv = AsyncMock(side_effect=[
-        b"\x0b\x00\x53\x00",
         asyncio.CancelledError(),
     ])
     second_ws.close = AsyncMock()
@@ -164,7 +161,7 @@ async def test_websocket_auto_reconnect_and_resubscribe():
         # Second websocket should have been connected and re-subscribed
         assert mgr.is_connected is True
         assert mgr.status == "CONNECTED"
-        assert second_ws.send.call_count >= 2  # Login + Re-subscribe
+        assert second_ws.send.call_count >= 1  # Re-subscribe JSON sent
 
         await mgr.disconnect()
         assert mgr.status == "DISCONNECTED"
@@ -203,12 +200,11 @@ def test_websocket_zero_token_persistence():
 
 @pytest.mark.asyncio
 async def test_websocket_code_50_triggers_reconnect():
-    code_50_bytes = struct.pack("<BBHii", 50, 0, 10, 0, 805)  # Disconnect alert
+    code_50_bytes = struct.pack("<BhBih", 50, 10, 0, 0, 805)  # Disconnect alert
 
     first_ws = AsyncMock()
     first_ws.send = AsyncMock()
     first_ws.recv = AsyncMock(side_effect=[
-        b"\x0b\x00\x53\x00",
         code_50_bytes,
     ])
     first_ws.close = AsyncMock()
@@ -216,7 +212,6 @@ async def test_websocket_code_50_triggers_reconnect():
     second_ws = AsyncMock()
     second_ws.send = AsyncMock()
     second_ws.recv = AsyncMock(side_effect=[
-        b"\x0b\x00\x53\x00",
         asyncio.CancelledError(),
     ])
     second_ws.close = AsyncMock()
@@ -232,6 +227,7 @@ async def test_websocket_code_50_triggers_reconnect():
 
     with patch("websockets.connect", side_effect=mock_connect):
         await mgr.connect("1000000000", "TEST_TOKEN")
+        await mgr.subscribe([(1, 1330)])
         await asyncio.sleep(0.06)
 
         assert mgr.is_connected is True
@@ -252,13 +248,12 @@ async def test_websocket_sync_callback_and_callback_exception():
 
     mgr = DhanWebSocketManager(on_tick_callback=sync_on_tick)
 
-    t1 = struct.pack("<BBHiif", 2, 1, 16, 1330, 1728500000, 25000.0)
-    t2 = struct.pack("<BBHiif", 2, 1, 16, 1330, 1728500001, 25010.0)
+    t1 = struct.pack("<BhBifi", 2, 16, 1, 1330, 25000.0, 1728500000)
+    t2 = struct.pack("<BhBifi", 2, 16, 1, 1330, 25010.0, 1728500001)
 
     mock_ws = AsyncMock()
     mock_ws.send = AsyncMock()
     mock_ws.recv = AsyncMock(side_effect=[
-        b"\x0b\x00\x53\x00",
         t1,
         t2,
         asyncio.CancelledError(),
@@ -295,7 +290,9 @@ async def test_websocket_subscribe_before_connect_and_unsubscribe():
 
     with patch("websockets.connect", return_value=mock_ws):
         await mgr.connect("1000000000", "TEST_TOKEN")
-        # Should have sent login packet AND subscription packet for remaining instrument (2, 44608)
-        assert mock_ws.send.call_count == 2
+        # Should have sent subscription packet for remaining instrument (2, 44608)
+        assert mock_ws.send.call_count == 1
+        sub_arg = mock_ws.send.call_args_list[0][0][0]
+        parsed_sub = json.loads(sub_arg)
+        assert parsed_sub["InstrumentList"][0]["SecurityId"] == "44608"
         await mgr.disconnect()
-

@@ -29,6 +29,7 @@ class Signal(BaseModel):
     strike_recommendation: OptionStrikeRecommendation
     indicators_snapshot: dict[str, float]
     rationale: str
+    is_confirmed: bool = True
 
 INDEX_SYMBOLS = {"NIFTY 50", "NIFTY", "NIFTY BANK", "BANKNIFTY", "FINNIFTY", "NIFTY FINANCIAL SERVICES", "SENSEX", "MIDCPNIFTY"}
 
@@ -344,6 +345,7 @@ def evaluate_signals(
             and (upper_wick >= 0.50 * bar_range)
             and (max(curr_open, curr_close) <= curr_low + 0.60 * bar_range)
             and rsi >= 68.0
+            and mid < curr_close
         )
         if is_pe_pinbar:
             sl = round(curr_high + max(1.0, 0.0005 * curr_close), 2)
@@ -376,6 +378,7 @@ def evaluate_signals(
             and (lower_wick >= 0.50 * bar_range)
             and (min(curr_open, curr_close) >= curr_low + 0.40 * bar_range)
             and rsi <= 32.0
+            and mid > curr_close
         )
         if is_ce_pinbar:
             sl = round(curr_low - max(1.0, 0.0005 * curr_close), 2)
@@ -403,33 +406,26 @@ def evaluate_signals(
     # =========================================================================
     # SETUP 7: 2.5σ Puncture & Inside Bar Breakdown
     # =========================================================================
-    if bw > 5.0 and len(df) >= 21:
+    if bw > 5.0 and len(df) >= 22:
+        prev2 = df.iloc[last_idx - 2]
+        prev2_high = float(prev2.get("high", prev2["close"]))
+        prev2_low = float(prev2.get("low", prev2["close"]))
+        prev2_bb_upper_25 = float(prev2.get("bb_upper_25", prev2["bb_middle"] + 2.5 * prev2.get("bb_std", (prev2["bb_upper"] - prev2["bb_middle"]) * 1.25)))
+        prev2_bb_lower_25 = float(prev2.get("bb_lower_25", prev2["bb_middle"] - 2.5 * prev2.get("bb_std", (prev2["bb_middle"] - prev2["bb_lower"]) * 1.25)))
+
         prev_high = float(prev.get("high", prev["close"]))
         prev_low = float(prev.get("low", prev["close"]))
-        prev_bb_upper_25 = float(prev.get("bb_upper_25", prev["bb_middle"] + 2.5 * prev.get("bb_std", (prev["bb_upper"] - prev["bb_middle"]) * 1.25)))
-        prev_bb_lower_25 = float(prev.get("bb_lower_25", prev["bb_middle"] - 2.5 * prev.get("bb_std", (prev["bb_middle"] - prev["bb_lower"]) * 1.25)))
 
-        # Bearish PE: Mother bar (t-1) pierced extreme 2.5σ band, inside bar at t breaking down
+        # Bearish PE: Mother bar (t-2) pierced extreme 2.5σ band, inside bar at t-1 strictly contained,
+        # trigger bar (t) breaks strictly below inside bar's low, and midline is below entry
         is_pe_inside_curr = (
-            prev_high >= prev_bb_upper_25
-            and curr_high <= prev_high
-            and curr_low >= prev_low
-            and curr_close <= curr_low + 1e-4
+            prev2_high >= prev2_bb_upper_25
+            and prev_high <= prev2_high
+            and prev_low >= prev2_low
+            and curr_close < prev_low
+            and mid < curr_close
         )
-        pe_mother_high = prev_high
-
-        if not is_pe_inside_curr and len(df) >= 22:
-            prev2 = df.iloc[last_idx - 2]
-            prev2_high = float(prev2.get("high", prev2["close"]))
-            prev2_bb_upper_25 = float(prev2.get("bb_upper_25", prev2["bb_middle"] + 2.5 * prev2.get("bb_std", (prev2["bb_upper"] - prev2["bb_middle"]) * 1.25)))
-            if (
-                prev2_high >= prev2_bb_upper_25
-                and prev_high <= prev2_high
-                and prev_low >= float(prev2.get("low", prev2["close"]))
-                and curr_close < prev_low
-            ):
-                is_pe_inside_curr = True
-                pe_mother_high = prev2_high
+        pe_mother_high = prev2_high
 
         if is_pe_inside_curr:
             sl = round(pe_mother_high + max(0.5, 0.0005 * curr_close), 2)
@@ -454,27 +450,16 @@ def evaluate_signals(
                 rationale="Extreme 2.5σ puncture and Inside Bar breakdown snapback to 20-SMA"
             ))
 
-        # Bullish CE: Mother bar (t-1) pierced extreme 2.5σ band, inside bar at t breaking out
+        # Bullish CE: Mother bar (t-2) pierced extreme 2.5σ band, inside bar at t-1 strictly contained,
+        # trigger bar (t) breaks strictly above inside bar's high, and midline is above entry
         is_ce_inside_curr = (
-            prev_low <= prev_bb_lower_25
-            and curr_high <= prev_high
-            and curr_low >= prev_low
-            and curr_close >= curr_high - 1e-4
+            prev2_low <= prev2_bb_lower_25
+            and prev_high <= prev2_high
+            and prev_low >= prev2_low
+            and curr_close > prev_high
+            and mid > curr_close
         )
-        ce_mother_low = prev_low
-
-        if not is_ce_inside_curr and len(df) >= 22:
-            prev2 = df.iloc[last_idx - 2]
-            prev2_low = float(prev2.get("low", prev2["close"]))
-            prev2_bb_lower_25 = float(prev2.get("bb_lower_25", prev2["bb_middle"] - 2.5 * prev2.get("bb_std", (prev2["bb_middle"] - prev2["bb_lower"]) * 1.25)))
-            if (
-                prev2_low <= prev2_bb_lower_25
-                and prev_high <= float(prev2.get("high", prev2["close"]))
-                and prev_low >= prev2_low
-                and curr_close > prev_high
-            ):
-                is_ce_inside_curr = True
-                ce_mother_low = prev2_low
+        ce_mother_low = prev2_low
 
         if is_ce_inside_curr:
             sl = round(ce_mother_low - max(0.5, 0.0005 * curr_close), 2)
@@ -518,8 +503,9 @@ def evaluate_signals(
             if (
                 row_p1["high"] >= row_p1["bb_upper"]
                 and row_p2["high"] >= row_p1["high"] * 0.998
-                and (float(row_p1["rsi"]) - float(row_p2["rsi"]) >= 2.0 or float(row_p1["rsi"]) - float(curr["rsi"]) >= 2.0)
+                and (float(row_p1["rsi"]) - float(row_p2["rsi"]) >= 2.0)
                 and curr_close < upper
+                and mid < curr_close
             ):
                 sl = round(max(float(row_p2["high"]), curr_high) + max(0.5, 0.0005 * curr_close), 2)
                 strike_rec = recommend_strike(
@@ -552,8 +538,9 @@ def evaluate_signals(
             if (
                 row_t1["low"] <= row_t1["bb_lower"]
                 and row_t2["low"] <= row_t1["low"] * 1.002
-                and (float(row_t2["rsi"]) - float(row_t1["rsi"]) >= 2.0 or float(curr["rsi"]) - float(row_t1["rsi"]) >= 2.0)
+                and (float(row_t2["rsi"]) - float(row_t1["rsi"]) >= 2.0)
                 and curr_close > lower
+                and mid > curr_close
             ):
                 sl = round(min(float(row_t2["low"]), curr_low) - max(0.5, 0.0005 * curr_close), 2)
                 strike_rec = recommend_strike(

@@ -41,7 +41,7 @@ describe('DhanAuthContext OAuth and Zero-Persistence Flow', () => {
       ok: true,
       json: async () => ({ login_url: 'https://auth.dhan.co/login?client_id=test_app' }),
     });
-    global.fetch = mockFetch;
+    (globalThis as any).fetch = mockFetch;
 
     delete (window as any).location;
     (window as any).location = { href: '', origin: 'http://localhost', pathname: '/' };
@@ -80,7 +80,7 @@ describe('DhanAuthContext OAuth and Zero-Persistence Flow', () => {
         expires_in_hours: 24,
       }),
     });
-    global.fetch = mockFetch;
+    (globalThis as any).fetch = mockFetch;
 
     const wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
       <DhanAuthProvider>{children}</DhanAuthProvider>
@@ -151,7 +151,7 @@ describe('DhanAuthContext OAuth and Zero-Persistence Flow', () => {
       ok: false,
       json: async () => ({ detail: 'Invalid consent ID' }),
     });
-    global.fetch = mockFetch;
+    (globalThis as any).fetch = mockFetch;
 
     const wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
       <DhanAuthProvider>{children}</DhanAuthProvider>

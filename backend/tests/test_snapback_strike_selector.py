@@ -112,13 +112,14 @@ def test_strategy_engine_snapback_setups_strike_preference():
     last_idx = len(df) - 1
     df.loc[:, "bandwidth"] = 8.0
     upper_band = df.loc[last_idx, "bb_upper"]
+    df.loc[last_idx, "bb_middle"] = 24980.0
     mid_band = df.loc[last_idx, "bb_middle"]
 
     # Trigger Setup 6 PE pinbar
     df.loc[last_idx, "high"] = upper_band + 20.0
-    df.loc[last_idx, "open"] = upper_band - 5.0
-    df.loc[last_idx, "close"] = upper_band - 8.0
-    df.loc[last_idx, "low"] = upper_band - 10.0
+    df.loc[last_idx, "open"] = upper_band - 2.0
+    df.loc[last_idx, "close"] = upper_band - 3.0
+    df.loc[last_idx, "low"] = upper_band - 4.0
     df.loc[last_idx, "rsi"] = 72.0
     df.loc[last_idx, "adx"] = 20.0
 
@@ -169,19 +170,24 @@ def test_strategy_engine_setup7_strike_recommendation():
         })
     df = calculate_indicators(pd.DataFrame(records))
     last_idx = len(df) - 1
-    prev_idx = last_idx - 1
+    m_idx = last_idx - 2
+    in_idx = last_idx - 1
     df.loc[:, "bandwidth"] = 8.0
-    upper_25 = df.loc[prev_idx, "bb_upper_25"]
+    df.loc[last_idx, "bb_middle"] = 24980.0
+    upper_25 = df.loc[m_idx, "bb_upper_25"]
 
-    # Setup 7 PE: Mother bar t-1 punctures bb_upper_25, bar t is inside bar breaking low
-    df.loc[prev_idx, "high"] = upper_25 + 5.0
-    df.loc[prev_idx, "low"] = upper_25 - 15.0
-    df.loc[prev_idx, "close"] = upper_25 - 2.0
+    # Setup 7 PE: Mother bar t-2 punctures bb_upper_25, bar t-1 is inside bar, bar t is breakdown
+    df.loc[m_idx, "high"] = upper_25 + 5.0
+    df.loc[m_idx, "low"] = upper_25 - 5.0
+    df.loc[m_idx, "close"] = upper_25 + 1.0
 
-    df.loc[last_idx, "high"] = df.loc[prev_idx, "high"] - 2.0
-    df.loc[last_idx, "open"] = df.loc[prev_idx, "low"] + 3.0
-    df.loc[last_idx, "low"] = df.loc[prev_idx, "low"] + 0.5
-    df.loc[last_idx, "close"] = df.loc[last_idx, "low"]
+    df.loc[in_idx, "high"] = df.loc[m_idx, "high"] - 1.0
+    df.loc[in_idx, "low"] = df.loc[m_idx, "low"] + 1.0
+    df.loc[in_idx, "close"] = df.loc[in_idx, "high"] - 1.0
+
+    df.loc[last_idx, "high"] = df.loc[in_idx, "low"] + 0.5
+    df.loc[last_idx, "low"] = df.loc[in_idx, "low"] - 1.0
+    df.loc[last_idx, "close"] = df.loc[in_idx, "low"] - 0.5
 
     signals = evaluate_signals("NIFTY 50", df, timeframe="5m")
     s7_signals = [s for s in signals if s.setup_type == SetupType.SETUP_7_INSIDE_BAR_SNAPBACK and s.option_type == "PE"]

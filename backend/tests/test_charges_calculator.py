@@ -10,8 +10,8 @@ def test_standard_round_trip_trade_charges():
     assert breakdown.total_turnover == 16250.0
     assert breakdown.orders_count == 2
     assert breakdown.brokerage == 40.0
-    # STT = 9750 * 0.0010 = 9.75
-    assert breakdown.stt == 9.75
+    # STT = 9750 * 0.0015 = 14.625 -> 14.62 or 14.63
+    assert abs(breakdown.stt - 14.63) <= 0.02
     # Exchange Fee = 16250 * 0.0005 = 8.125 -> round 8.13 or 8.12
     assert abs(breakdown.exchange_fee - 8.13) <= 0.02
     # SEBI Fee = 16250 * 0.000001 = 0.016 -> 0.02

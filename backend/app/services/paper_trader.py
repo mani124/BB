@@ -41,6 +41,8 @@ class PaperPosition(BaseModel):
     initial_quantity: Optional[int] = None
     booked_lots: int = 0
     booked_pnl_rupees: float = 0.0
+    booked_slippage_cost: float = 0.0
+    pending_spot_exit: Optional[str] = None
     option_security_id: Optional[str] = None
     feed_mode: str = "demo"  # "demo" or "live"
     theoretical_entry: float = 0.0
@@ -120,8 +122,10 @@ class PaperTradingEngine:
 
         active = [p for p in self._portfolio.active_positions if getattr(p, "feed_mode", "demo") == mode]
         closed = [p for p in self._portfolio.closed_trades if getattr(p, "feed_mode", "demo") == mode]
-        realized = round(sum(p.pnl_rupees for p in closed), 2)
-        unrealized = round(sum(p.pnl_rupees for p in active), 2)
+        closed_pnl = sum(p.pnl_rupees for p in closed)
+        active_booked_pnl = sum(p.booked_pnl_rupees for p in active)
+        realized = round(closed_pnl + active_booked_pnl, 2)
+        unrealized = round(sum(round(p.pnl_points * p.quantity, 2) for p in active), 2)
         total = round(realized + unrealized, 2)
         total_trades = len(closed)
         winning = sum(1 for p in closed if p.pnl_rupees > 0)
@@ -189,6 +193,10 @@ class PaperTradingEngine:
     ) -> Optional[PaperPosition]:
         # Avoid duplicate trades on same signal ID
         if signal.id in self._processed_signal_ids:
+            return None
+
+        if feed_mode not in ("live", "demo"):
+            logger.info("Skipping trade opening for feed_mode '%s' (not live or demo)", feed_mode)
             return None
 
         # Check re-entry gate: prevent consecutive stop-out churn in the same chop box
@@ -331,8 +339,12 @@ class PaperTradingEngine:
         """Automatically open paper positions if auto-trade is enabled."""
         if not self._portfolio.auto_trade_enabled:
             return
+        if feed_mode not in ("live", "demo"):
+            return
 
         for sig in signals:
+            if not getattr(sig, "is_confirmed", True):
+                continue
             if sig.id not in self._processed_signal_ids:
                 # Open position for new signals
                 self.open_position_from_signal(sig, feed_mode=feed_mode)
@@ -356,6 +368,8 @@ class PaperTradingEngine:
                 p_fill_exit = opt_val
             else:
                 p_fill_exit = round(opt_val * 0.999, 2)
+        elif pos.feed_mode == "live":
+            p_fill_exit = float(pos.current_option_price)
         else:
             p_fill_exit = float(theoretical_exit)
 
@@ -375,7 +389,11 @@ class PaperTradingEngine:
 
         # 4. Total slippage cost
         init_qty = pos.initial_quantity if (pos.initial_quantity and pos.initial_quantity > 0) else pos.quantity
-        pos.total_slippage_cost = round((pos.entry_slippage + pos.exit_slippage) * init_qty, 2)
+        runner_qty = pos.quantity
+        entry_slip_cost = round(pos.entry_slippage * init_qty, 2)
+        runner_slip_cost = round(pos.exit_slippage * runner_qty, 2)
+        booked_slip_cost = round(getattr(pos, "booked_slippage_cost", 0.0), 2)
+        pos.total_slippage_cost = round(entry_slip_cost + booked_slip_cost + runner_slip_cost, 2)
 
         # 5. Charges calculation
         orders_count = 3 if pos.booked_lots > 0 else 2
@@ -437,13 +455,13 @@ class PaperTradingEngine:
             if real_opt_price is not None and float(real_opt_price) > 0:
                 pos.current_option_price = round(float(real_opt_price), 2)
                 pos.pnl_points = round(pos.current_option_price - pos.option_entry, 2)
-            elif pos.option_security_id:
-                # Live contract with security_id: keep last known real price, do not synthesize fake delta
+            elif pos.feed_mode == "live" or pos.option_security_id:
+                # Live contract: keep last known real price, do not synthesize fake delta
                 pos.pnl_points = round(pos.current_option_price - pos.option_entry, 2)
             elif is_opt_chart_setup:
                 # Setup 5: Option chart scalp - maintain current option price if no new tick
                 pos.pnl_points = round(pos.current_option_price - pos.option_entry, 2)
-            elif curr_spot is not None:
+            elif curr_spot is not None and pos.feed_mode == "demo":
                 # Fallback to delta estimation only for demo/offline signals lacking option_security_id
                 if pos.option_type == "CE":
                     spot_move = curr_spot - pos.underlying_entry
@@ -455,6 +473,30 @@ class PaperTradingEngine:
                 pos.pnl_points = round(pos.current_option_price - pos.option_entry, 1)
             else:
                 still_active.append(pos)
+                continue
+
+            has_fresh_quote = (
+                (real_bid_price is not None and float(real_bid_price) > 0)
+                or (real_opt_price is not None and float(real_opt_price) > 0)
+            )
+
+            # Check if pending spot exit can now execute with fresh quote
+            if getattr(pos, "pending_spot_exit", None) and has_fresh_quote:
+                pending_reason = pos.pending_spot_exit
+                theo_exit = pos.option_sl if ("Stop-Loss" in pending_reason or "SL" in pending_reason) else pos.option_target_2
+                status_to_set = "STOPPED_OUT" if ("Stop-Loss" in pending_reason or "SL" in pending_reason) else "TARGET_2"
+                self._finalize_closed_position(
+                    pos=pos,
+                    theoretical_exit=theo_exit,
+                    status=status_to_set,
+                    reason=pending_reason,
+                    exit_time=now_str,
+                    real_bid_price=real_bid_price,
+                    real_opt_price=real_opt_price,
+                )
+                self._portfolio.closed_trades.append(pos)
+                if self.storage:
+                    self.storage.upsert_position(pos)
                 continue
 
             # --- SETUP 5: EXITS BASED EXCLUSIVELY ON OPTION CHARTS ---
@@ -496,7 +538,11 @@ class PaperTradingEngine:
                     if pos.lots >= 2:
                         book_lots = pos.lots // 2
                         book_qty = book_lots * pos.lot_size
-                        book_pnl = round(pos.pnl_points * book_qty, 2)
+                        tp1_fill = real_bid_price if (real_bid_price and real_bid_price > 0) else pos.current_option_price
+                        tp1_slippage = max(0.0, round(pos.option_target_1 - tp1_fill, 2))
+                        tp1_slip_cost = round(tp1_slippage * book_qty, 2)
+                        pos.booked_slippage_cost = round(getattr(pos, "booked_slippage_cost", 0.0) + tp1_slip_cost, 2)
+                        book_pnl = round((tp1_fill - pos.option_entry) * book_qty, 2)
                         pos.booked_lots += book_lots
                         pos.booked_pnl_rupees = round(pos.booked_pnl_rupees + book_pnl, 2)
                         pos.lots -= book_lots
@@ -508,12 +554,16 @@ class PaperTradingEngine:
                 still_active.append(pos)
                 continue
 
-            # --- SETUPS 1-4: EXITS BASED ON UNDERLYING SPOT OR OPTION LEVELS ---
+            # --- SETUPS 1-4 & 6-8: EXITS BASED ON UNDERLYING SPOT OR OPTION LEVELS ---
             if pos.option_type == "CE":
                 # Check SL
                 if (curr_spot is not None and curr_spot <= pos.underlying_sl) or pos.current_option_price <= pos.option_sl:
                     is_breakeven = (pos.status == "TARGET_1")
                     reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
+                    if pos.feed_mode == "live" and not has_fresh_quote:
+                        pos.pending_spot_exit = reason
+                        still_active.append(pos)
+                        continue
                     self._finalize_closed_position(
                         pos=pos,
                         theoretical_exit=pos.option_sl,
@@ -530,6 +580,10 @@ class PaperTradingEngine:
 
                 # Check Target 2
                 elif (curr_spot is not None and curr_spot >= pos.underlying_target_2) or pos.current_option_price >= pos.option_target_2:
+                    if pos.feed_mode == "live" and not has_fresh_quote:
+                        pos.pending_spot_exit = "Target 2 (1:2.5) Hit"
+                        still_active.append(pos)
+                        continue
                     self._finalize_closed_position(
                         pos=pos,
                         theoretical_exit=pos.option_target_2,
@@ -550,7 +604,11 @@ class PaperTradingEngine:
                     if pos.lots >= 2:
                         book_lots = pos.lots // 2
                         book_qty = book_lots * pos.lot_size
-                        book_pnl = round(pos.pnl_points * book_qty, 2)
+                        tp1_fill = real_bid_price if (real_bid_price and real_bid_price > 0) else pos.current_option_price
+                        tp1_slippage = max(0.0, round(pos.option_target_1 - tp1_fill, 2))
+                        tp1_slip_cost = round(tp1_slippage * book_qty, 2)
+                        pos.booked_slippage_cost = round(getattr(pos, "booked_slippage_cost", 0.0) + tp1_slip_cost, 2)
+                        book_pnl = round((tp1_fill - pos.option_entry) * book_qty, 2)
                         pos.booked_lots += book_lots
                         pos.booked_pnl_rupees = round(pos.booked_pnl_rupees + book_pnl, 2)
                         pos.lots -= book_lots
@@ -563,6 +621,10 @@ class PaperTradingEngine:
                 if (curr_spot is not None and curr_spot >= pos.underlying_sl) or pos.current_option_price <= pos.option_sl:
                     is_breakeven = (pos.status == "TARGET_1")
                     reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
+                    if pos.feed_mode == "live" and not has_fresh_quote:
+                        pos.pending_spot_exit = reason
+                        still_active.append(pos)
+                        continue
                     self._finalize_closed_position(
                         pos=pos,
                         theoretical_exit=pos.option_sl,
@@ -579,6 +641,10 @@ class PaperTradingEngine:
 
                 # Check Target 2
                 elif (curr_spot is not None and curr_spot <= pos.underlying_target_2) or pos.current_option_price >= pos.option_target_2:
+                    if pos.feed_mode == "live" and not has_fresh_quote:
+                        pos.pending_spot_exit = "Target 2 (1:2.5) Hit"
+                        still_active.append(pos)
+                        continue
                     self._finalize_closed_position(
                         pos=pos,
                         theoretical_exit=pos.option_target_2,
@@ -599,7 +665,11 @@ class PaperTradingEngine:
                     if pos.lots >= 2:
                         book_lots = pos.lots // 2
                         book_qty = book_lots * pos.lot_size
-                        book_pnl = round(pos.pnl_points * book_qty, 2)
+                        tp1_fill = real_bid_price if (real_bid_price and real_bid_price > 0) else pos.current_option_price
+                        tp1_slippage = max(0.0, round(pos.option_target_1 - tp1_fill, 2))
+                        tp1_slip_cost = round(tp1_slippage * book_qty, 2)
+                        pos.booked_slippage_cost = round(getattr(pos, "booked_slippage_cost", 0.0) + tp1_slip_cost, 2)
+                        book_pnl = round((tp1_fill - pos.option_entry) * book_qty, 2)
                         pos.booked_lots += book_lots
                         pos.booked_pnl_rupees = round(pos.booked_pnl_rupees + book_pnl, 2)
                         pos.lots -= book_lots

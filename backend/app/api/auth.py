@@ -170,6 +170,8 @@ async def exchange_oauth_token(payload: OAuthTokenRequest):
     except (ValueError, TypeError):
         expires_in_hours = 24
 
+    expiry_time = resp_data.get("expiryTime") or resp_data.get("expiry_time")
+
     from app.main import worker
     worker.set_session_credentials(client_id, access_token)
 
@@ -178,6 +180,7 @@ async def exchange_oauth_token(payload: OAuthTokenRequest):
         "client_id": client_id,
         "masked_token": sanitize_token(access_token),
         "expires_in_hours": expires_in_hours,
+        "expiry_time": str(expiry_time) if expiry_time else None,
     }
 
 

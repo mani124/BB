@@ -14,6 +14,7 @@ providing:
 
 import asyncio
 import inspect
+import json
 import logging
 import urllib.parse
 from typing import Any, Awaitable, Callable, Optional, Set, Tuple
@@ -22,7 +23,7 @@ import websockets
 
 from app.services.dhan_packet_codec import (
     decode_packet,
-    encode_login_packet,
+    encode_subscription_json,
     encode_subscription_packet,
 )
 
@@ -57,11 +58,31 @@ class DhanWebSocketManager:
         self._reconnect_task: Optional[asyncio.Task[None]] = None
         self._intentional_disconnect: bool = False
         self._reconnect_count: int = 0
+        self._last_tick_time: Optional[float] = None
+        self._ticks_count: int = 0
 
     @property
     def is_connected(self) -> bool:
         """True if the connection is active and status is CONNECTED."""
         return self.status == "CONNECTED" and self._ws is not None
+
+    @property
+    def is_healthy(self) -> bool:
+        """
+        True only if connected AND fresh market data ticks or responses have
+        been received recently (within 30s), proving that subscriptions are active.
+        """
+        if not self.is_connected or self._last_tick_time is None:
+            return False
+        try:
+            now = asyncio.get_running_loop().time()
+            return (now - self._last_tick_time) <= 30.0
+        except RuntimeError:
+            return False
+
+    @property
+    def last_tick_time(self) -> Optional[float]:
+        return self._last_tick_time
 
     @property
     def subscribed_instruments(self) -> Set[Tuple[int, int]]:
@@ -87,7 +108,7 @@ class DhanWebSocketManager:
 
     async def connect(self, client_id: str, access_token: str) -> None:
         """
-        Connect to Dhan WebSocket feed and complete binary login handshake.
+        Connect to Dhan WebSocket feed via v2 authenticated URL parameters.
         """
         if self.status != "DISCONNECTED" or (self._reconnect_task and not self._reconnect_task.done()):
             logger.warning("WebSocket manager already active or reconnecting; disconnecting first.")
@@ -105,21 +126,17 @@ class DhanWebSocketManager:
             else:
                 self._ws = conn_result
 
-            # Send binary login packet (Code 11)
-            login_packet = encode_login_packet(self._client_id, self._access_token)
-            await self._ws.send(login_packet)
-
             self.status = "CONNECTED"
             masked_id = f"{self._client_id[:3]}***" if len(self._client_id) >= 3 else "***"
             logger.info("Connected to Dhan WebSocket for client %s", masked_id)
 
-            # Re-subscribe existing instruments if any (e.g., reconnect)
-            if self._subscribed_instruments:
-                await self._send_subscriptions(list(self._subscribed_instruments), mode=2)
-
             # Launch background streaming loops
             self._reader_task = asyncio.create_task(self._reader_loop())
             self._ping_task = asyncio.create_task(self._ping_loop())
+
+            # Re-subscribe existing instruments if any (e.g., reconnect)
+            if self._subscribed_instruments:
+                await self._send_subscriptions(list(self._subscribed_instruments), mode=2)
 
         except Exception as exc:
             self.status = "DISCONNECTED"
@@ -155,11 +172,12 @@ class DhanWebSocketManager:
     async def _send_subscriptions(
         self, instruments: list[Tuple[int, int]], mode: int = 2
     ) -> None:
-        """Send subscription frames in chunks of 100."""
+        """Send v2 JSON subscription frames in chunks of 100."""
+        req_code = 17 if mode == 4 else 15
         for i in range(0, len(instruments), 100):
             chunk = instruments[i : i + 100]
-            packet = encode_subscription_packet(chunk, mode=mode)
-            await self._ws.send(packet)
+            json_payload = encode_subscription_json(chunk, request_code=req_code)
+            await self._ws.send(json_payload)
 
     async def disconnect(self) -> None:
         """
@@ -214,6 +232,15 @@ class DhanWebSocketManager:
             while not self._intentional_disconnect and self._ws is not None:
                 msg = await self._ws.recv()
                 if isinstance(msg, str):
+                    try:
+                        parsed_json = json.loads(msg)
+                        if parsed_json.get("status") == "success" or parsed_json.get("RequestCode"):
+                            try:
+                                self._last_tick_time = asyncio.get_running_loop().time()
+                            except RuntimeError:
+                                pass
+                    except Exception:
+                        pass
                     continue
 
                 packet = decode_packet(msg)
@@ -221,7 +248,12 @@ class DhanWebSocketManager:
                     continue
 
                 resp_code = packet.get("response_code")
-                if resp_code in (2, 4):
+                if resp_code in (1, 2, 4, 6):
+                    try:
+                        self._last_tick_time = asyncio.get_running_loop().time()
+                    except RuntimeError:
+                        pass
+                    self._ticks_count += 1
                     if self.on_tick_callback is not None:
                         try:
                             cb_res = self.on_tick_callback(packet)
@@ -317,10 +349,6 @@ class DhanWebSocketManager:
                     self._ws = await conn_result
                 else:
                     self._ws = conn_result
-
-                # Send binary login packet
-                login_packet = encode_login_packet(self._client_id, self._access_token)
-                await self._ws.send(login_packet)
 
                 self.status = "CONNECTED"
 

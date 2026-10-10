@@ -30,8 +30,10 @@ def test_setup6_bearish_pe_pinbar():
     ind_df = create_base_df(25, 100.0)
     last_idx = len(ind_df) - 1
     
-    # Ensure wide enough bandwidth
+    # Ensure wide enough bandwidth and mid well below entry
     ind_df.loc[:, "bandwidth"] = 8.0
+    ind_df.loc[last_idx, "bb_middle"] = 96.0
+    ind_df.loc[last_idx, "bb_upper"] = 101.0
     upper_band = ind_df.loc[last_idx, "bb_upper"]
     
     # Candle t: High punches above upper band, rejection upper wick >= 50%, closes back inside
@@ -78,6 +80,8 @@ def test_setup6_bullish_ce_pinbar():
     last_idx = len(ind_df) - 1
     
     ind_df.loc[:, "bandwidth"] = 8.0
+    ind_df.loc[last_idx, "bb_middle"] = 104.0
+    ind_df.loc[last_idx, "bb_lower"] = 99.0
     lower_band = ind_df.loc[last_idx, "bb_lower"]
     
     # Candle t: Low pierces below lower band, lower wick >= 50%, closes back inside
@@ -102,21 +106,27 @@ def test_setup6_bullish_ce_pinbar():
 def test_setup7_extreme_25_inside_bar_pe():
     ind_df = create_base_df(25, 100.0)
     last_idx = len(ind_df) - 1
-    prev_idx = last_idx - 1
+    m_idx = last_idx - 2
+    in_idx = last_idx - 1
     
     ind_df.loc[:, "bandwidth"] = 8.0
-    upper_25 = ind_df.loc[prev_idx, "bb_upper_25"]
+    ind_df.loc[last_idx, "bb_middle"] = 96.0
+    upper_25 = ind_df.loc[m_idx, "bb_upper_25"]
     
-    # Bar t-1 (Mother bar): Punctures extreme 2.5 sigma band
-    ind_df.loc[prev_idx, "high"] = upper_25 + 1.0
-    ind_df.loc[prev_idx, "low"] = upper_25 - 4.0
-    ind_df.loc[prev_idx, "close"] = upper_25 - 0.5
+    # Bar t-2 (Mother bar): Punctures extreme 2.5 sigma band
+    ind_df.loc[m_idx, "high"] = upper_25 + 5.0
+    ind_df.loc[m_idx, "low"] = upper_25 - 5.0
+    ind_df.loc[m_idx, "close"] = upper_25 + 1.0
     
-    # Bar t (Inside bar): Contained inside Mother bar range, breakdown trigger
-    ind_df.loc[last_idx, "high"] = ind_df.loc[prev_idx, "high"] - 0.5
-    ind_df.loc[last_idx, "open"] = ind_df.loc[prev_idx, "low"] + 1.0
-    ind_df.loc[last_idx, "low"] = ind_df.loc[prev_idx, "low"] + 0.2
-    ind_df.loc[last_idx, "close"] = ind_df.loc[last_idx, "low"]  # Breakdown at inside bar low
+    # Bar t-1 (Inside bar): Contained inside Mother bar range
+    ind_df.loc[in_idx, "high"] = ind_df.loc[m_idx, "high"] - 1.0
+    ind_df.loc[in_idx, "low"] = ind_df.loc[m_idx, "low"] + 1.0
+    ind_df.loc[in_idx, "close"] = ind_df.loc[in_idx, "high"] - 1.0
+    
+    # Bar t (Breakout bar): Breakdown below inside bar low, closes above midline
+    ind_df.loc[last_idx, "high"] = ind_df.loc[in_idx, "low"] + 0.5
+    ind_df.loc[last_idx, "low"] = ind_df.loc[in_idx, "low"] - 1.0
+    ind_df.loc[last_idx, "close"] = ind_df.loc[in_idx, "low"] - 0.5
     
     signals = evaluate_signals("NIFTY 50", ind_df, timeframe="5m")
     s7_signals = [s for s in signals if s.setup_type == SetupType.SETUP_7_INSIDE_BAR_SNAPBACK and s.option_type == "PE"]
@@ -124,28 +134,34 @@ def test_setup7_extreme_25_inside_bar_pe():
     assert len(s7_signals) >= 1
     sig = s7_signals[0]
     assert sig.option_type == "PE"
-    assert sig.stop_loss >= ind_df.loc[prev_idx, "high"]
+    assert sig.stop_loss >= ind_df.loc[m_idx, "high"]
     assert sig.target_1 == round(ind_df.loc[last_idx, "bb_middle"], 2)
 
 
 def test_setup7_extreme_25_inside_bar_ce():
     ind_df = create_base_df(25, 100.0)
     last_idx = len(ind_df) - 1
-    prev_idx = last_idx - 1
+    m_idx = last_idx - 2
+    in_idx = last_idx - 1
     
     ind_df.loc[:, "bandwidth"] = 8.0
-    lower_25 = ind_df.loc[prev_idx, "bb_lower_25"]
+    ind_df.loc[last_idx, "bb_middle"] = 106.0
+    lower_25 = ind_df.loc[m_idx, "bb_lower_25"]
     
-    # Bar t-1 (Mother bar): Punctures extreme lower 2.5 sigma band
-    ind_df.loc[prev_idx, "low"] = lower_25 - 1.0
-    ind_df.loc[prev_idx, "high"] = lower_25 + 4.0
-    ind_df.loc[prev_idx, "close"] = lower_25 + 0.5
+    # Bar t-2 (Mother bar): Punctures extreme lower 2.5 sigma band
+    ind_df.loc[m_idx, "low"] = lower_25 - 5.0
+    ind_df.loc[m_idx, "high"] = lower_25 + 5.0
+    ind_df.loc[m_idx, "close"] = lower_25 - 1.0
     
-    # Bar t (Inside bar): Contained inside Mother bar range, breakout trigger
-    ind_df.loc[last_idx, "low"] = ind_df.loc[prev_idx, "low"] + 0.5
-    ind_df.loc[last_idx, "open"] = ind_df.loc[prev_idx, "high"] - 1.0
-    ind_df.loc[last_idx, "high"] = ind_df.loc[prev_idx, "high"] - 0.2
-    ind_df.loc[last_idx, "close"] = ind_df.loc[last_idx, "high"]  # Breakout at inside bar high
+    # Bar t-1 (Inside bar): Contained inside Mother bar range
+    ind_df.loc[in_idx, "low"] = ind_df.loc[m_idx, "low"] + 1.0
+    ind_df.loc[in_idx, "high"] = ind_df.loc[m_idx, "high"] - 1.0
+    ind_df.loc[in_idx, "close"] = ind_df.loc[in_idx, "low"] + 1.0
+    
+    # Bar t (Breakout bar): Breakout above inside bar high, closes below midline
+    ind_df.loc[last_idx, "low"] = ind_df.loc[in_idx, "high"] - 0.5
+    ind_df.loc[last_idx, "high"] = ind_df.loc[in_idx, "high"] + 1.0
+    ind_df.loc[last_idx, "close"] = ind_df.loc[in_idx, "high"] + 0.5
     
     signals = evaluate_signals("NIFTY 50", ind_df, timeframe="5m")
     s7_signals = [s for s in signals if s.setup_type == SetupType.SETUP_7_INSIDE_BAR_SNAPBACK and s.option_type == "CE"]
@@ -153,7 +169,7 @@ def test_setup7_extreme_25_inside_bar_ce():
     assert len(s7_signals) >= 1
     sig = s7_signals[0]
     assert sig.option_type == "CE"
-    assert sig.stop_loss <= ind_df.loc[prev_idx, "low"]
+    assert sig.stop_loss <= ind_df.loc[m_idx, "low"]
     assert sig.target_1 == round(ind_df.loc[last_idx, "bb_middle"], 2)
 
 
@@ -163,6 +179,7 @@ def test_setup8_climax_rsi_divergence_pe():
     swing1_idx = last_idx - 5
     
     ind_df.loc[:, "bandwidth"] = 8.0
+    ind_df.loc[last_idx, "bb_middle"] = 96.0
     
     # Swing 1: Pierced upper band with high RSI
     ind_df.loc[swing1_idx, "high"] = ind_df.loc[swing1_idx, "bb_upper"] + 2.0
@@ -190,6 +207,7 @@ def test_setup8_climax_rsi_divergence_ce():
     swing1_idx = last_idx - 5
     
     ind_df.loc[:, "bandwidth"] = 8.0
+    ind_df.loc[last_idx, "bb_middle"] = 104.0
     
     # Swing 1: Pierced lower band with low RSI
     ind_df.loc[swing1_idx, "low"] = ind_df.loc[swing1_idx, "bb_lower"] - 2.0

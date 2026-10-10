@@ -9,6 +9,7 @@ router = APIRouter(prefix="/paper", tags=["paper"])
 class ManualTradeRequest(BaseModel):
     signal: Signal
     lots: Optional[int] = 1
+    feed_mode: Optional[str] = None
 
 class SettingsRequest(BaseModel):
     auto_trade_enabled: Optional[bool] = None
@@ -21,7 +22,20 @@ def get_portfolio() -> PaperPortfolio:
 
 @router.post("/trade")
 def open_manual_trade(body: ManualTradeRequest) -> PaperPosition:
-    pos = paper_trader.open_position_from_signal(body.signal, lots=body.lots)
+    mode = body.feed_mode
+    if not mode:
+        try:
+            from app.main import worker
+            mode = getattr(worker, "active_mode", None)
+        except Exception:
+            mode = None
+    if not mode:
+        if getattr(body.signal.strike_recommendation, "is_live_quote", False):
+            mode = "live"
+        else:
+            mode = "demo"
+
+    pos = paper_trader.open_position_from_signal(body.signal, lots=body.lots, feed_mode=mode)
     if not pos:
         raise HTTPException(status_code=400, detail="Position already exists for this signal")
     return pos

@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.services.universe_manager import UniverseManager, Instrument
 from app.services.dhan_client import DhanClient
 from app.services.dhan_websocket import DhanWebSocketManager
+from app.services.dhan_packet_codec import segment_to_int
 from app.services.indicators import calculate_indicators
 from app.services.strategy_engine import evaluate_signals, Signal, SetupType
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size
@@ -87,9 +88,13 @@ class ScannerWorker:
         self._last_successful_quote_time: Optional[float] = None
         self._scan_lock = asyncio.Lock()
         self._ws_connect_task: Optional[asyncio.Task] = None
-        self._sec_id_to_instrument: dict[str, Instrument] = {
-            str(inst.security_id): inst for inst in universe_mgr.get_universe()
-        }
+        self._bar_completed_symbols: set[str] = set()
+        self._sec_id_to_instrument: dict[str, Instrument] = {}
+        self._seg_sec_id_to_instrument: dict[tuple[int, str], Instrument] = {}
+        for inst in universe_mgr.get_universe():
+            self._sec_id_to_instrument[str(inst.security_id)] = inst
+            seg_i = segment_to_int(inst.exchange_segment)
+            self._seg_sec_id_to_instrument[(seg_i, str(inst.security_id))] = inst
 
         # Wire dynamic paper trading position subscription callback
         paper_trader.on_position_opened = self._on_paper_position_opened
@@ -207,8 +212,8 @@ class ScannerWorker:
         matching_opt_positions = [
             p for p in active_live if p.option_security_id == sec_id_str
         ]
+        is_option = bool(matching_opt_positions) or (seg == 2) or (seg == "NSE_FNO")
 
-        is_option = bool(matching_opt_positions) or (seg == 2)
         if is_option:
             # Maintain live option candle formation
             self._get_or_update_option_candles(sec_id_str, ltp, vol)
@@ -249,7 +254,14 @@ class ScannerWorker:
             )
 
         # 2. Check if tick corresponds to an underlying instrument in universe
-        inst = self._sec_id_to_instrument.get(sec_id_str)
+        inst = None
+        if seg is not None:
+            try:
+                inst = self._seg_sec_id_to_instrument.get((int(seg), sec_id_str))
+            except (ValueError, TypeError):
+                pass
+        if not inst:
+            inst = self._sec_id_to_instrument.get(sec_id_str)
         if inst:
             # Update live intraday candles
             self.get_or_update_live_candles(inst, {"last_price": ltp, "volume": vol})
@@ -383,7 +395,7 @@ class ScannerWorker:
 
     def generate_synthetic_candles(self, inst: Instrument, n: int = 40, base_price: Optional[float] = None) -> pd.DataFrame:
         """Fallback simulated candles STRICTLY for offline demo mode when market quotes are unavailable."""
-        if self._state.active_mode == "live":
+        if self._state.active_mode != "demo":
             return pd.DataFrame()
 
         base_map = {
@@ -431,7 +443,7 @@ class ScannerWorker:
         sym = inst.symbol
 
         if not inst_quote or float(inst_quote.get("last_price", 0.0)) <= 0:
-            if self._state.active_mode == "live":
+            if self._state.active_mode != "demo":
                 return pd.DataFrame(self._candle_history.get(sym, []))
             return self.generate_synthetic_candles(inst)
 
@@ -464,6 +476,7 @@ class ScannerWorker:
 
         if bar_elapsed >= (step_min * 60) or forming_ts.date() != now.date():
             self._candle_history[sym].append(forming)
+            self._bar_completed_symbols.add(sym)
             forming = {
                 "timestamp": current_slot_ts,
                 "open": live_ltp,
@@ -604,10 +617,10 @@ class ScannerWorker:
 
         # Derive active mode and feed health from quote success or active WebSocket feed
         loop_time = asyncio.get_running_loop().time()
-        ws_live = bool(self.ws_manager and self.ws_manager.is_connected)
-        self._state.ws_connected = ws_live
+        ws_healthy = bool(self.ws_manager and self.ws_manager.is_healthy)
+        self._state.ws_connected = bool(self.ws_manager and self.ws_manager.is_connected)
         if has_creds:
-            if ws_live:
+            if ws_healthy:
                 self._last_successful_quote_time = loop_time
                 mode = "live"
                 self._state.active_mode = "live"
@@ -622,7 +635,7 @@ class ScannerWorker:
             elif self._last_successful_quote_time and (loop_time - self._last_successful_quote_time) <= 30.0:
                 mode = "live"
                 self._state.active_mode = "live"
-                self._state.feed_status = "WS_LIVE" if ws_live else "LIVE"
+                self._state.feed_status = "WS_LIVE" if ws_healthy else "LIVE"
             elif self._last_successful_quote_time and (loop_time - self._last_successful_quote_time) <= 60.0:
                 mode = "stale"
                 self._state.active_mode = "stale"
@@ -792,6 +805,7 @@ class ScannerWorker:
 
             # Evaluate Setups with stock momentum and market bias filtering
             stock_bias = rankings.get_bias(inst.symbol) if inst.instrument_type == "EQUITY" else None
+
             detected = evaluate_signals(
                 inst.symbol,
                 ind_df,
@@ -799,6 +813,16 @@ class ScannerWorker:
                 stock_bias=stock_bias,
                 market_bias=market_bias
             )
+            for sig in detected:
+                is_snapback = sig.setup_type in (
+                    SetupType.SETUP_6_PINBAR_SNAPBACK,
+                    SetupType.SETUP_7_INSIDE_BAR_SNAPBACK,
+                    SetupType.SETUP_8_DIVERGENCE_SNAPBACK,
+                ) or "Setup 6" in str(sig.setup_type) or "Setup 7" in str(sig.setup_type) or "Setup 8" in str(sig.setup_type)
+                if is_snapback and mode == "live" and inst.symbol not in self._bar_completed_symbols:
+                    sig.is_confirmed = False
+                else:
+                    sig.is_confirmed = True
 
             # Enrich signals and evaluate Setup 5 with live option chain from Dhan
             if mode == "live" and cid and tok:
@@ -873,6 +897,7 @@ class ScannerWorker:
                     logger.warning(f"Error processing option chain for {inst.symbol}: {e}")
 
             new_signals.extend(detected)
+            self._bar_completed_symbols.discard(inst.symbol)
 
             # Update progress
             self._state.scan_progress = round(((idx + 1) / max(1, len(deep_scan_targets))) * 100.0, 1)
@@ -883,8 +908,9 @@ class ScannerWorker:
             option_price_map,
             option_bid_map=option_bid_map,
         )
-        paper_trader.on_signals_cycle(new_signals, feed_mode=mode)
-        if mode == "live" and ws_live:
+        if mode in ("live", "demo"):
+            paper_trader.on_signals_cycle(new_signals, feed_mode=mode)
+        if mode == "live" and ws_healthy:
             await self._subscribe_active_positions()
 
         self._state.signals = new_signals

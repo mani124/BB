@@ -64,8 +64,8 @@ def calculate_option_trade_charges(
     safe_brokerage_rate = max(0.0, float(brokerage_per_order))
     brokerage = round(effective_orders * safe_brokerage_rate, 2)
 
-    # STT: 0.1% (0.0010) on Sell Turnover only
-    stt = round(sell_turnover * 0.0010, 2)
+    # STT: 0.15% (0.0015) on Sell Turnover only (effective 1 April 2026)
+    stt = round(sell_turnover * 0.0015, 2)
 
     # NSE Exchange Fee: 0.05% (0.0005) on Total Turnover
     exchange_fee = round(total_turnover * 0.0005, 2)
