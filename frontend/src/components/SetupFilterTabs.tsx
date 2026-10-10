@@ -1,6 +1,6 @@
 import React from 'react';
 import { SetupType, OptionType } from '../types';
-import { Filter, Flame, Compass, RefreshCw, Clock, LayoutGrid, Table, Zap } from 'lucide-react';
+import { Filter, Flame, Compass, RefreshCw, Clock, LayoutGrid, Table, Zap, Target, ShieldAlert, Activity } from 'lucide-react';
 
 interface SetupFilterTabsProps {
   selectedSetup: string;
@@ -36,6 +36,9 @@ export const SetupFilterTabs: React.FC<SetupFilterTabsProps> = ({
     { key: 'Setup 3: W/M Reversal', label: 'Setup 3: W/M Reversal', icon: Compass },
     { key: 'Setup 4: 9:30 AM Opening Range Breakout', label: 'Setup 4: 9:30 AM ORB', icon: Clock },
     { key: 'Setup 5: Option Chart BB Scalp', label: 'Setup 5: Option BB Scalp', icon: Zap },
+    { key: 'Setup 6: Pin Bar Exhaustion Snapback', label: 'Setup 6: Pin Bar Snapback', icon: Target },
+    { key: 'Setup 7: 2.5σ Puncture & Inside Bar', label: 'Setup 7: 2.5σ Inside Bar', icon: ShieldAlert },
+    { key: 'Setup 8: Climax Swing Divergence Fade', label: 'Setup 8: Divergence Fade', icon: Activity },
   ];
 
   return (

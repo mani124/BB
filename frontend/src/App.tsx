@@ -221,7 +221,13 @@ const DashboardContent: React.FC = () => {
 
   // Filter signals
   const filteredSignals = state.signals.filter((sig) => {
-    if (selectedSetup !== 'ALL' && sig.setup_type !== selectedSetup) return false;
+    if (selectedSetup !== 'ALL') {
+      const match =
+        sig.setup_type === selectedSetup ||
+        sig.setup_type?.toLowerCase().includes(selectedSetup.toLowerCase()) ||
+        selectedSetup.toLowerCase().includes(sig.setup_type?.toLowerCase());
+      if (!match) return false;
+    }
     if (selectedOptionType !== 'ALL' && sig.option_type !== selectedOptionType) return false;
     const isIndex = ['NIFTY 50', 'NIFTY BANK', 'FINNIFTY', 'SENSEX'].includes(sig.symbol);
     if (selectedInstrumentType === 'INDEX' && !isIndex) return false;

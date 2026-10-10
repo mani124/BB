@@ -1,6 +1,7 @@
 import React from 'react';
 import { Signal } from '../types';
 import { Target, ShieldAlert, ArrowUpRight, ArrowDownRight, Info, ShoppingCart, CheckCircle2 } from 'lucide-react';
+import { SetupBadge } from './SignalsFeed';
 
 interface SignalCardProps {
   signal: Signal;
@@ -37,9 +38,9 @@ export const SignalCard: React.FC<SignalCardProps> = ({ signal, onPaperBuy, isBo
                 Lot: {rec.lot_size}
               </span>
             </div>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-              {signal.setup_type}
-            </span>
+            <div className="mt-1">
+              <SetupBadge setupType={signal.setup_type} />
+            </div>
           </div>
 
           {/* Direction Pill */}

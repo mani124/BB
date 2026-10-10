@@ -1,6 +1,7 @@
 import React from 'react';
 import { Signal } from '../types';
 import { ArrowUpRight, ArrowDownRight, ShoppingCart, CheckCircle2 } from 'lucide-react';
+import { SetupBadge } from './SignalsFeed';
 
 interface SignalTableProps {
   signals: Signal[];
@@ -56,8 +57,8 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, a
                   </td>
 
                   {/* Setup */}
-                  <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-medium">
-                    {sig.setup_type}
+                  <td className="py-3 px-4">
+                    <SetupBadge setupType={sig.setup_type} />
                   </td>
 
                   {/* Direction */}
