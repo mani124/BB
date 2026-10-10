@@ -768,8 +768,19 @@ class ScannerWorker:
         client_id: Optional[str] = None,
         access_token: Optional[str] = None
     ) -> ScannerState:
+        """Execute scan cycle with guaranteed is_scanning = False reset via finally block."""
         self._state.is_scanning = True
         self._state.scan_progress = 0.0
+        try:
+            return await self._run_scan_cycle_body(client_id, access_token)
+        finally:
+            self._state.is_scanning = False
+
+    async def _run_scan_cycle_body(
+        self,
+        client_id: Optional[str] = None,
+        access_token: Optional[str] = None
+    ) -> ScannerState:
         self.check_session_reset()
         gen = self._session_generation
 
@@ -1184,6 +1195,12 @@ class ScannerWorker:
         if mode == "live" and ws_healthy:
             await self._subscribe_active_positions()
 
+        # F5: Abort state publication if session generation changed or disconnected during subscription await
+        if cid and (self._session_generation != gen or (not self._session_credentials and not client_id)):
+            logger.info("Scan cycle aborted after position subscription: session disconnected")
+            self._state.active_mode = "demo"
+            self._state.feed_status = "DEMO"
+            return self._state
 
         self._state.signals = new_signals
         self._state.radar = new_radar

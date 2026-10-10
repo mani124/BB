@@ -151,3 +151,60 @@ def test_server_governed_feed_mode():
     )
     assert res.status_code == 409
     assert "live feed unavailable" in res.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_scan_disconnect_guard_finally():
+    """F5: Abort state publication if disconnected during _subscribe_active_positions, and clear is_scanning in finally."""
+    from unittest.mock import AsyncMock, patch
+    from app.services.scanner_worker import ScannerWorker
+    from app.services.universe_manager import UniverseManager
+    from datetime import datetime, timedelta
+
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    inst = worker.universe_mgr.get_indices()[0]
+
+    worker._candle_history[inst.symbol] = [{
+        "timestamp": datetime.now() - timedelta(minutes=5 * i),
+        "open": 22000.0, "high": 22010.0, "low": 21990.0, "close": 22005.0, "volume": 1000
+    } for i in range(25)]
+
+    worker.set_session_credentials("CID_GUARD", "TOK_GUARD")
+    broadcast_called = False
+
+    async def fake_broadcast(*args, **kwargs):
+        nonlocal broadcast_called
+        broadcast_called = True
+
+    worker.broadcast = fake_broadcast
+
+    # 1. Test disconnect during _subscribe_active_positions
+    async def disconnect_during_subscribe():
+        # Disconnect credentials while subscribing to active positions
+        worker.set_session_credentials(None, None)
+
+    with patch.object(worker.dhan_client, "fetch_marketfeed_quotes", new_callable=AsyncMock) as mock_mf, \
+         patch.object(worker, "get_or_fetch_option_chain", new_callable=AsyncMock) as mock_oc, \
+         patch.object(worker, "_subscribe_active_positions", side_effect=disconnect_during_subscribe):
+        mock_mf.return_value = {inst.exchange_segment: {str(inst.security_id): {"last_price": 22000.0, "volume": 1000}}}
+        mock_oc.return_value = ("2026-10-15", {})
+
+        worker.ws_manager = AsyncMock()
+        worker.ws_manager.is_healthy = True
+        worker.ws_manager.is_connected = True
+
+        state = await worker._execute_scan_cycle(client_id="CID_GUARD", access_token="TOK_GUARD")
+
+        assert worker._session_credentials is None
+        assert worker._state.is_scanning is False
+        assert broadcast_called is False, "Broadcast was sent after disconnect during position subscription!"
+        assert len(worker._state.signals) == 0
+
+    # 2. Test unhandled exception in scan cycle clears is_scanning in finally
+    with patch.object(worker.dhan_client, "fetch_marketfeed_quotes", side_effect=RuntimeError("Network explosion")):
+        worker.set_session_credentials("CID_2", "TOK_2")
+        try:
+            await worker._execute_scan_cycle(client_id="CID_2", access_token="TOK_2")
+        except RuntimeError:
+            pass
+        assert worker._state.is_scanning is False, "is_scanning remained True after exception!"
