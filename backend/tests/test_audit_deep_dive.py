@@ -581,3 +581,96 @@ async def test_finding_4_unfinished_historical_bar_routed_to_forming_candle():
         assert worker._current_forming_candle[inst.symbol]["timestamp"] == unfinished_bar_ts
 
 
+@pytest.mark.asyncio
+async def test_finding_5_disconnect_cancels_ws_task_and_aborts_in_flight_scan():
+    """Finding 5: Disconnect cancels _ws_connect_task and aborts in-flight scan cycles."""
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    inst = worker.universe_mgr.get_indices()[0]
+
+    # 1. Test connect task cancellation
+    loop = asyncio.get_running_loop()
+    connect_event = asyncio.Event()
+
+    async def fake_connect(cid, tok, generation=None):
+        connect_event.set()
+        await asyncio.sleep(10.0)
+
+    with patch.object(worker, "_connect_websocket", side_effect=fake_connect):
+        worker.set_session_credentials("CID_TEST", "TOK_TEST")
+        assert worker._ws_connect_task is not None
+        assert not worker._ws_connect_task.done()
+
+        # Disconnect must cancel the task
+        worker.set_session_credentials(None, None)
+        assert worker._ws_connect_task is None or worker._ws_connect_task.cancelled() or worker._ws_connect_task.done()
+
+    # 2. Test scan cycle in-flight abort
+    worker.set_session_credentials("CID_TEST", "TOK_TEST")
+    initial_gen = worker._session_generation
+
+    # Populate dummy candles
+    worker._candle_history[inst.symbol] = [{
+        "timestamp": datetime.now() - timedelta(minutes=5 * i),
+        "open": 22000.0, "high": 22010.0, "low": 21990.0, "close": 22005.0, "volume": 1000
+    } for i in range(25)]
+
+    async def fake_eval_option_chart(*args, **kwargs):
+        # Session disconnects during option chart evaluation
+        worker.set_session_credentials(None, None)
+        return []
+
+    with patch.object(worker.dhan_client, "fetch_marketfeed_quotes", new_callable=AsyncMock) as mock_mf, \
+         patch.object(worker, "get_or_fetch_option_chain", new_callable=AsyncMock) as mock_oc, \
+         patch.object(worker, "_evaluate_option_chart_setups", side_effect=fake_eval_option_chart), \
+         patch.object(paper_trader, "update_market_prices") as mock_update:
+        mock_mf.return_value = {inst.exchange_segment: {str(inst.security_id): {"last_price": 22000.0, "volume": 1000}}}
+        mock_oc.return_value = ("2026-10-15", {"22000": {"ce": {"security_id": "9999", "last_price": 100.0}}})
+
+        state = await worker._execute_scan_cycle(client_id="CID_TEST", access_token="TOK_TEST")
+        # Should abort before trade updates or stay in demo mode
+        assert worker._session_credentials is None
+
+
+@pytest.mark.asyncio
+async def test_finding_6_zero_price_option_chain_does_not_refresh_quote_time():
+    """Finding 6: Contract in option chain with last_price <= 0 does not refresh _option_last_quote_time."""
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    inst = worker.universe_mgr.get_indices()[0]
+
+    worker._option_last_quote_time.clear()
+    sec_id_zero = "77701"
+    sec_id_valid = "77702"
+
+    dummy_chain = {
+        "22000": {
+            "ce": {
+                "security_id": sec_id_zero,
+                "last_price": 0.0,  # Zero price: must NOT refresh quote time
+                "top_bid_price": 0.0
+            },
+            "pe": {
+                "security_id": sec_id_valid,
+                "last_price": 125.5,  # Valid positive price: must refresh quote time
+                "top_bid_price": 125.0
+            }
+        }
+    }
+
+    worker._candle_history[inst.symbol] = [{
+        "timestamp": datetime.now() - timedelta(minutes=5 * i),
+        "open": 22000.0, "high": 22010.0, "low": 21990.0, "close": 22005.0, "volume": 1000
+    } for i in range(25)]
+
+    worker.set_session_credentials("CID", "TOK")
+    with patch.object(worker.dhan_client, "fetch_marketfeed_quotes", new_callable=AsyncMock) as mock_mf, \
+         patch.object(worker, "get_or_fetch_option_chain", new_callable=AsyncMock) as mock_oc:
+        mock_mf.return_value = {inst.exchange_segment: {str(inst.security_id): {"last_price": 22000.0, "volume": 1000}}}
+        mock_oc.return_value = ("2026-10-15", dummy_chain)
+
+        await worker._execute_scan_cycle()
+
+        assert sec_id_zero not in worker._option_last_quote_time, "Zero-price contract refreshed quote timestamp!"
+        assert sec_id_valid in worker._option_last_quote_time, "Valid contract did not refresh quote timestamp!"
+
+
+

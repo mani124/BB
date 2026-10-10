@@ -159,7 +159,9 @@ class ScannerWorker:
         if opt_instruments:
             await self.ws_manager.subscribe(opt_instruments)
 
-    async def _connect_websocket(self, client_id: str, access_token: str) -> None:
+    async def _connect_websocket(
+        self, client_id: str, access_token: str, generation: Optional[int] = None
+    ) -> None:
         """Establish persistent binary streaming connection and subscribe universe."""
         if not self.ws_manager:
             return
@@ -172,8 +174,17 @@ class ScannerWorker:
 
         try:
             await self.ws_manager.connect(client_id, access_token)
+            # Finding 5: Abort if disconnected or session generation changed during connect
+            if (generation is not None and self._session_generation != generation) or not self._session_credentials:
+                logger.info("WebSocket connect aborted: session credentials cleared or generation changed")
+                return
+
             await self._subscribe_universe_instruments()
             await self._subscribe_active_positions()
+
+            if (generation is not None and self._session_generation != generation) or not self._session_credentials:
+                return
+
             self._state.ws_connected = True
             self._state.feed_status = "WS_LIVE"
             logger.info("Dhan WebSocket connected and universe instruments subscribed")
@@ -182,6 +193,7 @@ class ScannerWorker:
                 "Could not connect Dhan WebSocket: %s; falling back seamlessly to HTTP polling",
                 type(exc).__name__,
             )
+
 
     async def _handle_incoming_ws_tick(self, tick: dict) -> None:
         """
@@ -354,8 +366,9 @@ class ScannerWorker:
                 loop = asyncio.get_running_loop()
                 if self._ws_connect_task and not self._ws_connect_task.done():
                     self._ws_connect_task.cancel()
+                gen = self._session_generation
                 self._ws_connect_task = loop.create_task(
-                    self._connect_websocket(client_id, access_token)
+                    self._connect_websocket(client_id, access_token, generation=gen)
                 )
             except RuntimeError:
                 pass
@@ -364,12 +377,17 @@ class ScannerWorker:
             self._state.active_mode = "demo"
             self._state.feed_status = "DEMO"
             self._state.ws_connected = False
+            # Finding 5: Explicitly cancel pending connection task upon disconnect
+            if self._ws_connect_task and not self._ws_connect_task.done():
+                self._ws_connect_task.cancel()
+                self._ws_connect_task = None
             if self.ws_manager:
                 try:
                     loop = asyncio.get_running_loop()
                     loop.create_task(self.ws_manager.disconnect())
                 except RuntimeError:
                     pass
+
 
         # Zero-Token Persistence: Strictly in-memory, remove file if present
         try:
@@ -1014,13 +1032,14 @@ class ScannerWorker:
                                         c_sec_id = contract.get("security_id")
                                         if c_sec_id is not None:
                                             c_sec_id_str = str(c_sec_id)
-                                            self._option_last_quote_time[c_sec_id_str] = time.time()
                                             c_ltp = contract.get("last_price")
                                             if c_ltp is not None:
                                                 try:
                                                     c_ltp_f = float(c_ltp)
                                                     if c_ltp_f > 0:
                                                         option_price_map[c_sec_id_str] = c_ltp_f
+                                                        # Finding 6: Refresh quote age only when an authentic positive quote is received
+                                                        self._option_last_quote_time[c_sec_id_str] = time.time()
                                                 except (ValueError, TypeError):
                                                     pass
                                             c_bid = (
@@ -1063,12 +1082,16 @@ class ScannerWorker:
                                     target_1=sig.target_1,
                                     target_2=sig.target_2,
                                     strike_preference=pref,
-                                )
+                                 )
                                 sig.strike_recommendation = live_rec
 
                         # Also evaluate Setup 5 (Option Chart BB Scalp) directly on live option candles
                         if current_price > 0:
                             opt_signals = await self._evaluate_option_chart_setups(cid, tok, inst, oc, expiry, current_price)
+                            # Finding 5: Abort if disconnected or session generation changed during option candle await
+                            if self._session_generation != gen or (cid and not self._session_credentials and not client_id):
+                                logger.info("Scan cycle aborted after option chart setups evaluation: session disconnected")
+                                return self._state
                             detected.extend(opt_signals)
                 except Exception as e:
                     logger.warning(f"Error processing option chain for {inst.symbol}: {e}")
@@ -1078,6 +1101,14 @@ class ScannerWorker:
 
             # Update progress
             self._state.scan_progress = round(((idx + 1) / max(1, len(deep_scan_targets))) * 100.0, 1)
+
+        # Finding 5: Abort before trade mutation or price update if session was invalidated
+        if cid and (self._session_generation != gen or (not self._session_credentials and not client_id)):
+            logger.info("Scan cycle aborted before trade execution: session disconnected")
+            self._state.is_scanning = False
+            self._state.active_mode = "demo"
+            self._state.feed_status = "DEMO"
+            return self._state
 
         # Update paper trading engine with latest market prices and real option prices
         paper_trader.update_market_prices(
@@ -1090,6 +1121,7 @@ class ScannerWorker:
             paper_trader.on_signals_cycle(new_signals, feed_mode=mode)
         if mode == "live" and ws_healthy:
             await self._subscribe_active_positions()
+
 
         self._state.signals = new_signals
         self._state.radar = new_radar
