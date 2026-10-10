@@ -30,14 +30,30 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
 
+    import os
+    from urllib.parse import urlparse
+    from fastapi import Request
+    from fastapi.responses import JSONResponse
+
+    # Build exact origin allowlist from local dev hosts + deployed origin from env
+    _allowed_origins_list = [
+        "http://localhost:5174",
+        "http://localhost:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5173",
+    ]
+    _deployed_origin = os.getenv("ALLOWED_ORIGIN", "")
+    if _deployed_origin:
+        for _o in _deployed_origin.split(","):
+            _cleaned = _o.strip().rstrip("/")
+            if _cleaned and _cleaned not in _allowed_origins_list:
+                _allowed_origins_list.append(_cleaned)
+
+    _ALLOWED_ORIGINS: set[str] = set(_allowed_origins_list)
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5174",
-            "http://localhost:5173",
-            "http://127.0.0.1:5174",
-            "http://127.0.0.1:5173",
-        ],
+        allow_origins=_allowed_origins_list,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -52,33 +68,47 @@ def create_app() -> FastAPI:
             "active_mode": worker.get_state().active_mode
         }
 
-    # Finding 7: Protect state-changing API routes from unauthorized cross-origin / CSRF mutations
-    from urllib.parse import urlparse
-    from fastapi.responses import JSONResponse
-    from fastapi import Request
-
-    ALLOWED_ORIGIN_HOSTS = {"localhost", "127.0.0.1", "options.34-14-178-224.sslip.io", "34.14.178.224"}
-
+    # Finding 1 (post-fix): Use an exact allowed-origin set; reject null and unauthorized origins for writes
     @app.middleware("http")
     async def verify_state_mutation_origin(request: Request, call_next):
         if request.method in ("POST", "PUT", "DELETE", "PATCH"):
             origin = request.headers.get("origin")
+
             referer = request.headers.get("referer")
-            target_header = origin or referer
-            if target_header:
+            # Browser requests MUST carry a valid Origin header that is in the allowlist
+            if origin is not None:
+                # Reject "null" origin (sandboxed iframe / cross-origin redirect)
+                if origin == "null":
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "Forbidden: null origin is not permitted."}
+                    )
+                # Exact match only — no suffix / hostname logic
+                if origin.rstrip("/") not in _ALLOWED_ORIGINS:
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "Forbidden: Unauthorized cross-origin mutation request blocked."}
+                    )
+            elif referer:
+                # Extract origin from Referer for same-origin form POSTs
                 try:
-                    host = urlparse(target_header).hostname
-                    if host and host not in ALLOWED_ORIGIN_HOSTS and not host.endswith(".sslip.io"):
+                    parsed = urlparse(referer)
+                    ref_origin = f"{parsed.scheme}://{parsed.netloc}"
+                    if ref_origin.rstrip("/") not in _ALLOWED_ORIGINS:
                         return JSONResponse(
                             status_code=403,
-                            content={"detail": "Forbidden: Unauthorized cross-origin mutation request blocked."}
+                            content={"detail": "Forbidden: Unauthorized origin (via Referer)."}
                         )
                 except Exception:
                     return JSONResponse(
                         status_code=403,
-                        content={"detail": "Forbidden: Malformed origin header."}
+                        content={"detail": "Forbidden: Malformed Referer header."}
                     )
+            # No origin/referer = direct non-browser client (curl, pytest TestClient, internal).
+            # These are allowed to reach the API for internal tooling and tests;
+            # network exposure is limited to loopback (127.0.0.1) by the launcher.
         return await call_next(request)
+
 
     app.include_router(auth_router, prefix=settings.API_PREFIX)
     app.include_router(universe_router, prefix=settings.API_PREFIX)

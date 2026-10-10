@@ -49,16 +49,44 @@ def test_finding_13_oauth_get_rejects_app_secret():
 
 
 def test_finding_7_cross_origin_mutations_blocked():
-    """Finding 7: State-changing local API routes reject cross-origin requests from foreign origins."""
-    headers = {"Origin": "http://malicious-site.com"}
-    res = client.post("/api/paper/reset", headers=headers)
-    assert res.status_code == 403
-    assert "Forbidden" in res.json()["detail"]
+    """Finding 7 / F1: State-changing local API routes reject cross-origin requests from foreign origins, null, and arbitrary sslip.io."""
+    # Arbitrary sslip.io host blocked
+    res_evil = client.post("/api/paper/reset", headers={"Origin": "https://evil.sslip.io"})
+    assert res_evil.status_code == 403
+    assert "Forbidden" in res_evil.json()["detail"]
+
+    # null origin blocked
+    res_null = client.post("/api/paper/reset", headers={"Origin": "null"})
+    assert res_null.status_code == 403
+    assert "Forbidden" in res_null.json()["detail"]
+
+    # Malicious referer blocked
+    res_ref = client.post("/api/paper/reset", headers={"Referer": "https://evil.sslip.io/page"})
+    assert res_ref.status_code == 403
+    assert "Forbidden" in res_ref.json()["detail"]
 
     # Allowed local origin succeeds
-    local_headers = {"Origin": "http://localhost:5174"}
-    res_ok = client.post("/api/paper/reset", headers=local_headers)
+    res_ok = client.post("/api/paper/reset", headers={"Origin": "http://localhost:5174"})
     assert res_ok.status_code == 200
+
+    # Non-mutating GET with foreign origin is not blocked by mutation origin middleware
+    res_get = client.get("/api/health", headers={"Origin": "https://evil.sslip.io"})
+    assert res_get.status_code == 200
+
+
+def test_finding_1_allowed_origin_env_var(monkeypatch):
+    """Finding 1: ALLOWED_ORIGIN environment variable is included in allowed origins."""
+    monkeypatch.setenv("ALLOWED_ORIGIN", "https://options.mydomain.com")
+    from app.main import create_app
+    test_app = create_app()
+    with TestClient(test_app) as custom_client:
+        res = custom_client.post("/api/paper/reset", headers={"Origin": "https://options.mydomain.com"})
+        assert res.status_code == 200
+        # Untrusted origin still blocked
+        res_evil = custom_client.post("/api/paper/reset", headers={"Origin": "https://evil.sslip.io"})
+        assert res_evil.status_code == 403
+
+
 
 
 def test_finding_8_volume_less_ticker_does_not_reset_cumulative_baseline():
