@@ -440,3 +440,78 @@ async def test_finding_15_exponential_backoff_on_failed_seed():
         res2 = await worker.seed_historical_candles_if_needed("CID", "TOK", inst)
         assert res2 is False
         assert mock_seed.call_count == 1  # No additional call!
+
+
+def test_finding_3_forged_client_confirmation_rejected():
+    """Finding 3: Client sending is_confirmed=True is rejected if server radar signal is provisional."""
+    from app.main import worker
+    client.post("/api/paper/reset")
+
+    rec = OptionStrikeRecommendation(
+        symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
+        atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 50 22500 CE",
+        lot_size=50, risk=10.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+        estimated_option_entry=150.0, option_sl_pts=15.0, option_target_1_pts=22.5,
+        option_target_2_pts=37.5, option_sl_price=135.0, option_target_1_price=172.5,
+        option_target_2_price=187.5, option_security_id="88881", is_live_quote=True,
+        real_ask_price=150.0
+    )
+    server_sig = Signal(
+        id="SIG_PROVISIONAL_F3", symbol="NIFTY 50", timeframe="5m",
+        setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        entry_price=22500.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+        strike_recommendation=rec, is_confirmed=False,
+        indicators_snapshot={}, rationale="provisional server signal"
+    )
+
+    # Register provisional signal in server radar
+    worker._state.signals = [server_sig]
+
+    # Client constructs payload claiming is_confirmed=True for this signal
+    client_sig = server_sig.model_copy(update={"is_confirmed": True})
+
+    res = client.post(
+        "/api/paper/trade",
+        json={"signal": client_sig.model_dump(), "lots": 1, "feed_mode": "live"}
+    )
+    assert res.status_code == 400
+    assert "unconfirmed provisional" in res.json()["detail"].lower()
+
+
+def test_finding_7_radar_lookup_fails_closed():
+    """Finding 7: Radar lookup failure fails closed with HTTP 503 rather than falling open."""
+    from app.main import worker
+    client.post("/api/paper/reset")
+
+    rec = OptionStrikeRecommendation(
+        symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
+        atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 50 22500 CE",
+        lot_size=50, risk=10.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+        estimated_option_entry=150.0, option_sl_pts=15.0, option_target_1_pts=22.5,
+        option_target_2_pts=37.5, option_sl_price=135.0, option_target_1_price=172.5,
+        option_target_2_price=187.5, option_security_id="88882", is_live_quote=True,
+        real_ask_price=150.0
+    )
+    client_sig = Signal(
+        id="SIG_RADAR_ERR_F7", symbol="NIFTY 50", timeframe="5m",
+        setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        entry_price=22500.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+        strike_recommendation=rec, is_confirmed=True,
+        indicators_snapshot={}, rationale="client live signal"
+    )
+
+    class BrokenState:
+        @property
+        def signals(self):
+            raise RuntimeError("Redis connection lost")
+
+    with patch.object(worker, "_state", BrokenState()):
+        res = client.post(
+            "/api/paper/trade",
+            json={"signal": client_sig.model_dump(), "lots": 1, "feed_mode": "live"}
+        )
+        assert res.status_code == 503
+        assert "radar state unavailable" in res.json()["detail"].lower()
+

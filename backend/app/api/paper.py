@@ -56,8 +56,18 @@ def open_manual_trade(body: ManualTradeRequest) -> PaperPosition:
                 )
         except HTTPException:
             raise
-        except Exception:
-            pass
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Signal radar state unavailable for live trade validation."
+            ) from exc
+
+        # F3: Re-verify server signal confirmation
+        if not getattr(target_signal, "is_confirmed", True):
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot enter trade on unconfirmed provisional candle setup. Await candle close confirmation."
+            )
 
     rec = target_signal.strike_recommendation
     if mode == "live":
