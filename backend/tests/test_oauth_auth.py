@@ -26,6 +26,17 @@ def test_oauth_login_url_missing_app_id():
     res = client.get("/api/auth/oauth/login-url")
     assert res.status_code == 422
 
+def test_oauth_login_url_post():
+    res = client.post("/api/auth/oauth/login-url", json={
+        "app_id": "APP123",
+        "app_secret": "",
+        "redirect_uri": "http://localhost:5174/"
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert "https://auth.dhan.co/login/consent" in data["login_url"]
+    assert "client_id=APP123" in data["login_url"]
+
 @pytest.mark.asyncio
 async def test_oauth_token_exchange_success():
     mock_resp = {

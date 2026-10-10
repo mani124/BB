@@ -154,11 +154,16 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         sessionStorage.setItem('dhan_client_id', clientId.trim());
       }
       const redirectUri = window.location.origin + window.location.pathname;
-      let url = `/api/auth/oauth/login-url?app_id=${encodeURIComponent(appId.trim())}&app_secret=${encodeURIComponent(appSecret.trim())}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-      if (clientId && clientId.trim()) {
-        url += `&client_id=${encodeURIComponent(clientId.trim())}`;
-      }
-      const res = await fetch(url);
+      const res = await fetch('/api/auth/oauth/login-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          app_id: appId.trim(),
+          app_secret: appSecret.trim(),
+          client_id: clientId && clientId.trim() ? clientId.trim() : undefined,
+          redirect_uri: redirectUri,
+        }),
+      });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || 'Failed to generate Dhan OAuth login URL');

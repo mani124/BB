@@ -38,8 +38,13 @@ export const SignalCard: React.FC<SignalCardProps> = ({ signal, onPaperBuy, isBo
                 Lot: {rec.lot_size}
               </span>
             </div>
-            <div className="mt-1">
+            <div className="mt-1 flex items-center gap-1.5 flex-wrap">
               <SetupBadge setupType={signal.setup_type} />
+              {signal.is_confirmed === false && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-300">
+                  ⏳ Provisional (Forms Intrabar)
+                </span>
+              )}
             </div>
           </div>
 
@@ -212,11 +217,13 @@ export const SignalCard: React.FC<SignalCardProps> = ({ signal, onPaperBuy, isBo
         {/* 1-Click Paper Buy Button */}
         {onPaperBuy && (
           <button
-            onClick={() => !isBought && onPaperBuy(signal)}
-            disabled={isBought}
+            onClick={() => !isBought && signal.is_confirmed !== false && onPaperBuy(signal)}
+            disabled={isBought || signal.is_confirmed === false}
             className={`w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition active:scale-95 shadow-sm ${
               isBought
                 ? 'bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 cursor-default'
+                : signal.is_confirmed === false
+                ? 'bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700/60 text-amber-700 dark:text-amber-300 cursor-not-allowed'
                 : 'bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white shadow-md shadow-cyan-600/20'
             }`}
           >
@@ -224,6 +231,11 @@ export const SignalCard: React.FC<SignalCardProps> = ({ signal, onPaperBuy, isBo
               <>
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                 Active in Paper Portfolio
+              </>
+            ) : signal.is_confirmed === false ? (
+              <>
+                <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                Awaiting Bar Close (Provisional)
               </>
             ) : (
               <>

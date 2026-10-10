@@ -126,7 +126,7 @@ fi
 # 5. Start Vite Frontend on port 5174
 echo -e "${CYAN}Starting Vite Frontend on http://localhost:5174...${NC}"
 cd "${FRONTEND_DIR}"
-npm run dev -- --port 5174 --host &
+npm run dev -- --port 5174 --host 127.0.0.1 &
 FRONTEND_PID=$!
 
 echo -e "\n${GREEN}================================================================${NC}"

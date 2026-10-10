@@ -158,19 +158,13 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
         & (time_series >= t_start)
         & (time_series < t_end)
     )
-    fallback_n = min(3, n_bars)
-    or_high_val = (
-        res.loc[or_mask, "high"].max()
-        if or_mask.any()
-        else res["high"].iloc[:fallback_n].max()
-    )
-    or_low_val = (
-        res.loc[or_mask, "low"].min()
-        if or_mask.any()
-        else res["low"].iloc[:fallback_n].min()
-    )
-
-    res["or_high"] = float(or_high_val) if pd.notna(or_high_val) else 0.0
-    res["or_low"] = float(or_low_val) if pd.notna(or_low_val) else 0.0
+    if or_mask.any():
+        or_high_val = res.loc[or_mask, "high"].max()
+        or_low_val = res.loc[or_mask, "low"].min()
+        res["or_high"] = float(or_high_val) if pd.notna(or_high_val) else np.nan
+        res["or_low"] = float(or_low_val) if pd.notna(or_low_val) else np.nan
+    else:
+        res["or_high"] = np.nan
+        res["or_low"] = np.nan
 
     return res

@@ -43,6 +43,7 @@ class PaperPosition(BaseModel):
     booked_pnl_rupees: float = 0.0
     booked_slippage_cost: float = 0.0
     pending_spot_exit: Optional[str] = None
+    pending_spot_tp1: bool = False
     option_security_id: Optional[str] = None
     feed_mode: str = "demo"  # "demo" or "live"
     theoretical_entry: float = 0.0
@@ -236,6 +237,18 @@ class PaperTradingEngine:
                     return None
 
         rec = signal.strike_recommendation
+        if feed_mode == "live":
+            sec_id = getattr(rec, "option_security_id", None)
+            is_live = getattr(rec, "is_live_quote", False)
+            real_ask = float(getattr(rec, "real_ask_price", 0.0) or 0.0)
+            real_ltp = float(getattr(rec, "real_ltp", 0.0) or 0.0)
+            if not sec_id or not str(sec_id).strip() or not (is_live or real_ask > 0 or real_ltp > 0):
+                logger.info(
+                    f"Live position entry skipped for {signal.symbol}: contract unresolved or missing usable live option quote"
+                )
+                self._processed_signal_ids.add(signal.id)
+                return None
+
         lot_size = rec.lot_size
 
         risk_per_unit = max(0.1, abs(rec.estimated_option_entry - rec.option_sl_price))
@@ -370,6 +383,8 @@ class PaperTradingEngine:
                 p_fill_exit = round(opt_val * 0.999, 2)
         elif pos.feed_mode == "live":
             p_fill_exit = float(pos.current_option_price)
+            if "(Modeled" not in reason:
+                reason = f"{reason} (Modeled: Last Price)"
         else:
             p_fill_exit = float(theoretical_exit)
 
@@ -599,12 +614,22 @@ class PaperTradingEngine:
                     continue
 
                 # Check Target 1
-                elif ((curr_spot is not None and curr_spot >= pos.underlying_target_1) or pos.current_option_price >= pos.option_target_1) and pos.status == "OPEN":
+                hit_ce_tp1 = (
+                    ((curr_spot is not None and curr_spot >= pos.underlying_target_1) or pos.current_option_price >= pos.option_target_1)
+                    and pos.status == "OPEN"
+                ) or getattr(pos, "pending_spot_tp1", False)
+
+                if hit_ce_tp1:
+                    if pos.feed_mode == "live" and not has_fresh_quote:
+                        pos.pending_spot_tp1 = True
+                        still_active.append(pos)
+                        continue
+                    pos.pending_spot_tp1 = False
                     pos.status = "TARGET_1"
                     if pos.lots >= 2:
                         book_lots = pos.lots // 2
                         book_qty = book_lots * pos.lot_size
-                        tp1_fill = real_bid_price if (real_bid_price and real_bid_price > 0) else pos.current_option_price
+                        tp1_fill = real_bid_price if (real_bid_price and real_bid_price > 0) else (real_opt_price if (real_opt_price and real_opt_price > 0) else pos.current_option_price)
                         tp1_slippage = max(0.0, round(pos.option_target_1 - tp1_fill, 2))
                         tp1_slip_cost = round(tp1_slippage * book_qty, 2)
                         pos.booked_slippage_cost = round(getattr(pos, "booked_slippage_cost", 0.0) + tp1_slip_cost, 2)
@@ -660,12 +685,22 @@ class PaperTradingEngine:
                     continue
 
                 # Check Target 1
-                elif ((curr_spot is not None and curr_spot <= pos.underlying_target_1) or pos.current_option_price >= pos.option_target_1) and pos.status == "OPEN":
+                hit_pe_tp1 = (
+                    ((curr_spot is not None and curr_spot <= pos.underlying_target_1) or pos.current_option_price >= pos.option_target_1)
+                    and pos.status == "OPEN"
+                ) or getattr(pos, "pending_spot_tp1", False)
+
+                if hit_pe_tp1:
+                    if pos.feed_mode == "live" and not has_fresh_quote:
+                        pos.pending_spot_tp1 = True
+                        still_active.append(pos)
+                        continue
+                    pos.pending_spot_tp1 = False
                     pos.status = "TARGET_1"
                     if pos.lots >= 2:
                         book_lots = pos.lots // 2
                         book_qty = book_lots * pos.lot_size
-                        tp1_fill = real_bid_price if (real_bid_price and real_bid_price > 0) else pos.current_option_price
+                        tp1_fill = real_bid_price if (real_bid_price and real_bid_price > 0) else (real_opt_price if (real_opt_price and real_opt_price > 0) else pos.current_option_price)
                         tp1_slippage = max(0.0, round(pos.option_target_1 - tp1_fill, 2))
                         tp1_slip_cost = round(tp1_slippage * book_qty, 2)
                         pos.booked_slippage_cost = round(getattr(pos, "booked_slippage_cost", 0.0) + tp1_slip_cost, 2)

@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -89,6 +90,8 @@ class ScannerWorker:
         self._scan_lock = asyncio.Lock()
         self._ws_connect_task: Optional[asyncio.Task] = None
         self._bar_completed_symbols: set[str] = set()
+        self._instrument_last_quote_time: dict[str, float] = {}
+        self._last_cumulative_volume: dict[str, int] = {}
         self._sec_id_to_instrument: dict[str, Instrument] = {}
         self._seg_sec_id_to_instrument: dict[tuple[int, str], Instrument] = {}
         for inst in universe_mgr.get_universe():
@@ -310,6 +313,8 @@ class ScannerWorker:
             self._current_forming_candle.clear()
             self._option_candle_history.clear()
             self._option_forming_candle.clear()
+            self._last_cumulative_volume.clear()
+            self._instrument_last_quote_time.clear()
             self._last_session_date = today
 
     def _can_retry_contract_candle(self, sec_id: str, current_time: float) -> bool:
@@ -433,6 +438,50 @@ class ScannerWorker:
             curr_p = close_p
         return pd.DataFrame(records)
 
+    async def seed_historical_candles_if_needed(
+        self,
+        client_id: str,
+        access_token: str,
+        inst: Instrument
+    ) -> bool:
+        """
+        Seed valid current-session historical OHLCV bars from Dhan /charts/intraday API.
+        Ensures >= 20 bars are available immediately upon launch or restart.
+        """
+        sym = inst.symbol
+        if len(self._candle_history.get(sym, [])) >= 20:
+            return True
+        if not client_id or not access_token:
+            return False
+
+        try:
+            interval = 5 if inst.default_timeframe == "5m" else 15
+            df = await self.dhan_client.fetch_intraday_candles(
+                client_id=client_id,
+                access_token=access_token,
+                security_id=str(inst.security_id),
+                exchange_segment=str(inst.exchange_segment),
+                instrument_type=str(inst.instrument_type),
+                interval=interval,
+            )
+            if df is not None and not df.empty and len(df) >= 20:
+                records = []
+                for _, row in df.iterrows():
+                    records.append({
+                        "timestamp": pd.to_datetime(row["timestamp"]),
+                        "open": float(row["open"]),
+                        "high": float(row["high"]),
+                        "low": float(row["low"]),
+                        "close": float(row["close"]),
+                        "volume": int(row.get("volume", 0)),
+                    })
+                self._candle_history[sym] = records
+                logger.info(f"Successfully seeded {len(records)} historical candles for {sym}")
+                return True
+        except Exception as e:
+            logger.debug(f"Could not seed historical candles for {sym}: {e}")
+        return False
+
     def get_or_update_live_candles(self, inst: Instrument, inst_quote: Optional[dict]) -> pd.DataFrame:
         """
         Build and maintain 100% real intraday OHLCV bars populated and updated continuously
@@ -444,10 +493,24 @@ class ScannerWorker:
 
         if not inst_quote or float(inst_quote.get("last_price", 0.0)) <= 0:
             if self._state.active_mode != "demo":
-                return pd.DataFrame(self._candle_history.get(sym, []))
+                forming = self._current_forming_candle.get(sym)
+                history = self._candle_history.get(sym, [])
+                all_bars = history + ([forming] if forming else [])
+                return pd.DataFrame(all_bars)
             return self.generate_synthetic_candles(inst)
 
         live_ltp = float(inst_quote["last_price"])
+        self._instrument_last_quote_time[sym] = time.time()
+        quote_vol = int(inst_quote.get("volume", 0)) if inst_quote.get("volume") is not None else 0
+
+        # Calculate incremental bar volume from cumulative day volume
+        last_cum_vol = self._last_cumulative_volume.get(sym)
+        incremental_vol = 0
+        if last_cum_vol is not None and quote_vol >= last_cum_vol:
+            incremental_vol = quote_vol - last_cum_vol
+        elif quote_vol > 0:
+            incremental_vol = quote_vol
+        self._last_cumulative_volume[sym] = quote_vol
 
         # Initialize intraday history if not present
         if sym not in self._candle_history:
@@ -463,7 +526,7 @@ class ScannerWorker:
                 "high": live_ltp,
                 "low": live_ltp,
                 "close": live_ltp,
-                "volume": 0
+                "volume": max(0, incremental_vol),
             }
 
         # Update the forming candle with the live tick
@@ -483,13 +546,14 @@ class ScannerWorker:
                 "high": live_ltp,
                 "low": live_ltp,
                 "close": live_ltp,
-                "volume": 0
+                "volume": max(0, incremental_vol),
             }
             self._current_forming_candle[sym] = forming
         else:
             forming["high"] = max(forming["high"], live_ltp)
             forming["low"] = min(forming["low"], live_ltp)
             forming["close"] = live_ltp
+            forming["volume"] = max(0, forming.get("volume", 0) + incremental_vol)
 
         all_bars = self._candle_history[sym] + [forming]
         return pd.DataFrame(all_bars)
@@ -733,9 +797,14 @@ class ScannerWorker:
                 seg_quotes = quotes_dict.get(inst.exchange_segment, {})
                 inst_quote = seg_quotes.get(str(inst.security_id)) or seg_quotes.get(int(inst.security_id))
 
+            if mode == "live" and cid and tok and len(self._candle_history.get(inst.symbol, [])) < 20:
+                await self.seed_historical_candles_if_needed(cid, tok, inst)
+
             # Maintain and update 100% real candles
             df = self.get_or_update_live_candles(inst, inst_quote)
             live_ltp = float(inst_quote.get("last_price", 0.0)) if inst_quote else None
+            if (live_ltp is None or live_ltp <= 0) and inst.symbol in self._current_forming_candle:
+                live_ltp = float(self._current_forming_candle[inst.symbol].get("close", 0.0))
             # Compute Indicators
             ind_df = calculate_indicators(df)
             current_price = float(live_ltp) if (live_ltp and live_ltp > 0) else 0.0
@@ -806,23 +875,46 @@ class ScannerWorker:
             # Evaluate Setups with stock momentum and market bias filtering
             stock_bias = rankings.get_bias(inst.symbol) if inst.instrument_type == "EQUITY" else None
 
-            detected = evaluate_signals(
+            # 1. Closed bars: evaluate on completed history for confirmed signals
+            confirmed_signals: list[Signal] = []
+            completed_bars = self._candle_history.get(inst.symbol, [])
+            if mode == "live" and len(completed_bars) >= 20:
+                completed_df = calculate_indicators(pd.DataFrame(completed_bars))
+                signals_on_closed = evaluate_signals(
+                    inst.symbol,
+                    completed_df,
+                    timeframe=inst.default_timeframe,
+                    stock_bias=stock_bias,
+                    market_bias=market_bias
+                )
+                for s in signals_on_closed:
+                    s.is_confirmed = True
+                    confirmed_signals.append(s)
+
+            # 2. Forming bar: evaluate on ind_df (which includes active forming candle)
+            provisional_signals = evaluate_signals(
                 inst.symbol,
                 ind_df,
                 timeframe=inst.default_timeframe,
                 stock_bias=stock_bias,
                 market_bias=market_bias
             )
-            for sig in detected:
+            for sig in provisional_signals:
                 is_snapback = sig.setup_type in (
                     SetupType.SETUP_6_PINBAR_SNAPBACK,
                     SetupType.SETUP_7_INSIDE_BAR_SNAPBACK,
                     SetupType.SETUP_8_DIVERGENCE_SNAPBACK,
                 ) or "Setup 6" in str(sig.setup_type) or "Setup 7" in str(sig.setup_type) or "Setup 8" in str(sig.setup_type)
-                if is_snapback and mode == "live" and inst.symbol not in self._bar_completed_symbols:
+                if is_snapback and mode == "live":
                     sig.is_confirmed = False
                 else:
                     sig.is_confirmed = True
+
+            # Merge: confirmed signals take priority over provisional signals
+            det_map = {s.id: s for s in provisional_signals}
+            for cs in confirmed_signals:
+                det_map[cs.id] = cs
+            detected = list(det_map.values())
 
             # Enrich signals and evaluate Setup 5 with live option chain from Dhan
             if mode == "live" and cid and tok:

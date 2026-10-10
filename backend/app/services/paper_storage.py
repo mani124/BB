@@ -65,7 +65,10 @@ class PaperStorage:
                 gross_pnl REAL DEFAULT 0.0,
                 total_charges REAL DEFAULT 0.0,
                 net_pnl REAL DEFAULT 0.0,
-                charges_json TEXT DEFAULT ''
+                charges_json TEXT DEFAULT '',
+                booked_slippage_cost REAL DEFAULT 0.0,
+                pending_spot_exit TEXT DEFAULT NULL,
+                pending_spot_tp1 INTEGER DEFAULT 0
             );
             """)
 
@@ -82,6 +85,9 @@ class PaperStorage:
                 "ALTER TABLE positions ADD COLUMN total_charges REAL DEFAULT 0.0;",
                 "ALTER TABLE positions ADD COLUMN net_pnl REAL DEFAULT 0.0;",
                 "ALTER TABLE positions ADD COLUMN charges_json TEXT DEFAULT '';",
+                "ALTER TABLE positions ADD COLUMN booked_slippage_cost REAL DEFAULT 0.0;",
+                "ALTER TABLE positions ADD COLUMN pending_spot_exit TEXT DEFAULT NULL;",
+                "ALTER TABLE positions ADD COLUMN pending_spot_tp1 INTEGER DEFAULT 0;",
             ]
             for stmt in migrations:
                 try:
@@ -118,8 +124,9 @@ class PaperStorage:
                 initial_lots, initial_quantity, booked_lots, booked_pnl_rupees,
                 option_security_id, feed_mode,
                 theoretical_entry, entry_slippage, theoretical_exit, exit_slippage,
-                total_slippage_cost, gross_pnl, total_charges, net_pnl, charges_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                total_slippage_cost, gross_pnl, total_charges, net_pnl, charges_json,
+                booked_slippage_cost, pending_spot_exit, pending_spot_tp1
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 lots=excluded.lots,
                 quantity=excluded.quantity,
@@ -142,7 +149,10 @@ class PaperStorage:
                 gross_pnl=excluded.gross_pnl,
                 total_charges=excluded.total_charges,
                 net_pnl=excluded.net_pnl,
-                charges_json=excluded.charges_json;
+                charges_json=excluded.charges_json,
+                booked_slippage_cost=excluded.booked_slippage_cost,
+                pending_spot_exit=excluded.pending_spot_exit,
+                pending_spot_tp1=excluded.pending_spot_tp1;
             """, (
                 pos.id, pos.signal_id, pos.symbol, pos.option_type, pos.strike_symbol, pos.timeframe, pos.setup_type,
                 pos.entry_time, pos.underlying_entry, pos.underlying_sl, pos.underlying_target_1, pos.underlying_target_2,
@@ -152,7 +162,9 @@ class PaperStorage:
                 pos.initial_lots, pos.initial_quantity, pos.booked_lots, pos.booked_pnl_rupees,
                 pos.option_security_id, getattr(pos, "feed_mode", "demo"),
                 pos.theoretical_entry, pos.entry_slippage, pos.theoretical_exit, pos.exit_slippage,
-                pos.total_slippage_cost, pos.gross_pnl, pos.total_charges, pos.net_pnl, charges_json
+                pos.total_slippage_cost, pos.gross_pnl, pos.total_charges, pos.net_pnl, charges_json,
+                getattr(pos, "booked_slippage_cost", 0.0), getattr(pos, "pending_spot_exit", None),
+                1 if getattr(pos, "pending_spot_tp1", False) else 0
             ))
             conn.commit()
 
@@ -188,6 +200,9 @@ class PaperStorage:
                 d["net_pnl"] = float(net_val if net_val is not None and net_val != 0.0 else (d["gross_pnl"] - d["total_charges"]))
                 if not d.get("feed_mode"):
                     d["feed_mode"] = "demo"
+                d["booked_slippage_cost"] = float(d.get("booked_slippage_cost") or 0.0)
+                d["pending_spot_exit"] = d.get("pending_spot_exit") or None
+                d["pending_spot_tp1"] = bool(d.get("pending_spot_tp1") or 0)
 
                 pos = PaperPosition(**d)
                 if pos.status in ["OPEN", "TARGET_1"]:

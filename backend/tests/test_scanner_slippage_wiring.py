@@ -250,7 +250,7 @@ def test_api_manual_close_backward_compatibility_no_body():
     assert close_res.status_code == 200
     data = close_res.json()
     assert data["status"] == "CLOSED"
-    assert data["exit_reason"] == "Manual User Exit"
+    assert data["exit_reason"].startswith("Manual User Exit")
     assert data["exit_slippage"] == 0.0
 
 def test_api_signals_close_alias():
@@ -285,7 +285,7 @@ def test_api_signals_close_alias_no_body():
     assert close_res.status_code == 200
     data = close_res.json()
     assert data["status"] == "CLOSED"
-    assert data["exit_reason"] == "Manual User Exit"
+    assert data["exit_reason"].startswith("Manual User Exit")
 
 
 @pytest.mark.asyncio

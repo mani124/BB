@@ -286,7 +286,7 @@ def evaluate_signals(
         except Exception:
             is_orb_time = True
 
-    if is_orb_time and pd.notna(or_high) and pd.notna(or_low):
+    if is_orb_time and pd.notna(or_high) and pd.notna(or_low) and float(or_high) > 0 and float(or_low) > 0:
         # CE ORB: Breaks above OR High, Above Upper BB, Above VWAP
         if close > or_high and close > upper and close > vwap:
             sl = round(max(mid, or_high * 0.997), 2)

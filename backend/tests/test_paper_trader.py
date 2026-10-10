@@ -341,6 +341,9 @@ def test_portfolio_separates_demo_and_live_trades():
     engine = PaperTradingEngine()
     sig_demo = create_mock_signal(symbol="NIFTY 50", opt="CE", entry=25000.0, sl=24950.0)
     sig_live = create_mock_signal(symbol="BANK NIFTY", opt="PE", entry=50000.0, sl=50100.0)
+    sig_live.strike_recommendation.option_security_id = "54321"
+    sig_live.strike_recommendation.is_live_quote = True
+    sig_live.strike_recommendation.real_ask_price = 180.0
 
     pos_demo = engine.open_position_from_signal(sig_demo, lots=1, feed_mode="demo")
     pos_live = engine.open_position_from_signal(sig_live, lots=1, feed_mode="live")

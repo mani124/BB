@@ -24,6 +24,8 @@ async def test_incoming_option_tick_triggers_paper_exit_instantaneously():
     rec = recommend_strike("BANK NIFTY", 50000.0, "CE", 49900.0)
     rec.option_security_id = "99881"
     rec.estimated_option_entry = 100.0
+    rec.is_live_quote = True
+    rec.real_ask_price = 100.0
     rec.option_sl_price = 90.0
     rec.option_target_1_price = 115.0
 
@@ -119,6 +121,8 @@ async def test_position_opening_triggers_dynamic_option_subscription():
         rec = recommend_strike("NIFTY 50", 22500.0, "CE", 22400.0)
         rec.option_security_id = "88771"
         rec.estimated_option_entry = 80.0
+        rec.is_live_quote = True
+        rec.real_ask_price = 80.0
         rec.option_sl_price = 70.0
         rec.option_target_1_price = 95.0
 

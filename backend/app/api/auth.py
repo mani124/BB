@@ -21,13 +21,19 @@ class OAuthTokenRequest(BaseModel):
     consent_id: str = Field(..., min_length=1, description="OAuth consent ID from redirect")
 
 
-@router.get("/oauth/login-url")
-async def get_oauth_login_url(
-    app_id: str = Query(..., min_length=1, description="Dhan App ID / API Key"),
-    app_secret: Optional[str] = Query(None, description="Dhan App Secret"),
-    client_id: Optional[str] = Query(None, description="Dhan Client ID"),
-    redirect_uri: Optional[str] = Query(None, description="Redirect URI after consent"),
-):
+class OAuthLoginUrlRequest(BaseModel):
+    app_id: str = Field(..., min_length=1, description="Dhan App ID / API Key")
+    app_secret: Optional[str] = Field(None, description="Dhan App Secret")
+    client_id: Optional[str] = Field(None, description="Dhan Client ID")
+    redirect_uri: Optional[str] = Field(None, description="Redirect URI after consent")
+
+
+async def _generate_oauth_login_url(
+    app_id: str,
+    app_secret: Optional[str] = None,
+    client_id: Optional[str] = None,
+    redirect_uri: Optional[str] = None,
+) -> dict:
     # If app_secret is provided, call official DhanHQ generate-consent endpoint
     if app_secret and app_secret.strip():
         cid = (client_id or app_id).strip()
@@ -52,10 +58,12 @@ async def get_oauth_login_url(
                     login_url = f"{settings.DHAN_CONSENT_LOGIN_URL}?consentAppId={consent_app_id}"
                     return {"login_url": login_url, "consent_app_id": consent_app_id}
             else:
-                logger.warning(f"Dhan generate-consent returned {resp.status_code}: {resp.text}")
-                detail_msg = resp.text
-                if resp.status_code == 401:
-                    detail_msg = "Invalid Dhan credentials: App ID, App Secret, or Client ID did not match. Please verify them in your Dhan Developer Portal."
+                logger.warning(f"Dhan generate-consent returned HTTP {resp.status_code}")
+                detail_msg = (
+                    "Invalid Dhan credentials: App ID, App Secret, or Client ID did not match. Please verify them in your Dhan Developer Portal."
+                    if resp.status_code == 401
+                    else f"Dhan auth rejected with status {resp.status_code}"
+                )
                 raise HTTPException(
                     status_code=resp.status_code if resp.status_code in [400, 401, 403] else status.HTTP_502_BAD_GATEWAY,
                     detail=f"Dhan API authentication rejected ({resp.status_code}): {detail_msg}",
@@ -76,6 +84,31 @@ async def get_oauth_login_url(
     query_str = urllib.parse.urlencode(params)
     login_url = f"{settings.DHAN_LOGIN_URL}?{query_str}"
     return {"login_url": login_url}
+
+
+@router.post("/oauth/login-url")
+async def create_oauth_login_url(body: OAuthLoginUrlRequest):
+    return await _generate_oauth_login_url(
+        app_id=body.app_id,
+        app_secret=body.app_secret,
+        client_id=body.client_id,
+        redirect_uri=body.redirect_uri,
+    )
+
+
+@router.get("/oauth/login-url")
+async def get_oauth_login_url(
+    app_id: str = Query(..., min_length=1, description="Dhan App ID / API Key"),
+    app_secret: Optional[str] = Query(None, description="Dhan App Secret"),
+    client_id: Optional[str] = Query(None, description="Dhan Client ID"),
+    redirect_uri: Optional[str] = Query(None, description="Redirect URI after consent"),
+):
+    return await _generate_oauth_login_url(
+        app_id=app_id,
+        app_secret=app_secret,
+        client_id=client_id,
+        redirect_uri=redirect_uri,
+    )
 
 
 @router.post("/oauth/token")
