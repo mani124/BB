@@ -29,6 +29,9 @@ const SETUP_FILTER_OPTIONS = [
   { id: 'SETUP_3', label: 'Setup 3 (W/M Reversal)' },
   { id: 'SETUP_4', label: 'Setup 4 (ORB 9:30 AM)' },
   { id: 'SETUP_5', label: 'Setup 5 (Option Chart)' },
+  { id: 'SETUP_6', label: 'Setup 6 (Pin Bar)' },
+  { id: 'SETUP_7', label: 'Setup 7 (Inside Bar)' },
+  { id: 'SETUP_8', label: 'Setup 8 (Climax Divergence)' },
 ];
 
 const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
@@ -49,6 +52,15 @@ const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
   }
   if (filterId === 'SETUP_5') {
     return s.includes('SETUP_5') || s.includes('SETUP 5') || s.includes('OPTION');
+  }
+  if (filterId === 'SETUP_6') {
+    return s.includes('SETUP_6') || s.includes('SETUP 6') || s.includes('PINBAR') || s.includes('PIN BAR') || s.includes('PIN_BAR');
+  }
+  if (filterId === 'SETUP_7') {
+    return s.includes('SETUP_7') || s.includes('SETUP 7') || s.includes('INSIDE_BAR') || s.includes('INSIDE BAR');
+  }
+  if (filterId === 'SETUP_8') {
+    return s.includes('SETUP_8') || s.includes('SETUP 8') || s.includes('DIVERGENCE') || s.includes('CLIMAX');
   }
   return false;
 };

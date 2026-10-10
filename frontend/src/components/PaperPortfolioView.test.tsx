@@ -190,4 +190,151 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
     expect(screen.getByText('(Slip: 0.0 pts)')).toBeInTheDocument();
     expect(screen.queryByText('(Slip: -0.0 pts)')).not.toBeInTheDocument();
   });
+
+  it('filters closed trades by Setups 6, 7, and 8 correctly and updates dynamic summary strip', () => {
+    const snapbackTrades: PaperPosition[] = [
+      ...mockTrades,
+      {
+        id: 'POS_6',
+        signal_id: 'SIG_6',
+        symbol: 'NIFTY 50',
+        option_type: 'PE',
+        strike_symbol: 'NIFTY 22400 PE',
+        timeframe: '5m',
+        setup_type: 'SETUP_6_PINBAR_SNAPBACK',
+        entry_time: '11:00:00',
+        exit_time: '11:15:00',
+        underlying_entry: 22450,
+        underlying_sl: 22480,
+        underlying_target_1: 22400,
+        underlying_target_2: 22370,
+        option_entry: 120.0,
+        option_sl: 100.0,
+        option_target_1: 150.0,
+        option_target_2: 170.0,
+        lot_size: 65,
+        lots: 2,
+        quantity: 130,
+        current_underlying: 22390,
+        current_option_price: 155.0,
+        pnl_points: 35.0,
+        pnl_rupees: 4550.0,
+        gross_pnl: 4550.0,
+        total_charges: 70.0,
+        net_pnl: 4480.0,
+        total_slippage_cost: 65.0,
+        status: 'CLOSED',
+        exit_reason: 'Target 1 Hit',
+      },
+      {
+        id: 'POS_7',
+        signal_id: 'SIG_7',
+        symbol: 'BANKNIFTY',
+        option_type: 'CE',
+        strike_symbol: 'BANKNIFTY 48600 CE',
+        timeframe: '5m',
+        setup_type: 'SETUP_7_INSIDE_BAR_SNAPBACK',
+        entry_time: '11:30:00',
+        exit_time: '11:45:00',
+        underlying_entry: 48550,
+        underlying_sl: 48450,
+        underlying_target_1: 48700,
+        underlying_target_2: 48800,
+        option_entry: 210.0,
+        option_sl: 160.0,
+        option_target_1: 280.0,
+        option_target_2: 340.0,
+        lot_size: 30,
+        lots: 2,
+        quantity: 60,
+        current_underlying: 48440,
+        current_option_price: 155.0,
+        pnl_points: -55.0,
+        pnl_rupees: -3300.0,
+        gross_pnl: -3300.0,
+        total_charges: 60.0,
+        net_pnl: -3360.0,
+        total_slippage_cost: 30.0,
+        status: 'STOPPED_OUT',
+        exit_reason: 'Stop-Loss Hit',
+      },
+      {
+        id: 'POS_8',
+        signal_id: 'SIG_8',
+        symbol: 'FINNIFTY',
+        option_type: 'PE',
+        strike_symbol: 'FINNIFTY 21200 PE',
+        timeframe: '15m',
+        setup_type: 'SETUP_8_DIVERGENCE_SNAPBACK',
+        entry_time: '12:00:00',
+        exit_time: '12:20:00',
+        underlying_entry: 21250,
+        underlying_sl: 21290,
+        underlying_target_1: 21190,
+        underlying_target_2: 21150,
+        option_entry: 110.0,
+        option_sl: 85.0,
+        option_target_1: 145.0,
+        option_target_2: 170.0,
+        lot_size: 65,
+        lots: 2,
+        quantity: 130,
+        current_underlying: 21180,
+        current_option_price: 148.0,
+        pnl_points: 38.0,
+        pnl_rupees: 4940.0,
+        gross_pnl: 4940.0,
+        total_charges: 75.0,
+        net_pnl: 4865.0,
+        total_slippage_cost: 50.0,
+        status: 'CLOSED',
+        exit_reason: 'Target 1 Hit',
+      },
+    ];
+
+    const portfolioWithSnapback: PaperPortfolio = {
+      ...mockPortfolio,
+      closed_trades: snapbackTrades,
+      total_trades_count: snapbackTrades.length,
+    };
+
+    render(
+      <PaperPortfolioView
+        portfolio={portfolioWithSnapback}
+        onClosePosition={() => {}}
+        onToggleAutoTrade={() => {}}
+        onChangeLots={() => {}}
+        onResetPortfolio={() => {}}
+      />
+    );
+
+    // 1. Verify Setup 6 (Pin Bar) filter
+    const s6Btn = screen.getByRole('button', { name: /Setup 6 \(Pin Bar\)/i });
+    fireEvent.click(s6Btn);
+    expect(screen.getByText('NIFTY 22400 PE')).toBeInTheDocument();
+    expect(screen.queryByText('BANKNIFTY 48600 CE')).not.toBeInTheDocument();
+    expect(screen.queryByText('FINNIFTY 21200 PE')).not.toBeInTheDocument();
+    expect(screen.queryByText('NIFTY 22450 CE')).not.toBeInTheDocument();
+    expect(screen.getByText(/1 Trades/i)).toBeInTheDocument();
+    expect(screen.getByText(/100.0% Win Rate/i)).toBeInTheDocument();
+
+    // 2. Verify Setup 7 (Inside Bar) filter
+    const s7Btn = screen.getByRole('button', { name: /Setup 7 \(Inside Bar\)/i });
+    fireEvent.click(s7Btn);
+    expect(screen.getByText('BANKNIFTY 48600 CE')).toBeInTheDocument();
+    expect(screen.queryByText('NIFTY 22400 PE')).not.toBeInTheDocument();
+    expect(screen.queryByText('FINNIFTY 21200 PE')).not.toBeInTheDocument();
+    expect(screen.getByText(/1 Trades/i)).toBeInTheDocument();
+    expect(screen.getByText(/0.0% Win Rate/i)).toBeInTheDocument();
+
+    // 3. Verify Setup 8 (Climax Divergence) filter
+    const s8Btn = screen.getByRole('button', { name: /Setup 8 \(Climax Divergence\)/i });
+    fireEvent.click(s8Btn);
+    expect(screen.getByText('FINNIFTY 21200 PE')).toBeInTheDocument();
+    expect(screen.queryByText('NIFTY 22400 PE')).not.toBeInTheDocument();
+    expect(screen.queryByText('BANKNIFTY 48600 CE')).not.toBeInTheDocument();
+    expect(screen.getByText(/1 Trades/i)).toBeInTheDocument();
+    expect(screen.getByText(/100.0% Win Rate/i)).toBeInTheDocument();
+  });
 });
+

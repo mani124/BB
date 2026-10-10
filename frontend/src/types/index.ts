@@ -5,7 +5,18 @@ export type SetupType =
   | 'Setup 2: Walking the Bands (9 EMA)'
   | 'Setup 3: W/M Reversal'
   | 'Setup 4: 9:30 AM Opening Range Breakout'
-  | 'Setup 5: Option Chart BB Scalp';
+  | 'Setup 5: Option Chart BB Scalp'
+  | 'Setup 6: Pin Bar Exhaustion Snapback'
+  | 'Setup 7: 2.5σ Puncture & Inside Bar'
+  | 'Setup 8: Climax Swing Divergence Fade'
+  | 'SETUP_1_SQUEEZE_EXPANSION'
+  | 'SETUP_2_WALKING_BANDS'
+  | 'SETUP_3_WM_REVERSAL'
+  | 'SETUP_4_ORB'
+  | 'SETUP_5_OPTION_BB_SCALP'
+  | 'SETUP_6_PINBAR_SNAPBACK'
+  | 'SETUP_7_INSIDE_BAR_SNAPBACK'
+  | 'SETUP_8_DIVERGENCE_SNAPBACK';
 
 export interface OptionStrikeRecommendation {
   symbol: string;
