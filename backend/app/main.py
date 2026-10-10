@@ -12,14 +12,18 @@ from app.api.paper import router as paper_router
 
 setup_security_logging()
 
+from app.services.paper_trader import paper_trader
+
 universe_mgr = UniverseManager()
 worker = ScannerWorker(universe_mgr=universe_mgr)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await paper_trader.start_persistence_worker()
     worker.start()
     yield
     await worker.stop()
+    await paper_trader.stop_persistence_worker()
 
 def create_app() -> FastAPI:
     app = FastAPI(

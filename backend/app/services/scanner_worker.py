@@ -89,6 +89,7 @@ class ScannerWorker:
         self._session_generation: int = 0
         self._expiry_cache: dict[str, str] = {}
         self._option_chain_cache: dict[str, tuple[float, dict]] = {}
+        self._option_chart_cache: dict[str, tuple[datetime, pd.DataFrame]] = {}
         self._candle_history: dict[str, list[dict]] = {}
         self._current_forming_candle: dict[str, dict] = {}
         self._option_candle_history: dict[str, list[dict]] = {}
@@ -437,6 +438,7 @@ class ScannerWorker:
             # F3: Purge radar and signals on session disconnect
             self._state.signals = []
             self._state.radar = {}
+            self._option_chart_cache.clear()
             # Finding 5: Explicitly cancel pending connection task upon disconnect
             if self._ws_connect_task and not self._ws_connect_task.done():
                 self._ws_connect_task.cancel()
@@ -642,7 +644,11 @@ class ScannerWorker:
             if last_cum_vol is not None and quote_vol >= last_cum_vol:
                 incremental_vol = quote_vol - last_cum_vol
             elif quote_vol > 0 and last_cum_vol is None:
-                incremental_vol = 0 if self._candle_history.get(sym) else quote_vol
+                has_today_bars = any(
+                    (b.get("timestamp") and hasattr(b["timestamp"], "date") and b["timestamp"].date() == now.date())
+                    for b in self._candle_history.get(sym, [])
+                )
+                incremental_vol = 0 if has_today_bars else quote_vol
             self._last_cumulative_volume[sym] = quote_vol
 
         # Initialize intraday history if not present
@@ -1282,8 +1288,13 @@ class ScannerWorker:
             return results
 
         atm_strike = min(strikes, key=lambda s: abs(s - underlying_price))
-        atm_key = f"{atm_strike:.6f}" if f"{atm_strike:.6f}" in oc else str(atm_strike)
-        strike_data = oc.get(atm_key, oc.get(f"{atm_strike:.6f}", {}))
+        atm_int = int(atm_strike) if atm_strike.is_integer() else atm_strike
+        atm_key = (
+            str(atm_int) if str(atm_int) in oc
+            else (str(atm_strike) if str(atm_strike) in oc
+            else (f"{atm_strike:.6f}" if f"{atm_strike:.6f}" in oc else str(atm_strike)))
+        )
+        strike_data = oc.get(atm_key, oc.get(str(atm_int), oc.get(str(atm_strike), oc.get(f"{atm_strike:.6f}", {}))))
         if not isinstance(strike_data, dict):
             return results
 
@@ -1304,8 +1315,14 @@ class ScannerWorker:
             strike_symbol = f"{inst.symbol} {int(atm_strike)} {opt_type}"
 
             opt_candles = pd.DataFrame()
+            now_dt = datetime.now()
+            current_slot_ts = now_dt.replace(minute=(now_dt.minute // 5) * 5, second=0, microsecond=0)
             now_loop = asyncio.get_running_loop().time()
-            if self._can_retry_contract_candle(sec_id_str, now_loop):
+
+            cached = self._option_chart_cache.get(sec_id_str)
+            if cached and cached[0] == current_slot_ts:
+                opt_candles = cached[1]
+            elif self._can_retry_contract_candle(sec_id_str, now_loop):
                 try:
                     opt_candles = await self.dhan_client.fetch_intraday_candles(
                         client_id=cid,
@@ -1319,6 +1336,7 @@ class ScannerWorker:
                         self._failed_candle_sec_ids[sec_id_str] = now_loop
                     else:
                         self._failed_candle_sec_ids.pop(sec_id_str, None)
+                        self._option_chart_cache[sec_id_str] = (current_slot_ts, opt_candles)
                 except Exception as e:
                     logger.debug(f"Error checking option chart candles for {strike_symbol}: {e}")
                     self._failed_candle_sec_ids[sec_id_str] = now_loop

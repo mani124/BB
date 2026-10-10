@@ -208,3 +208,165 @@ async def test_scan_disconnect_guard_finally():
         except RuntimeError:
             pass
         assert worker._state.is_scanning is False, "is_scanning remained True after exception!"
+
+
+def test_finding_6_intraday_volume_baseline_checks_today_bars():
+    """F6: Prior-session bars in history do not prevent first today quote from initializing forming candle volume."""
+    from app.services.scanner_worker import ScannerWorker
+    from app.services.universe_manager import UniverseManager
+    from datetime import datetime, timedelta
+
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    inst = worker.universe_mgr.get_indices()[0]
+    now = datetime.now()
+
+    # Pre-populate history with bars from YESTERDAY
+    yesterday = now - timedelta(days=1)
+    worker._candle_history[inst.symbol] = [{
+        "timestamp": yesterday.replace(hour=15, minute=0, second=0),
+        "open": 22000.0, "high": 22010.0, "low": 21990.0, "close": 22005.0, "volume": 50000
+    }]
+    worker._last_cumulative_volume.clear()
+    worker._current_forming_candle.clear()
+
+    # Quote arrives today with cumulative volume 8000
+    df = worker.get_or_update_live_candles(inst, {"last_price": 22050.0, "volume": 8000})
+    forming = worker._current_forming_candle[inst.symbol]
+    # Because there were NO bars from today, forming candle should have received 8000 volume
+    assert forming["volume"] == 8000, f"Expected 8000, got {forming['volume']}"
+
+    # Second tick with cumulative volume 8050 -> incremental should be 50 -> total 8050
+    df2 = worker.get_or_update_live_candles(inst, {"last_price": 22055.0, "volume": 8050})
+    assert worker._current_forming_candle[inst.symbol]["volume"] == 8050
+
+
+@pytest.mark.asyncio
+async def test_finding_8_ordered_async_persistence_queue_and_flush(tmp_path):
+    """F8: Dedicated asyncio.Queue guarantees FIFO sequential commits and flushes pending writes on shutdown."""
+    import asyncio
+    from app.services.paper_trader import PaperTradingEngine
+    from app.services.strategy_engine import Signal, SetupType
+    from app.services.strike_selector import OptionStrikeRecommendation
+
+    db_file = str(tmp_path / "test_trades_f8.db")
+    engine = PaperTradingEngine(db_path=db_file)
+    await engine.start_persistence_worker()
+
+    rec = OptionStrikeRecommendation(
+        symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
+        atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 22500 CE",
+        lot_size=50, risk=20.0, stop_loss=22480.0, target_1=22530.0, target_2=22560.0,
+        estimated_option_entry=100.0, option_sl_pts=20.0, option_target_1_pts=30.0, option_target_2_pts=60.0,
+        option_sl_price=80.0, option_target_1_price=130.0, option_target_2_price=160.0,
+        option_security_id="88801", is_live_quote=True, real_ask_price=100.0, real_bid_price=99.5, real_ltp=100.0
+    )
+
+    positions = []
+    for i in range(5):
+        sig = Signal(
+            id=f"SIG_F8_{i}", symbol="NIFTY 50", timeframe="5m",
+            setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+            timestamp=f"09:3{i}:00", entry_price=22500.0, stop_loss=22480.0, target_1=22530.0, target_2=22560.0,
+            strike_recommendation=rec, is_confirmed=True, indicators_snapshot={}, rationale="test"
+        )
+        pos = engine.open_position_from_signal(sig, feed_mode="demo")
+        assert pos is not None
+        positions.append(pos)
+
+    # Await flush
+    await engine.flush()
+
+    # Verify all 5 positions were sequentially written to DB
+    loaded_active, loaded_closed = engine.storage.load_all_positions()
+    loaded_ids = {p.id for p in loaded_active}
+    for p in positions:
+        assert p.id in loaded_ids
+
+    await engine.stop_persistence_worker()
+
+
+@pytest.mark.asyncio
+async def test_finding_9_5m_option_chart_cached_within_slot():
+    """F9: 5-minute option chart candles are cached by contract within the 5m slot to avoid redundant network downloads."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+    import pandas as pd
+    from app.services.scanner_worker import ScannerWorker
+    from app.services.universe_manager import UniverseManager
+    from datetime import datetime
+
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    inst = worker.universe_mgr.get_indices()[0]
+
+    sec_id = "55501"
+    dummy_df = pd.DataFrame([{
+        "timestamp": datetime.now(),
+        "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1000
+    } for _ in range(25)])
+
+    dummy_oc = {
+        "22500": {
+            "ce": {"security_id": sec_id, "last_price": 102.0, "volume": 1000}
+        }
+    }
+
+    with patch.object(worker.dhan_client, "fetch_intraday_candles", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = dummy_df
+
+        # First evaluation: fetches from dhan_client
+        res1 = await worker._evaluate_option_chart_setups("CID", "TOK", inst, dummy_oc, "2026-10-15", 22500.0)
+        assert mock_fetch.call_count == 1
+
+        # Second evaluation in same scan cycle / slot: uses cache!
+        res2 = await worker._evaluate_option_chart_setups("CID", "TOK", inst, dummy_oc, "2026-10-15", 22500.0)
+        assert mock_fetch.call_count == 1, "Cached 5m option chart was re-fetched over the network!"
+
+
+@pytest.mark.asyncio
+async def test_finding_7_in_flight_disconnect_barrier_race():
+    """F7: Disconnect race verified with an asyncio.Event barrier ensuring await point was actively suspended."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+    from app.services.scanner_worker import ScannerWorker
+    from app.services.universe_manager import UniverseManager
+    from datetime import datetime, timedelta
+
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    inst = worker.universe_mgr.get_indices()[0]
+
+    worker._candle_history[inst.symbol] = [{
+        "timestamp": datetime.now() - timedelta(minutes=5 * i),
+        "open": 22000.0, "high": 22010.0, "low": 21990.0, "close": 22005.0, "volume": 1000
+    } for i in range(25)]
+
+    worker.set_session_credentials("CID_RACE", "TOK_RACE")
+
+    paused_event = asyncio.Event()
+    release_event = asyncio.Event()
+
+    async def slow_marketfeed_await(*args, **kwargs):
+        # Signal that the network await is now actively paused
+        paused_event.set()
+        # Wait until barrier is released
+        await release_event.wait()
+        return {inst.exchange_segment: {str(inst.security_id): {"last_price": 22000.0, "volume": 1000}}}
+
+    with patch.object(worker.dhan_client, "fetch_marketfeed_quotes", side_effect=slow_marketfeed_await):
+        scan_task = asyncio.create_task(
+            worker._execute_scan_cycle(client_id="CID_RACE", access_token="TOK_RACE")
+        )
+
+        # Wait until scan is actively paused inside network await
+        await paused_event.wait()
+
+        # In-flight disconnect occurs while scan is suspended!
+        worker.set_session_credentials(None, None)
+
+        # Release the network await
+        release_event.set()
+
+        state = await scan_task
+
+        assert worker._session_credentials is None
+        assert state.active_mode == "demo"
+        assert worker._state.is_scanning is False

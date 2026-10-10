@@ -83,10 +83,91 @@ class PaperTradingEngine:
         self._processed_signal_ids: set[str] = set()
         self.storage = None
         self.on_position_opened: Optional[Callable[[PaperPosition], Any]] = None
+        self._write_queue: Optional[asyncio.Queue] = None
+        self._writer_task: Optional[asyncio.Task] = None
         if db_path is not None:
             from app.services.paper_storage import PaperStorage
             self.storage = PaperStorage(db_path)
             self._load_from_storage()
+
+    def _execute_storage_op(self, op: str, arg: Any) -> None:
+        if not self.storage:
+            return
+        try:
+            if op == "upsert":
+                self.storage.upsert_position(arg)
+            elif op == "batch_upsert":
+                self.storage.batch_upsert_positions(arg)
+            elif op == "add_signal":
+                sig_id, ts = arg
+                self.storage.add_processed_signal(sig_id, ts)
+            elif op == "save_setting":
+                k, v = arg
+                self.storage.save_setting(k, v)
+            elif op == "clear_all":
+                self.storage.clear_all()
+        except Exception as e:
+            logger.error(f"Storage operation '{op}' failed: {e}")
+
+    async def _persistence_worker(self) -> None:
+        while True:
+            try:
+                if self._write_queue is None:
+                    break
+                item = await self._write_queue.get()
+                if item is None:
+                    self._write_queue.task_done()
+                    break
+                op, arg = item
+                try:
+                    await asyncio.to_thread(self._execute_storage_op, op, arg)
+                finally:
+                    self._write_queue.task_done()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in persistence worker loop: {e}")
+
+    def _enqueue_write(self, op: str, arg: Any) -> None:
+        if not self.storage:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if self._write_queue is not None and loop and loop.is_running():
+            self._write_queue.put_nowait((op, arg))
+        else:
+            self._execute_storage_op(op, arg)
+
+    async def start_persistence_worker(self) -> None:
+        if not self.storage:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.get_event_loop()
+        if self._write_queue is None:
+            self._write_queue = asyncio.Queue()
+        if self._writer_task is None or self._writer_task.done():
+            self._writer_task = loop.create_task(self._persistence_worker())
+
+    async def flush(self) -> None:
+        if self._write_queue is not None:
+            await self._write_queue.join()
+
+    async def stop_persistence_worker(self) -> None:
+        if self._write_queue is not None:
+            await self.flush()
+            await self._write_queue.put(None)
+            if self._writer_task and not self._writer_task.done():
+                try:
+                    await self._writer_task
+                except asyncio.CancelledError:
+                    pass
+            self._writer_task = None
+            self._write_queue = None
 
     def _load_from_storage(self):
         if not self.storage:
@@ -164,24 +245,20 @@ class PaperTradingEngine:
 
     def set_auto_trade(self, enabled: bool):
         self._portfolio.auto_trade_enabled = enabled
-        if self.storage:
-            self.storage.save_setting("auto_trade_enabled", str(enabled))
+        self._enqueue_write("save_setting", ("auto_trade_enabled", str(enabled)))
 
     def set_default_lots(self, lots: int):
         self._portfolio.default_lots = max(1, lots)
-        if self.storage:
-            self.storage.save_setting("default_lots", str(self._portfolio.default_lots))
+        self._enqueue_write("save_setting", ("default_lots", str(self._portfolio.default_lots)))
 
     def set_max_risk_per_trade(self, amount: float):
         self._portfolio.max_risk_per_trade = max(500.0, float(amount))
-        if self.storage:
-            self.storage.save_setting("max_risk_per_trade", str(self._portfolio.max_risk_per_trade))
+        self._enqueue_write("save_setting", ("max_risk_per_trade", str(self._portfolio.max_risk_per_trade)))
 
     def reset(self):
         self._portfolio = PaperPortfolio()
         self._processed_signal_ids.clear()
-        if self.storage:
-            self.storage.clear_all()
+        self._enqueue_write("clear_all", None)
 
     def reset_portfolio(self):
         self.reset()
@@ -332,9 +409,8 @@ class PaperTradingEngine:
 
         self._portfolio.active_positions.append(pos)
         self._recalculate_metrics()
-        if self.storage:
-            self.storage.upsert_position(pos)
-            self.storage.add_processed_signal(signal.id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        self._enqueue_write("upsert", pos)
+        self._enqueue_write("add_signal", (signal.id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         if self.on_position_opened:
             try:
                 res = self.on_position_opened(pos)
@@ -518,8 +594,7 @@ class PaperTradingEngine:
                     real_opt_price=real_opt_price,
                 )
                 self._portfolio.closed_trades.append(pos)
-                if self.storage:
-                    self.storage.upsert_position(pos)
+                self._enqueue_write("upsert", pos)
                 continue
 
             # --- SETUP 5: EXITS BASED EXCLUSIVELY ON OPTION CHARTS ---
@@ -537,8 +612,7 @@ class PaperTradingEngine:
                         real_opt_price=real_opt_price,
                     )
                     self._portfolio.closed_trades.append(pos)
-                    if self.storage:
-                        self.storage.upsert_position(pos)
+                    self._enqueue_write("upsert", pos)
                     continue
 
                 elif pos.current_option_price >= pos.option_target_2:
@@ -552,8 +626,7 @@ class PaperTradingEngine:
                         real_opt_price=real_opt_price,
                     )
                     self._portfolio.closed_trades.append(pos)
-                    if self.storage:
-                        self.storage.upsert_position(pos)
+                    self._enqueue_write("upsert", pos)
                     continue
 
                 elif pos.current_option_price >= pos.option_target_1 and pos.status == "OPEN":
@@ -571,8 +644,7 @@ class PaperTradingEngine:
                         pos.lots -= book_lots
                         pos.quantity -= book_qty
                     pos.option_sl = pos.option_entry
-                    if self.storage:
-                        self.storage.upsert_position(pos)
+                    self._enqueue_write("upsert", pos)
 
                 still_active.append(pos)
                 continue
@@ -597,8 +669,7 @@ class PaperTradingEngine:
                         real_opt_price=real_opt_price,
                     )
                     self._portfolio.closed_trades.append(pos)
-                    if self.storage:
-                        self.storage.upsert_position(pos)
+                    self._enqueue_write("upsert", pos)
                     continue
 
                 # Check Target 2
@@ -617,8 +688,7 @@ class PaperTradingEngine:
                         real_opt_price=real_opt_price,
                     )
                     self._portfolio.closed_trades.append(pos)
-                    if self.storage:
-                        self.storage.upsert_position(pos)
+                    self._enqueue_write("upsert", pos)
                     continue
 
                 # Check Target 1
@@ -668,8 +738,7 @@ class PaperTradingEngine:
                         real_opt_price=real_opt_price,
                     )
                     self._portfolio.closed_trades.append(pos)
-                    if self.storage:
-                        self.storage.upsert_position(pos)
+                    self._enqueue_write("upsert", pos)
                     continue
 
                 # Check Target 2
@@ -688,8 +757,7 @@ class PaperTradingEngine:
                         real_opt_price=real_opt_price,
                     )
                     self._portfolio.closed_trades.append(pos)
-                    if self.storage:
-                        self.storage.upsert_position(pos)
+                    self._enqueue_write("upsert", pos)
                     continue
 
                 # Check Target 1
@@ -734,8 +802,8 @@ class PaperTradingEngine:
 
         self._portfolio.active_positions = still_active
         self._recalculate_metrics()
-        if self.storage and changed_active:
-            self.storage.batch_upsert_positions(changed_active)
+        if changed_active:
+            self._enqueue_write("batch_upsert", list(changed_active))
 
     def close_position(
         self,
@@ -765,8 +833,7 @@ class PaperTradingEngine:
                 closed = self._portfolio.active_positions.pop(i)
                 self._portfolio.closed_trades.append(closed)
                 self._recalculate_metrics()
-                if self.storage:
-                    self.storage.upsert_position(closed)
+                self._enqueue_write("upsert", closed)
                 return closed
         return None
 
