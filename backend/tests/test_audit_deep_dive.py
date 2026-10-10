@@ -515,3 +515,69 @@ def test_finding_7_radar_lookup_fails_closed():
         assert res.status_code == 503
         assert "radar state unavailable" in res.json()["detail"].lower()
 
+
+@pytest.mark.asyncio
+async def test_finding_8_deduplicated_unique_bar_count_enforced():
+    """Finding 8: Seed candles with duplicate timestamps failing post-dedup count (< 20) fails and backs off."""
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    inst = worker.universe_mgr.get_indices()[0]
+
+    now = datetime.now()
+    # 20 rows, but two rows have identical timestamps (so 19 unique timestamps)
+    timestamps = [now - timedelta(minutes=5 * (20 - i)) for i in range(19)]
+    timestamps.append(timestamps[-1])  # Duplicate of the 19th timestamp
+    assert len(timestamps) == 20
+    assert len(set(timestamps)) == 19
+
+    df = pd.DataFrame({
+        "timestamp": timestamps,
+        "open": [22000.0 + i for i in range(20)],
+        "high": [22010.0 + i for i in range(20)],
+        "low": [21990.0 + i for i in range(20)],
+        "close": [22005.0 + i for i in range(20)],
+        "volume": [1000] * 20,
+    })
+
+    with patch.object(worker.dhan_client, "fetch_intraday_candles", new_callable=AsyncMock) as mock_seed:
+        mock_seed.return_value = df
+        res = await worker.seed_historical_candles_if_needed("CID", "TOK", inst)
+        assert res is False
+        assert worker._historical_seed_fail_count.get(inst.symbol) == 1
+        assert inst.symbol not in worker._candle_history or len(worker._candle_history[inst.symbol]) == 0
+
+
+@pytest.mark.asyncio
+async def test_finding_4_unfinished_historical_bar_routed_to_forming_candle():
+    """Finding 4: Unfinished bar (slot_end > now) is routed to _current_forming_candle, completed bars to _candle_history."""
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    inst = worker.universe_mgr.get_indices()[0]
+    interval = 5 if inst.default_timeframe == "5m" else 15
+
+    now = datetime.now()
+    # 20 completed bars ending in past, and 1 unfinished bar ending in future
+    unfinished_bar_ts = now - timedelta(minutes=2)
+    completed_start = unfinished_bar_ts - timedelta(minutes=interval * 20)
+    completed_timestamps = [completed_start + timedelta(minutes=interval * i) for i in range(20)]
+    all_timestamps = completed_timestamps + [unfinished_bar_ts]
+
+    df = pd.DataFrame({
+        "timestamp": all_timestamps,
+        "open": [22000.0 + i for i in range(21)],
+        "high": [22010.0 + i for i in range(21)],
+        "low": [21990.0 + i for i in range(21)],
+        "close": [22005.0 + i for i in range(21)],
+        "volume": [1000] * 21,
+    })
+
+    with patch.object(worker.dhan_client, "fetch_intraday_candles", new_callable=AsyncMock) as mock_seed:
+        mock_seed.return_value = df
+        res = await worker.seed_historical_candles_if_needed("CID", "TOK", inst)
+        assert res is True
+        assert len(worker._candle_history[inst.symbol]) == 20
+        # The unfinished bar is NOT in _candle_history
+        for bar in worker._candle_history[inst.symbol]:
+            assert bar["timestamp"] != unfinished_bar_ts
+        # Unfinished bar is placed into _current_forming_candle
+        assert worker._current_forming_candle[inst.symbol]["timestamp"] == unfinished_bar_ts
+
+

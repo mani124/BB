@@ -170,7 +170,7 @@ async def test_h4_seed_historical_candles_if_needed():
     )
     mock_df = pd.DataFrame([
         {
-            "timestamp": datetime.now() - timedelta(minutes=5 * i),
+            "timestamp": datetime.now() - timedelta(minutes=5 * (i + 1)),
             "open": 3500.0,
             "high": 3510.0,
             "low": 3495.0,

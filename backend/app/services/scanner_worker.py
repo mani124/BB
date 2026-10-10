@@ -485,26 +485,48 @@ class ScannerWorker:
                 instrument_type=str(inst.instrument_type),
                 interval=interval,
             )
-            if df is not None and not df.empty and len(df) >= 20:
-                # Finding 1: Deduplicate and sort bars chronologically
+            if df is not None and not df.empty:
                 df = df.copy()
                 df["parsed_ts"] = pd.to_datetime(df["timestamp"])
-                df = df.drop_duplicates(subset=["parsed_ts"]).sort_values("parsed_ts")
+                df = df.dropna(subset=["parsed_ts"]).drop_duplicates(subset=["parsed_ts"]).sort_values("parsed_ts")
 
-                records = []
+                # F8: Validate unique deduplicated bar count
+                if len(df) < 20:
+                    self._historical_seed_fail_count[sym] = fail_count + 1
+                    return False
+
+                # F4: Separate completed bars from any current unfinished bar
+                now = datetime.now()
+                completed_records = []
+                unfinished_bar = None
+
                 for _, row in df.iterrows():
-                    records.append({
+                    bar_dict = {
                         "timestamp": row["parsed_ts"],
                         "open": float(row["open"]),
                         "high": float(row["high"]),
                         "low": float(row["low"]),
                         "close": float(row["close"]),
                         "volume": int(row.get("volume", 0)),
-                    })
-                self._candle_history[sym] = records
+                    }
+                    slot_end = row["parsed_ts"] + timedelta(minutes=interval)
+                    if slot_end <= now:
+                        completed_records.append(bar_dict)
+                    else:
+                        unfinished_bar = bar_dict
+
+                if len(completed_records) < 20:
+                    self._historical_seed_fail_count[sym] = fail_count + 1
+                    return False
+
+                self._candle_history[sym] = completed_records
+                if unfinished_bar:
+                    # Merge into active forming candle so it is treated as provisional
+                    self._current_forming_candle[sym] = unfinished_bar
+
                 self._historical_seed_attempts.pop(sym, None)
                 self._historical_seed_fail_count.pop(sym, None)
-                logger.info(f"Successfully seeded {len(records)} historical candles for {sym}")
+                logger.info(f"Successfully seeded {len(completed_records)} historical candles for {sym}")
                 return True
             else:
                 self._historical_seed_fail_count[sym] = fail_count + 1
