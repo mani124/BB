@@ -11,6 +11,9 @@ class SetupType(str, enum.Enum):
     SETUP_3_REVERSAL = "Setup 3: W/M Reversal"
     SETUP_4_ORB = "Setup 4: 9:30 AM Opening Range Breakout"
     SETUP_5_OPTION_BB = "Setup 5: Option Chart BB Scalp"
+    SETUP_6_PINBAR_SNAPBACK = "Setup 6: Pin Bar Exhaustion Snapback"
+    SETUP_7_INSIDE_BAR_SNAPBACK = "Setup 7: 2.5σ Puncture & Inside Bar"
+    SETUP_8_DIVERGENCE_SNAPBACK = "Setup 8: Climax Swing Divergence Fade"
 
 class Signal(BaseModel):
     id: str
@@ -322,6 +325,233 @@ def evaluate_signals(
                 indicators_snapshot=snap,
                 rationale="9:30 AM Opening Range Breakdown below Lower Band and VWAP"
             ))
+
+    # =========================================================================
+    # SETUP 6: Pin Bar Exhaustion Snapback
+    # =========================================================================
+    curr_high = float(curr.get("high", close))
+    curr_low = float(curr.get("low", close))
+    curr_open = float(curr.get("open", close))
+    curr_close = float(close)
+    bar_range = curr_high - curr_low
+
+    if bw > 5.0 and adx <= 25.0 and bar_range > 0.0001:
+        # Bearish PE Pin Bar: High > Upper Band, Upper Wick >= 50% range, Close < Upper Band, RSI >= 68
+        upper_wick = curr_high - max(curr_open, curr_close)
+        is_pe_pinbar = (
+            curr_high > upper
+            and curr_close < upper
+            and (upper_wick >= 0.50 * bar_range)
+            and (max(curr_open, curr_close) <= curr_low + 0.60 * bar_range)
+            and rsi >= 68.0
+        )
+        if is_pe_pinbar:
+            sl = round(curr_high + max(1.0, 0.0005 * curr_close), 2)
+            strike_rec = recommend_strike(symbol, curr_close, "PE", sl)
+            signals.append(Signal(
+                id=f"{symbol}_{timeframe}_S6_PE_{ts_clean}",
+                symbol=symbol,
+                timeframe=timeframe,
+                setup_type=SetupType.SETUP_6_PINBAR_SNAPBACK,
+                option_type="PE",
+                timestamp=ts_str,
+                entry_price=round(curr_close, 2),
+                stop_loss=strike_rec.stop_loss,
+                target_1=round(mid, 2),
+                target_2=round(lower, 2),
+                strike_recommendation=strike_rec,
+                indicators_snapshot=snap,
+                rationale="Pin Bar exhaustion at Upper BB with RSI overbought and ADX non-trend snapback"
+            ))
+
+        # Bullish CE Pin Bar: Low < Lower Band, Lower Wick >= 50% range, Close > Lower Band, RSI <= 32
+        lower_wick = min(curr_open, curr_close) - curr_low
+        is_ce_pinbar = (
+            curr_low < lower
+            and curr_close > lower
+            and (lower_wick >= 0.50 * bar_range)
+            and (min(curr_open, curr_close) >= curr_low + 0.40 * bar_range)
+            and rsi <= 32.0
+        )
+        if is_ce_pinbar:
+            sl = round(curr_low - max(1.0, 0.0005 * curr_close), 2)
+            strike_rec = recommend_strike(symbol, curr_close, "CE", sl)
+            signals.append(Signal(
+                id=f"{symbol}_{timeframe}_S6_CE_{ts_clean}",
+                symbol=symbol,
+                timeframe=timeframe,
+                setup_type=SetupType.SETUP_6_PINBAR_SNAPBACK,
+                option_type="CE",
+                timestamp=ts_str,
+                entry_price=round(curr_close, 2),
+                stop_loss=strike_rec.stop_loss,
+                target_1=round(mid, 2),
+                target_2=round(upper, 2),
+                strike_recommendation=strike_rec,
+                indicators_snapshot=snap,
+                rationale="Pin Bar exhaustion at Lower BB with RSI oversold and ADX non-trend snapback"
+            ))
+
+    # =========================================================================
+    # SETUP 7: 2.5σ Puncture & Inside Bar Breakdown
+    # =========================================================================
+    if bw > 5.0 and len(df) >= 21:
+        prev_high = float(prev.get("high", prev["close"]))
+        prev_low = float(prev.get("low", prev["close"]))
+        prev_bb_upper_25 = float(prev.get("bb_upper_25", prev["bb_middle"] + 2.5 * prev.get("bb_std", (prev["bb_upper"] - prev["bb_middle"]) * 1.25)))
+        prev_bb_lower_25 = float(prev.get("bb_lower_25", prev["bb_middle"] - 2.5 * prev.get("bb_std", (prev["bb_middle"] - prev["bb_lower"]) * 1.25)))
+
+        # Bearish PE: Mother bar (t-1) pierced extreme 2.5σ band, inside bar at t breaking down
+        is_pe_inside_curr = (
+            prev_high >= prev_bb_upper_25
+            and curr_high <= prev_high
+            and curr_low >= prev_low
+            and curr_close <= curr_low + 1e-4
+        )
+        pe_mother_high = prev_high
+
+        if not is_pe_inside_curr and len(df) >= 22:
+            prev2 = df.iloc[last_idx - 2]
+            prev2_high = float(prev2.get("high", prev2["close"]))
+            prev2_bb_upper_25 = float(prev2.get("bb_upper_25", prev2["bb_middle"] + 2.5 * prev2.get("bb_std", (prev2["bb_upper"] - prev2["bb_middle"]) * 1.25)))
+            if (
+                prev2_high >= prev2_bb_upper_25
+                and prev_high <= prev2_high
+                and prev_low >= float(prev2.get("low", prev2["close"]))
+                and curr_close < prev_low
+            ):
+                is_pe_inside_curr = True
+                pe_mother_high = prev2_high
+
+        if is_pe_inside_curr:
+            sl = round(pe_mother_high + max(0.5, 0.0005 * curr_close), 2)
+            strike_rec = recommend_strike(symbol, curr_close, "PE", sl)
+            signals.append(Signal(
+                id=f"{symbol}_{timeframe}_S7_PE_{ts_clean}",
+                symbol=symbol,
+                timeframe=timeframe,
+                setup_type=SetupType.SETUP_7_INSIDE_BAR_SNAPBACK,
+                option_type="PE",
+                timestamp=ts_str,
+                entry_price=round(curr_close, 2),
+                stop_loss=strike_rec.stop_loss,
+                target_1=round(mid, 2),
+                target_2=round(lower, 2),
+                strike_recommendation=strike_rec,
+                indicators_snapshot=snap,
+                rationale="Extreme 2.5σ puncture and Inside Bar breakdown snapback to 20-SMA"
+            ))
+
+        # Bullish CE: Mother bar (t-1) pierced extreme 2.5σ band, inside bar at t breaking out
+        is_ce_inside_curr = (
+            prev_low <= prev_bb_lower_25
+            and curr_high <= prev_high
+            and curr_low >= prev_low
+            and curr_close >= curr_high - 1e-4
+        )
+        ce_mother_low = prev_low
+
+        if not is_ce_inside_curr and len(df) >= 22:
+            prev2 = df.iloc[last_idx - 2]
+            prev2_low = float(prev2.get("low", prev2["close"]))
+            prev2_bb_lower_25 = float(prev2.get("bb_lower_25", prev2["bb_middle"] - 2.5 * prev2.get("bb_std", (prev2["bb_middle"] - prev2["bb_lower"]) * 1.25)))
+            if (
+                prev2_low <= prev2_bb_lower_25
+                and prev_high <= float(prev2.get("high", prev2["close"]))
+                and prev_low >= prev2_low
+                and curr_close > prev_high
+            ):
+                is_ce_inside_curr = True
+                ce_mother_low = prev2_low
+
+        if is_ce_inside_curr:
+            sl = round(ce_mother_low - max(0.5, 0.0005 * curr_close), 2)
+            strike_rec = recommend_strike(symbol, curr_close, "CE", sl)
+            signals.append(Signal(
+                id=f"{symbol}_{timeframe}_S7_CE_{ts_clean}",
+                symbol=symbol,
+                timeframe=timeframe,
+                setup_type=SetupType.SETUP_7_INSIDE_BAR_SNAPBACK,
+                option_type="CE",
+                timestamp=ts_str,
+                entry_price=round(curr_close, 2),
+                stop_loss=strike_rec.stop_loss,
+                target_1=round(mid, 2),
+                target_2=round(upper, 2),
+                strike_recommendation=strike_rec,
+                indicators_snapshot=snap,
+                rationale="Extreme 2.5σ puncture and Inside Bar breakout snapback to 20-SMA"
+            ))
+
+    # =========================================================================
+    # SETUP 8: Climax Swing RSI Divergence Fade
+    # =========================================================================
+    if bw > 5.0 and len(df) >= 20:
+        window_size = min(15, len(df))
+        lookback_window = df.iloc[-window_size:]
+        recent_3 = lookback_window.iloc[-3:]
+        prior_candles = lookback_window.iloc[:-3]
+
+        if len(prior_candles) >= 3:
+            # Bearish PE Fade: Peak 1 pierced upper band, Peak 2 tests/exceeds Peak 1, RSI divergence >= 2.0 pts
+            p1_idx = prior_candles["high"].idxmax()
+            row_p1 = df.loc[p1_idx]
+            p2_idx = recent_3["high"].idxmax()
+            row_p2 = df.loc[p2_idx]
+
+            if (
+                row_p1["high"] >= row_p1["bb_upper"]
+                and row_p2["high"] >= row_p1["high"] * 0.998
+                and (float(row_p1["rsi"]) - float(row_p2["rsi"]) >= 2.0 or float(row_p1["rsi"]) - float(curr["rsi"]) >= 2.0)
+                and curr_close < upper
+            ):
+                sl = round(max(float(row_p2["high"]), curr_high) + max(0.5, 0.0005 * curr_close), 2)
+                strike_rec = recommend_strike(symbol, curr_close, "PE", sl)
+                signals.append(Signal(
+                    id=f"{symbol}_{timeframe}_S8_PE_{ts_clean}",
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    setup_type=SetupType.SETUP_8_DIVERGENCE_SNAPBACK,
+                    option_type="PE",
+                    timestamp=ts_str,
+                    entry_price=round(curr_close, 2),
+                    stop_loss=strike_rec.stop_loss,
+                    target_1=round(mid, 2),
+                    target_2=round(lower, 2),
+                    strike_recommendation=strike_rec,
+                    indicators_snapshot=snap,
+                    rationale="Climax swing high with Bearish RSI Divergence snapback to 20-SMA"
+                ))
+
+            # Bullish CE Fade: Trough 1 pierced lower band, Trough 2 tests/breaks Trough 1, RSI divergence >= 2.0 pts
+            t1_idx = prior_candles["low"].idxmin()
+            row_t1 = df.loc[t1_idx]
+            t2_idx = recent_3["low"].idxmin()
+            row_t2 = df.loc[t2_idx]
+
+            if (
+                row_t1["low"] <= row_t1["bb_lower"]
+                and row_t2["low"] <= row_t1["low"] * 1.002
+                and (float(row_t2["rsi"]) - float(row_t1["rsi"]) >= 2.0 or float(curr["rsi"]) - float(row_t1["rsi"]) >= 2.0)
+                and curr_close > lower
+            ):
+                sl = round(min(float(row_t2["low"]), curr_low) - max(0.5, 0.0005 * curr_close), 2)
+                strike_rec = recommend_strike(symbol, curr_close, "CE", sl)
+                signals.append(Signal(
+                    id=f"{symbol}_{timeframe}_S8_CE_{ts_clean}",
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    setup_type=SetupType.SETUP_8_DIVERGENCE_SNAPBACK,
+                    option_type="CE",
+                    timestamp=ts_str,
+                    entry_price=round(curr_close, 2),
+                    stop_loss=strike_rec.stop_loss,
+                    target_1=round(mid, 2),
+                    target_2=round(upper, 2),
+                    strike_recommendation=strike_rec,
+                    indicators_snapshot=snap,
+                    rationale="Climax swing low with Bullish RSI Divergence snapback to 20-SMA"
+                ))
 
     # Stock momentum and market bias filtering for non-index equities
     if symbol.upper() not in INDEX_SYMBOLS:
