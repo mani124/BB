@@ -30,15 +30,24 @@ def open_manual_trade(body: ManualTradeRequest) -> PaperPosition:
         )
 
     mode = body.feed_mode
+    try:
+        from app.main import worker
+        server_is_live = (
+            worker._session_credentials is not None
+            and getattr(worker._state, "active_mode", None) == "live"
+        )
+    except Exception:
+        server_is_live = False
+
+    # F3: Reject live mode entries when server credentials or live feed are absent
+    if mode == "live" and not server_is_live:
+        raise HTTPException(
+            status_code=409,
+            detail="Live feed unavailable. Server is running in demo mode or disconnected."
+        )
+
     if not mode:
-        try:
-            from app.main import worker
-            if worker._session_credentials is not None and getattr(worker._state, "active_mode", None) == "live":
-                mode = "live"
-            else:
-                mode = "demo"
-        except Exception:
-            mode = "demo"
+        mode = "live" if server_is_live else "demo"
 
     target_signal = body.signal
     if mode == "live":

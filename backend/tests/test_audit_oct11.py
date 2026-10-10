@@ -106,3 +106,48 @@ def test_server_owned_exit_pricing():
     assert "(Modeled" not in closed2["exit_reason"]
     assert closed2["current_option_price"] == 119.5
     assert closed2["exit_slippage"] == 0.5  # 120.0 theoretical - 119.5 real_bid
+
+
+def test_server_governed_feed_mode():
+    """F3: Reject feed_mode='live' when server is in demo mode (HTTP 409), and purge signals/radar on logout."""
+    from datetime import datetime
+    from app.services.strategy_engine import Signal, SetupType
+    from app.services.strike_selector import OptionStrikeRecommendation
+    from app.main import worker
+
+    rec = OptionStrikeRecommendation(
+        symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
+        atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 22500 CE",
+        lot_size=50, risk=20.0, stop_loss=22480.0, target_1=22530.0, target_2=22560.0,
+        estimated_option_entry=100.0, option_sl_pts=20.0, option_target_1_pts=30.0, option_target_2_pts=60.0,
+        option_sl_price=80.0, option_target_1_price=130.0, option_target_2_price=160.0,
+        option_security_id="99882", is_live_quote=True, real_ask_price=100.0, real_bid_price=99.5, real_ltp=100.0
+    )
+    sig = Signal(
+        id="SIG_F3_RADAR_TEST", symbol="NIFTY 50", timeframe="5m",
+        setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        entry_price=22500.0, stop_loss=22480.0, target_1=22530.0, target_2=22560.0,
+        strike_recommendation=rec, is_confirmed=True, indicators_snapshot={}, rationale="test"
+    )
+
+    # 1. Server in live mode has an active signal
+    worker.set_session_credentials("TEST_CID", "TEST_TOK")
+    worker._state.signals = [sig]
+    assert len(worker.get_state().signals) == 1
+
+    # 2. Session disconnects (logout)
+    worker.set_session_credentials(None, None)
+    assert worker.get_state().active_mode == "demo"
+    assert worker._session_credentials is None
+    # Verify signals and radar were purged
+    assert len(worker.get_state().signals) == 0
+    assert len(worker.get_state().radar) == 0
+
+    # 3. Client attempts to execute a trade specifying feed_mode="live" after disconnect
+    res = client.post(
+        "/api/paper/trade",
+        json={"signal": sig.model_dump(), "lots": 1, "feed_mode": "live"}
+    )
+    assert res.status_code == 409
+    assert "live feed unavailable" in res.json()["detail"].lower()

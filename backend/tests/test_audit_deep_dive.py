@@ -290,29 +290,34 @@ def test_finding_4_missing_quote_omitted_from_price_map_in_live_mode():
 
 def test_finding_5_manual_live_entry_rejects_forged_signal():
     """Finding 5: Manual live entry rejects forged signal not found in server radar."""
+    from app.main import worker
     client.post("/api/paper/reset")
-    # Fabricated signal with forged low entry price
-    forged_rec = OptionStrikeRecommendation(
-        symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
-        atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 50 22500 CE",
-        lot_size=50, risk=10.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
-        estimated_option_entry=10.0, option_sl_pts=5.0, option_target_1_pts=7.5,
-        option_target_2_pts=12.5, option_sl_price=5.0, option_target_1_price=17.5,
-        option_target_2_price=22.5, option_security_id="99999", is_live_quote=True,
-        real_ask_price=10.0
-    )
-    forged_sig = Signal(
-        id="FORGED_SIGNAL_999", symbol="NIFTY 50", timeframe="5m",
-        setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
-        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        entry_price=22500.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
-        strike_recommendation=forged_rec, is_confirmed=True,
-        indicators_snapshot={}, rationale="forged"
-    )
+    worker.set_session_credentials("TEST_CID", "TEST_TOK")
+    try:
+        # Fabricated signal with forged low entry price
+        forged_rec = OptionStrikeRecommendation(
+            symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
+            atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 50 22500 CE",
+            lot_size=50, risk=10.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+            estimated_option_entry=10.0, option_sl_pts=5.0, option_target_1_pts=7.5,
+            option_target_2_pts=12.5, option_sl_price=5.0, option_target_1_price=17.5,
+            option_target_2_price=22.5, option_security_id="99999", is_live_quote=True,
+            real_ask_price=10.0
+        )
+        forged_sig = Signal(
+            id="FORGED_SIGNAL_999", symbol="NIFTY 50", timeframe="5m",
+            setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            entry_price=22500.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+            strike_recommendation=forged_rec, is_confirmed=True,
+            indicators_snapshot={}, rationale="forged"
+        )
 
-    res = client.post("/api/paper/trade", json={"signal": forged_sig.model_dump(), "lots": 1, "feed_mode": "live"})
-    assert res.status_code == 400
-    assert "not found" in res.json()["detail"].lower()
+        res = client.post("/api/paper/trade", json={"signal": forged_sig.model_dump(), "lots": 1, "feed_mode": "live"})
+        assert res.status_code == 400
+        assert "not found" in res.json()["detail"].lower()
+    finally:
+        worker.set_session_credentials(None, None)
 
 
 @pytest.mark.asyncio
@@ -494,74 +499,82 @@ def test_finding_3_forged_client_confirmation_rejected():
     """Finding 3: Client sending is_confirmed=True is rejected if server radar signal is provisional."""
     from app.main import worker
     client.post("/api/paper/reset")
+    worker.set_session_credentials("TEST_CID", "TEST_TOK")
+    try:
+        rec = OptionStrikeRecommendation(
+            symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
+            atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 50 22500 CE",
+            lot_size=50, risk=10.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+            estimated_option_entry=150.0, option_sl_pts=15.0, option_target_1_pts=22.5,
+            option_target_2_pts=37.5, option_sl_price=135.0, option_target_1_price=172.5,
+            option_target_2_price=187.5, option_security_id="88881", is_live_quote=True,
+            real_ask_price=150.0
+        )
+        server_sig = Signal(
+            id="SIG_PROVISIONAL_F3", symbol="NIFTY 50", timeframe="5m",
+            setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            entry_price=22500.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+            strike_recommendation=rec, is_confirmed=False,
+            indicators_snapshot={}, rationale="provisional server signal"
+        )
 
-    rec = OptionStrikeRecommendation(
-        symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
-        atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 50 22500 CE",
-        lot_size=50, risk=10.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
-        estimated_option_entry=150.0, option_sl_pts=15.0, option_target_1_pts=22.5,
-        option_target_2_pts=37.5, option_sl_price=135.0, option_target_1_price=172.5,
-        option_target_2_price=187.5, option_security_id="88881", is_live_quote=True,
-        real_ask_price=150.0
-    )
-    server_sig = Signal(
-        id="SIG_PROVISIONAL_F3", symbol="NIFTY 50", timeframe="5m",
-        setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
-        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        entry_price=22500.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
-        strike_recommendation=rec, is_confirmed=False,
-        indicators_snapshot={}, rationale="provisional server signal"
-    )
+        # Register provisional signal in server radar
+        worker._state.signals = [server_sig]
 
-    # Register provisional signal in server radar
-    worker._state.signals = [server_sig]
+        # Client constructs payload claiming is_confirmed=True for this signal
+        client_sig = server_sig.model_copy(update={"is_confirmed": True})
 
-    # Client constructs payload claiming is_confirmed=True for this signal
-    client_sig = server_sig.model_copy(update={"is_confirmed": True})
-
-    res = client.post(
-        "/api/paper/trade",
-        json={"signal": client_sig.model_dump(), "lots": 1, "feed_mode": "live"}
-    )
-    assert res.status_code == 400
-    assert "unconfirmed provisional" in res.json()["detail"].lower()
+        res = client.post(
+            "/api/paper/trade",
+            json={"signal": client_sig.model_dump(), "lots": 1, "feed_mode": "live"}
+        )
+        assert res.status_code == 400
+        assert "unconfirmed provisional" in res.json()["detail"].lower()
+    finally:
+        worker.set_session_credentials(None, None)
 
 
 def test_finding_7_radar_lookup_fails_closed():
     """Finding 7: Radar lookup failure fails closed with HTTP 503 rather than falling open."""
     from app.main import worker
     client.post("/api/paper/reset")
-
-    rec = OptionStrikeRecommendation(
-        symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
-        atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 50 22500 CE",
-        lot_size=50, risk=10.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
-        estimated_option_entry=150.0, option_sl_pts=15.0, option_target_1_pts=22.5,
-        option_target_2_pts=37.5, option_sl_price=135.0, option_target_1_price=172.5,
-        option_target_2_price=187.5, option_security_id="88882", is_live_quote=True,
-        real_ask_price=150.0
-    )
-    client_sig = Signal(
-        id="SIG_RADAR_ERR_F7", symbol="NIFTY 50", timeframe="5m",
-        setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
-        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        entry_price=22500.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
-        strike_recommendation=rec, is_confirmed=True,
-        indicators_snapshot={}, rationale="client live signal"
-    )
-
-    class BrokenState:
-        @property
-        def signals(self):
-            raise RuntimeError("Redis connection lost")
-
-    with patch.object(worker, "_state", BrokenState()):
-        res = client.post(
-            "/api/paper/trade",
-            json={"signal": client_sig.model_dump(), "lots": 1, "feed_mode": "live"}
+    worker.set_session_credentials("TEST_CID", "TEST_TOK")
+    try:
+        rec = OptionStrikeRecommendation(
+            symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
+            atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 50 22500 CE",
+            lot_size=50, risk=10.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+            estimated_option_entry=150.0, option_sl_pts=15.0, option_target_1_pts=22.5,
+            option_target_2_pts=37.5, option_sl_price=135.0, option_target_1_price=172.5,
+            option_target_2_price=187.5, option_security_id="88882", is_live_quote=True,
+            real_ask_price=150.0
         )
-        assert res.status_code == 503
-        assert "radar state unavailable" in res.json()["detail"].lower()
+        client_sig = Signal(
+            id="SIG_RADAR_ERR_F7", symbol="NIFTY 50", timeframe="5m",
+            setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            entry_price=22500.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+            strike_recommendation=rec, is_confirmed=True,
+            indicators_snapshot={}, rationale="client live signal"
+        )
+
+        class BrokenState:
+            active_mode = "live"
+
+            @property
+            def signals(self):
+                raise RuntimeError("Redis connection lost")
+
+        with patch.object(worker, "_state", BrokenState()):
+            res = client.post(
+                "/api/paper/trade",
+                json={"signal": client_sig.model_dump(), "lots": 1, "feed_mode": "live"}
+            )
+            assert res.status_code == 503
+            assert "radar state unavailable" in res.json()["detail"].lower()
+    finally:
+        worker.set_session_credentials(None, None)
 
 
 @pytest.mark.asyncio
