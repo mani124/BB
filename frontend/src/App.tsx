@@ -8,7 +8,7 @@ import { SignalCard } from './components/SignalCard';
 import { SignalTable } from './components/SignalTable';
 import { PaperPortfolioView } from './components/PaperPortfolioView';
 import { ScannerState, Signal } from './types';
-import { LayoutGrid, Table, Radio, Briefcase } from 'lucide-react';
+import { LayoutGrid, Table, Radio, Briefcase, AlertCircle, X } from 'lucide-react';
 
 const DashboardContent: React.FC = () => {
   const [state, setState] = useState<ScannerState>({
@@ -29,8 +29,17 @@ const DashboardContent: React.FC = () => {
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [wsConnected, setWsConnected] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const { connect } = useDhanAuth();
   const reconnectingRef = React.useRef(false);
+
+  useEffect(() => {
+    if (actionError) {
+      const timer = setTimeout(() => setActionError(null), 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [actionError]);
+
 
   // Fetch initial snapshot and connect to SSE stream on mount
   useEffect(() => {
@@ -142,6 +151,7 @@ const DashboardContent: React.FC = () => {
   // Paper trading actions
   const handlePaperBuy = async (signal: Signal) => {
     try {
+      setActionError(null);
       const res = await fetch('/api/paper/trade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -154,24 +164,38 @@ const DashboardContent: React.FC = () => {
           const portData = await portRes.json();
           setState((prev) => ({ ...prev, paper_portfolio: portData }));
         }
+      } else {
+        const errData = await res.json().catch(() => null);
+        const msg = errData?.detail || `Trade rejected (HTTP ${res.status})`;
+        setActionError(msg);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Paper trade failed', e);
+      setActionError(e?.message || 'Network error executing trade');
     }
   };
 
   const handleClosePosition = async (id: string) => {
     try {
-      await fetch(`/api/paper/close/${id}`, { method: 'POST' });
-      const portRes = await fetch('/api/paper/portfolio');
-      if (portRes.ok) {
-        const portData = await portRes.json();
-        setState((prev) => ({ ...prev, paper_portfolio: portData }));
+      setActionError(null);
+      const res = await fetch(`/api/paper/close/${id}`, { method: 'POST' });
+      if (res.ok) {
+        const portRes = await fetch('/api/paper/portfolio');
+        if (portRes.ok) {
+          const portData = await portRes.json();
+          setState((prev) => ({ ...prev, paper_portfolio: portData }));
+        }
+      } else {
+        const errData = await res.json().catch(() => null);
+        const msg = errData?.detail || `Failed to close position (HTTP ${res.status})`;
+        setActionError(msg);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to close position', e);
+      setActionError(e?.message || 'Network error closing position');
     }
   };
+
 
   const handleToggleAutoTrade = async (enabled: boolean) => {
     try {
@@ -256,7 +280,30 @@ const DashboardContent: React.FC = () => {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-6">
+        {/* Action Error Notification Banner */}
+        {actionError && (
+          <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center justify-between text-rose-400 text-sm shadow-lg shadow-rose-950/20 backdrop-blur-md animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-rose-500/20 rounded-lg">
+                <AlertCircle className="w-5 h-5 shrink-0 text-rose-500" />
+              </div>
+              <div>
+                <span className="font-semibold block text-rose-300">Action Notice</span>
+                <span className="text-xs text-rose-400/90">{actionError}</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setActionError(null)}
+              className="p-1.5 hover:bg-rose-500/20 rounded-lg transition text-rose-400 hover:text-rose-200"
+              title="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Navigation Tabs: Scanner vs Forward-Testing Paper Portfolio */}
+
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-dark-700/80 pb-4 mb-6">
           <div className="flex items-center gap-3">
             <button
