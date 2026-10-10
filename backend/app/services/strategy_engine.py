@@ -40,7 +40,7 @@ def evaluate_signals(
     market_bias: str | None = None,
 ) -> list[Signal]:
     """
-    Evaluate all 4 Bollinger Band setups across recent candles for both CE and PE.
+    Evaluate all 7 Bollinger Band setups (Setups 1-4, 6-8) across recent candles for both CE and PE.
     Returns list of active signals.
     """
     signals: list[Signal] = []
@@ -211,8 +211,8 @@ def evaluate_signals(
         min1_idx = recent_window["low"].iloc[:6].idxmin()
         min2_idx = recent_window["low"].iloc[6:].idxmin()
         if min1_idx != min2_idx and min2_idx > min1_idx and min2_idx < last_idx:
-            row_min1 = df.loc[min1_idx]
-            row_min2 = df.loc[min2_idx]
+            row_min1 = df.loc[[min1_idx]].iloc[0]
+            row_min2 = df.loc[[min2_idx]].iloc[0]
             # Low 1 was outside lower band
             if row_min1["low"] < row_min1["bb_lower"]:
                 # Low 2 was strictly inside lower band and RSI had bullish divergence
@@ -242,8 +242,8 @@ def evaluate_signals(
         max1_idx = recent_window["high"].iloc[:6].idxmax()
         max2_idx = recent_window["high"].iloc[6:].idxmax()
         if max1_idx != max2_idx and max2_idx > max1_idx and max2_idx < last_idx:
-            row_max1 = df.loc[max1_idx]
-            row_max2 = df.loc[max2_idx]
+            row_max1 = df.loc[[max1_idx]].iloc[0]
+            row_max2 = df.loc[[max2_idx]].iloc[0]
             # High 1 was outside upper band
             if row_max1["high"] > row_max1["bb_upper"]:
                 # High 2 was inside upper band and RSI had bearish divergence
@@ -511,9 +511,9 @@ def evaluate_signals(
         if len(prior_candles) >= 3:
             # Bearish PE Fade: Peak 1 pierced upper band, Peak 2 tests/exceeds Peak 1, RSI divergence >= 2.0 pts
             p1_idx = prior_candles["high"].idxmax()
-            row_p1 = df.loc[p1_idx]
+            row_p1 = df.loc[[p1_idx]].iloc[0]
             p2_idx = recent_3["high"].idxmax()
-            row_p2 = df.loc[p2_idx]
+            row_p2 = df.loc[[p2_idx]].iloc[0]
 
             if (
                 row_p1["high"] >= row_p1["bb_upper"]
@@ -545,9 +545,9 @@ def evaluate_signals(
 
             # Bullish CE Fade: Trough 1 pierced lower band, Trough 2 tests/breaks Trough 1, RSI divergence >= 2.0 pts
             t1_idx = prior_candles["low"].idxmin()
-            row_t1 = df.loc[t1_idx]
+            row_t1 = df.loc[[t1_idx]].iloc[0]
             t2_idx = recent_3["low"].idxmin()
-            row_t2 = df.loc[t2_idx]
+            row_t2 = df.loc[[t2_idx]].iloc[0]
 
             if (
                 row_t1["low"] <= row_t1["bb_lower"]

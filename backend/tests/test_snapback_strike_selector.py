@@ -146,3 +146,101 @@ def test_resolve_live_strike_sl_guarantees():
     assert rec.stop_loss > 25000.0
 
 
+def test_strategy_engine_setup7_strike_recommendation():
+    import pandas as pd
+    from datetime import datetime, timedelta
+    from app.services.indicators import calculate_indicators
+    from app.services.strategy_engine import evaluate_signals, SetupType
+
+    records = []
+    start_t = datetime(2026, 10, 8, 9, 15)
+    p = 25000.0
+    for i in range(25):
+        ts = start_t + timedelta(minutes=5 * i)
+        step = 5.0 if i % 2 == 0 else -5.0
+        p += step
+        records.append({
+            "timestamp": ts,
+            "open": p - step,
+            "high": max(p, p - step) + 10.0,
+            "low": min(p, p - step) - 10.0,
+            "close": p,
+            "volume": 5000
+        })
+    df = calculate_indicators(pd.DataFrame(records))
+    last_idx = len(df) - 1
+    prev_idx = last_idx - 1
+    df.loc[:, "bandwidth"] = 8.0
+    upper_25 = df.loc[prev_idx, "bb_upper_25"]
+
+    # Setup 7 PE: Mother bar t-1 punctures bb_upper_25, bar t is inside bar breaking low
+    df.loc[prev_idx, "high"] = upper_25 + 5.0
+    df.loc[prev_idx, "low"] = upper_25 - 15.0
+    df.loc[prev_idx, "close"] = upper_25 - 2.0
+
+    df.loc[last_idx, "high"] = df.loc[prev_idx, "high"] - 2.0
+    df.loc[last_idx, "open"] = df.loc[prev_idx, "low"] + 3.0
+    df.loc[last_idx, "low"] = df.loc[prev_idx, "low"] + 0.5
+    df.loc[last_idx, "close"] = df.loc[last_idx, "low"]
+
+    signals = evaluate_signals("NIFTY 50", df, timeframe="5m")
+    s7_signals = [s for s in signals if s.setup_type == SetupType.SETUP_7_INSIDE_BAR_SNAPBACK and s.option_type == "PE"]
+    assert len(s7_signals) >= 1
+    sig = s7_signals[0]
+    rec = sig.strike_recommendation
+    assert rec is not None
+    assert "PE" in rec.strike_symbol
+    assert rec.recommended_strike >= rec.atm_strike
+    assert rec.option_target_1_pts > 0
+    assert rec.option_target_1_price > rec.estimated_option_entry
+
+
+def test_strategy_engine_setup8_strike_recommendation():
+    import pandas as pd
+    from datetime import datetime, timedelta
+    from app.services.indicators import calculate_indicators
+    from app.services.strategy_engine import evaluate_signals, SetupType
+
+    records = []
+    start_t = datetime(2026, 10, 8, 9, 15)
+    p = 25000.0
+    for i in range(25):
+        ts = start_t + timedelta(minutes=5 * i)
+        step = 5.0 if i % 2 == 0 else -5.0
+        p += step
+        records.append({
+            "timestamp": ts,
+            "open": p - step,
+            "high": max(p, p - step) + 10.0,
+            "low": min(p, p - step) - 10.0,
+            "close": p,
+            "volume": 5000
+        })
+    df = calculate_indicators(pd.DataFrame(records))
+    last_idx = len(df) - 1
+    swing1_idx = last_idx - 5
+    df.loc[:, "bandwidth"] = 8.0
+
+    # Setup 8 PE: Swing 1 pierced bb_upper with high RSI
+    df.loc[swing1_idx, "high"] = df.loc[swing1_idx, "bb_upper"] + 10.0
+    df.loc[swing1_idx, "close"] = df.loc[swing1_idx, "bb_upper"] + 5.0
+    df.loc[swing1_idx, "rsi"] = 78.0
+
+    # Swing 2 (current bar): retests/exceeds Swing 1 high, but has lower RSI, closes inside band
+    df.loc[last_idx, "high"] = df.loc[swing1_idx, "high"] + 2.0
+    df.loc[last_idx, "close"] = df.loc[last_idx, "bb_upper"] - 2.0
+    df.loc[last_idx, "rsi"] = 70.0
+
+    signals = evaluate_signals("NIFTY 50", df, timeframe="5m")
+    s8_signals = [s for s in signals if s.setup_type == SetupType.SETUP_8_DIVERGENCE_SNAPBACK and s.option_type == "PE"]
+    assert len(s8_signals) >= 1
+    sig = s8_signals[0]
+    rec = sig.strike_recommendation
+    assert rec is not None
+    assert "PE" in rec.strike_symbol
+    assert rec.recommended_strike >= rec.atm_strike
+    assert rec.option_target_1_pts > 0
+    assert rec.option_target_1_price > rec.estimated_option_entry
+
+
+
