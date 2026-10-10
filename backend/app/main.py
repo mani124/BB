@@ -106,9 +106,28 @@ def create_app() -> FastAPI:
                         status_code=403,
                         content={"detail": "Forbidden: Malformed Referer header."}
                     )
-            # No origin/referer = direct non-browser client (curl, pytest TestClient, internal).
-            # These are allowed to reach the API for internal tooling and tests;
-            # network exposure is limited to loopback (127.0.0.1) by the launcher.
+            else:
+                # Direct non-browser client (no Origin, no Referer).
+                # Require valid capability token via X-Dashboard-Capability or Authorization header.
+                cap_header = request.headers.get("X-Dashboard-Capability") or request.headers.get("x-dashboard-capability")
+                auth_header = request.headers.get("Authorization") or request.headers.get("authorization")
+                expected_cap = settings.DASHBOARD_CAPABILITY
+
+                is_authorized = False
+                if cap_header and cap_header.strip() == expected_cap:
+                    is_authorized = True
+                elif auth_header:
+                    token = auth_header.strip()
+                    if token.startswith("Bearer "):
+                        token = token[7:].strip()
+                    if token == expected_cap:
+                        is_authorized = True
+
+                if not is_authorized:
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Unauthorized: Dashboard capability required for direct-client mutations."}
+                    )
         return await call_next(request)
 
 

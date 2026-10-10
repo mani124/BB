@@ -18,5 +18,6 @@ class Settings(BaseModel):
     SCAN_INTERVAL_SECONDS: float = 3.0
     DATA_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
     DB_PATH: str = os.path.join(DATA_DIR, "trades.db")
+    DASHBOARD_CAPABILITY: str = os.getenv("DASHBOARD_CAPABILITY", "bb-options-local-capability")
 
 settings = Settings()
