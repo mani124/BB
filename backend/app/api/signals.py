@@ -75,8 +75,11 @@ async def stream_signals(request: Request, max_events: Optional[int] = None):
 
 @router.post("/close/{position_id}")
 def close_trade_signal(position_id: str, body: Optional[ClosePositionRequest] = None):
-    from app.services.paper_trader import paper_trader
-    from fastapi import HTTPException
+    # F2 (post-fix): Route through the shared freshness-checking close logic
+    # so both /api/paper/close and /api/signals/close apply identical staleness
+    # detection and modeled-fill labeling. Do NOT call paper_trader.close_position
+    # directly here — that skips freshness gates and lets callers set arbitrary P&L.
+    from app.api.paper import _close_position_with_freshness
     if isinstance(body, dict):
         reason = body.get("reason", "Manual User Exit")
         exit_price = body.get("exit_price")
@@ -93,15 +96,11 @@ def close_trade_signal(position_id: str, body: Optional[ClosePositionRequest] = 
         real_bid_price = None
         real_opt_price = None
 
-    closed = paper_trader.close_position(
+    return _close_position_with_freshness(
         position_id,
-        reason=reason,
-        exit_price=float(exit_price) if exit_price is not None else None,
-        real_bid_price=float(real_bid_price) if real_bid_price is not None else None,
-        real_opt_price=float(real_opt_price) if real_opt_price is not None else None,
+        reason,
+        float(exit_price) if exit_price is not None else None,
+        float(real_bid_price) if real_bid_price is not None else None,
+        float(real_opt_price) if real_opt_price is not None else None,
     )
-    if not closed:
-        raise HTTPException(status_code=404, detail="Position not found")
-    return closed
-
 

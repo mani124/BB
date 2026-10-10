@@ -325,6 +325,74 @@ def test_finding_11_manual_close_stale_option_quote_modeled():
     assert "(Modeled: Unquoted)" in data["exit_reason"]
 
 
+def test_signals_close_alias_applies_freshness_check():
+    """F2 (post-fix): /api/signals/close/{id} applies 15-second freshness check and (Modeled: Unquoted) labeling."""
+    from app.services.paper_trader import paper_trader
+    from app.main import worker
+
+    paper_trader.reset()
+
+    rec_stale = OptionStrikeRecommendation(
+        symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
+        atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 50 22500 CE",
+        lot_size=50, risk=10.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+        estimated_option_entry=150.0, option_sl_pts=15.0, option_target_1_pts=22.5,
+        option_target_2_pts=37.5, option_sl_price=135.0, option_target_1_price=172.5,
+        option_target_2_price=187.5, option_security_id="77771", is_live_quote=True,
+        real_ask_price=150.0
+    )
+    sig_stale = Signal(
+        id="SIG_ALIAS_STALE_01", symbol="NIFTY 50", timeframe="5m",
+        setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        entry_price=22500.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+        strike_recommendation=rec_stale, is_confirmed=True,
+        indicators_snapshot={}, rationale="test"
+    )
+    pos_stale = paper_trader.open_position_from_signal(sig_stale, lots=1, feed_mode="live")
+    assert pos_stale is not None
+
+    # Stale quote: > 15s ago
+    worker._option_last_quote_time["77771"] = time.time() - 30.0
+    worker._option_forming_candle["77771"] = {"close": 155.0}
+
+    res_stale = client.post(f"/api/signals/close/{pos_stale.id}", json={"reason": "Manual Close"})
+    assert res_stale.status_code == 200
+    data_stale = res_stale.json()
+    assert "(Modeled: Unquoted)" in data_stale["exit_reason"]
+
+    # Fresh quote: <= 15s ago
+    rec_fresh = OptionStrikeRecommendation(
+        symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
+        atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 50 22500 CE",
+        lot_size=50, risk=10.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+        estimated_option_entry=150.0, option_sl_pts=15.0, option_target_1_pts=22.5,
+        option_target_2_pts=37.5, option_sl_price=135.0, option_target_1_price=172.5,
+        option_target_2_price=187.5, option_security_id="77772", is_live_quote=True,
+        real_ask_price=150.0
+    )
+    sig_fresh = Signal(
+        id="SIG_ALIAS_FRESH_01", symbol="NIFTY 50", timeframe="5m",
+        setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        entry_price=22500.0, stop_loss=22490.0, target_1=22515.0, target_2=22525.0,
+        strike_recommendation=rec_fresh, is_confirmed=True,
+        indicators_snapshot={}, rationale="test"
+    )
+    pos_fresh = paper_trader.open_position_from_signal(sig_fresh, lots=1, feed_mode="live")
+    assert pos_fresh is not None
+
+    worker._option_last_quote_time["77772"] = time.time() - 2.0
+    worker._option_forming_candle["77772"] = {"close": 160.0}
+
+    res_fresh = client.post(f"/api/signals/close/{pos_fresh.id}", json={"reason": "Manual Close"})
+    assert res_fresh.status_code == 200
+    data_fresh = res_fresh.json()
+    assert "(Modeled: Unquoted)" not in data_fresh["exit_reason"]
+    assert data_fresh["current_option_price"] == 159.84  # 160.0 * 0.999 fill haircut
+
+
+
 def test_finding_14_batch_upsert_positions():
     """Finding 14: batch_upsert_positions persists multiple positions in a single transaction."""
     import tempfile

@@ -82,14 +82,24 @@ class ClosePositionRequest(BaseModel):
     real_bid_price: Optional[float] = None
     real_opt_price: Optional[float] = None
 
-@router.post("/close/{position_id}")
-def close_trade(position_id: str, body: Optional[ClosePositionRequest] = None):
-    reason = body.reason if (body and body.reason) else "Manual User Exit"
-    exit_price = body.exit_price if body else None
-    real_bid_price = body.real_bid_price if body else None
-    real_opt_price = body.real_opt_price if body else None
 
-    pos_to_close = next((p for p in paper_trader.get_portfolio().active_positions if p.id == position_id), None)
+def _close_position_with_freshness(
+    position_id: str,
+    reason: str,
+    exit_price: Optional[float],
+    real_bid_price: Optional[float],
+    real_opt_price: Optional[float],
+) -> "PaperPosition":
+    """Shared close logic for both /api/paper/close and /api/signals/close.
+
+    F2 (post-fix): Both close routes must apply identical quote-freshness checking
+    and modeled-fill labeling so that neither path can bypass staleness detection.
+    F6 (post-fix): Only trust _option_last_quote_time when a positive price was
+    actually stored; see scanner_worker.py for the write-side guard.
+    """
+    pos_to_close = next(
+        (p for p in paper_trader.get_portfolio().active_positions if p.id == position_id), None
+    )
     if pos_to_close and pos_to_close.feed_mode == "live":
         is_fresh = False
         try:
@@ -97,9 +107,10 @@ def close_trade(position_id: str, body: Optional[ClosePositionRequest] = None):
             import time
             sec_id = pos_to_close.option_security_id
             if sec_id:
-                quote_time = getattr(worker, "_option_last_quote_time", {}).get(str(sec_id), 0.0)
+                sec_id_str = str(sec_id)
+                quote_time = getattr(worker, "_option_last_quote_time", {}).get(sec_id_str, 0.0)
                 is_fresh = (time.time() - quote_time) <= 15.0 if quote_time else False
-                candle_forming = getattr(worker, "_option_forming_candle", {}).get(str(sec_id))
+                candle_forming = getattr(worker, "_option_forming_candle", {}).get(sec_id_str)
                 if candle_forming and candle_forming.get("close", 0) > 0 and real_opt_price is None:
                     if is_fresh:
                         real_opt_price = float(candle_forming["close"])
@@ -120,6 +131,16 @@ def close_trade(position_id: str, body: Optional[ClosePositionRequest] = None):
     if not closed:
         raise HTTPException(status_code=404, detail="Position not found")
     return closed
+
+
+@router.post("/close/{position_id}")
+def close_trade(position_id: str, body: Optional[ClosePositionRequest] = None):
+    reason = body.reason if (body and body.reason) else "Manual User Exit"
+    exit_price = body.exit_price if body else None
+    real_bid_price = body.real_bid_price if body else None
+    real_opt_price = body.real_opt_price if body else None
+    return _close_position_with_freshness(position_id, reason, exit_price, real_bid_price, real_opt_price)
+
 
 @router.post("/settings")
 def update_settings(body: SettingsRequest):
