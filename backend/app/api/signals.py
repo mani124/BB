@@ -75,21 +75,17 @@ async def stream_signals(request: Request, max_events: Optional[int] = None):
 
 @router.post("/close/{position_id}")
 def close_trade_signal(position_id: str, body: Optional[ClosePositionRequest] = None):
-    # F2, F4: Enforces server-owned pricing via shared freshness-checking close logic.
+    # F2, F4, F8: Enforces server-owned pricing via shared freshness-checking close logic.
     from app.api.paper import _close_position_with_freshness
     if isinstance(body, dict):
         reason = body.get("reason", "Manual User Exit")
-        exit_price = body.get("exit_price")
     elif body is not None:
         reason = body.reason or "Manual User Exit"
-        exit_price = body.exit_price
     else:
         reason = "Manual User Exit"
-        exit_price = None
 
     return _close_position_with_freshness(
         position_id,
         reason,
-        float(exit_price) if exit_price is not None else None,
     )
 

@@ -105,13 +105,13 @@ class ClosePositionRequest(BaseModel):
 def _close_position_with_freshness(
     position_id: str,
     reason: str,
-    modeled_exit_price: Optional[float] = None,
 ) -> "PaperPosition":
     """Shared close logic for both /api/paper/close and /api/signals/close.
 
-    F2, F4: Enforces server-owned pricing. All fill prices and bids are resolved
-    strictly from worker.get_option_quote (atomic OptionQuote record). Caller-supplied
-    market price fields are stripped to prevent inflated paper P&L.
+    F2, F4, F8: Enforces server-owned pricing. All fill prices, bids, and theoretical
+    exit metrics are resolved strictly from server-owned data (worker.get_option_quote
+    or pos.current_option_price). Caller-supplied price inputs are ignored to protect
+    P&L and slippage integrity.
     """
     pos_to_close = next(
         (p for p in paper_trader.get_portfolio().active_positions if p.id == position_id), None
@@ -141,7 +141,7 @@ def _close_position_with_freshness(
     closed = paper_trader.close_position(
         position_id,
         reason=reason,
-        exit_price=modeled_exit_price if (server_bid is None and server_ltp is None) else None,
+        exit_price=None,
         real_bid_price=server_bid,
         real_opt_price=server_ltp,
     )
@@ -153,8 +153,7 @@ def _close_position_with_freshness(
 @router.post("/close/{position_id}")
 def close_trade(position_id: str, body: Optional[ClosePositionRequest] = None):
     reason = body.reason if (body and body.reason) else "Manual User Exit"
-    exit_price = body.exit_price if body else None
-    return _close_position_with_freshness(position_id, reason, exit_price)
+    return _close_position_with_freshness(position_id, reason)
 
 
 @router.post("/settings")

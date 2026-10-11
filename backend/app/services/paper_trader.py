@@ -897,12 +897,21 @@ class PaperTradingEngine:
     ) -> Optional[PaperPosition]:
         for i, pos in enumerate(self._portfolio.active_positions):
             if pos.id == position_id:
-                if exit_price is not None and exit_price > 0:
-                    theo_exit = exit_price
-                elif real_opt_price is not None and float(real_opt_price) > 0:
-                    theo_exit = float(real_opt_price)
+                # F8: In live mode, derive theoretical exit strictly from server-owned observations
+                if pos.feed_mode == "live":
+                    if real_opt_price is not None and float(real_opt_price) > 0:
+                        theo_exit = float(real_opt_price)
+                    elif real_bid_price is not None and float(real_bid_price) > 0:
+                        theo_exit = float(real_bid_price)
+                    else:
+                        theo_exit = pos.current_option_price
                 else:
-                    theo_exit = pos.current_option_price
+                    if exit_price is not None and exit_price > 0:
+                        theo_exit = exit_price
+                    elif real_opt_price is not None and float(real_opt_price) > 0:
+                        theo_exit = float(real_opt_price)
+                    else:
+                        theo_exit = pos.current_option_price
                 self._finalize_closed_position(
                     pos=pos,
                     theoretical_exit=theo_exit,

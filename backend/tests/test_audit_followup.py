@@ -385,4 +385,70 @@ def test_volume_baseline_with_seeded_forming_bar():
     assert df["volume"].sum() == 55000
 
 
+def test_close_ignores_caller_exit_price_and_preserves_slippage_integrity(client):
+    """F8: Public close requests cannot alter theoretical exit or distort slippage metrics via exit_price."""
+    from app.services.paper_trader import paper_trader
+    from app.services.strategy_engine import Signal, SetupType
+    from app.services.strike_selector import OptionStrikeRecommendation
+
+    paper_trader.reset_sync()
+
+    rec = OptionStrikeRecommendation(
+        symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
+        atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 22500 CE",
+        lot_size=50, risk=20.0, stop_loss=22480.0, target_1=22530.0, target_2=22560.0,
+        estimated_option_entry=100.0, option_sl_pts=20.0, option_target_1_pts=30.0, option_target_2_pts=60.0,
+        option_sl_price=80.0, option_target_1_price=130.0, option_target_2_price=160.0,
+        option_security_id="99981", is_live_quote=True, real_ask_price=100.0, real_bid_price=99.5, real_ltp=100.0
+    )
+
+    sig = Signal(
+        id="SIG_SLIP_F8_1", symbol="NIFTY 50", timeframe="5m",
+        setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+        timestamp="09:30:00", entry_price=22500.0, stop_loss=22480.0, target_1=22530.0, target_2=22560.0,
+        strike_recommendation=rec, is_confirmed=True, indicators_snapshot={}, rationale="test"
+    )
+
+    pos = paper_trader.open_position_from_signal(sig, feed_mode="live")
+    assert pos is not None
+    pos_id = pos.id
+
+    # 1. Close via /api/paper/close with an adversarial exit_price of 100,000.0
+    res = client.post(
+        f"/api/paper/close/{pos_id}",
+        json={"reason": "Adversarial Exit", "exit_price": 100000.0}
+    )
+    assert res.status_code == 200
+    closed_data = res.json()
+
+    # Theoretical exit must NOT be 100,000.0!
+    assert closed_data["theoretical_exit"] != 100000.0
+    assert closed_data["theoretical_exit"] == 100.0
+    assert closed_data["exit_slippage"] == 0.0
+    assert closed_data["total_slippage_cost"] == 0.0
+
+    # 2. Test the alias /api/signals/close/{id} as well
+    sig2 = Signal(
+        id="SIG_SLIP_F8_2", symbol="NIFTY 50", timeframe="5m",
+        setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+        timestamp="09:35:00", entry_price=22500.0, stop_loss=22480.0, target_1=22530.0, target_2=22560.0,
+        strike_recommendation=rec, is_confirmed=True, indicators_snapshot={}, rationale="test"
+    )
+    pos2 = paper_trader.open_position_from_signal(sig2, feed_mode="live")
+    assert pos2 is not None
+    pos_id_2 = pos2.id
+
+    res2 = client.post(
+        f"/api/signals/close/{pos_id_2}",
+        json={"reason": "Adversarial Exit 2", "exit_price": 50000.0}
+    )
+    assert res2.status_code == 200
+    closed_data_2 = res2.json()
+
+    assert closed_data_2["theoretical_exit"] != 50000.0
+    assert closed_data_2["theoretical_exit"] == 100.0
+    assert closed_data_2["exit_slippage"] == 0.0
+
+
+
 
