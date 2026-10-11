@@ -25,12 +25,21 @@ def test_direct_client_capability_required():
     res_auth = client.post("/api/paper/reset", headers={"Authorization": f"Bearer {settings.DASHBOARD_CAPABILITY}"})
     assert res_auth.status_code == 200
 
-    # 5. Browser request with valid origin does not require capability header -> 200
+    # 5. Browser request with valid origin still requires capability -> 401 if omitted, 200 when capability present
     res_origin = client.post("/api/paper/reset", headers={"Origin": "http://localhost:5174", "X-Omit-Capability": "1"})
-    assert res_origin.status_code == 200
+    assert res_origin.status_code == 401
 
-    # 6. Browser request with untrusted origin -> 403 Forbidden
-    res_evil = client.post("/api/paper/reset", headers={"Origin": "https://evil.sslip.io", "X-Omit-Capability": "1"})
+    res_origin_with_cap = client.post(
+        "/api/paper/reset",
+        headers={"Origin": "http://localhost:5174", "X-Dashboard-Capability": settings.DASHBOARD_CAPABILITY}
+    )
+    assert res_origin_with_cap.status_code == 200
+
+    # 6. Browser request with untrusted origin -> 403 Forbidden even if capability provided
+    res_evil = client.post(
+        "/api/paper/reset",
+        headers={"Origin": "https://evil.sslip.io", "X-Dashboard-Capability": settings.DASHBOARD_CAPABILITY}
+    )
     assert res_evil.status_code == 403
 
     # 7. Direct GET request with no capability -> 200 (read routes not blocked)

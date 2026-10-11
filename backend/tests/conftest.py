@@ -10,14 +10,13 @@ def _patched_request(self, method, url, *args, **kwargs):
         kwargs["headers"] = headers
         return _original_request(self, method, url, *args, **kwargs)
 
-    # For existing tests without headers: inject capability so existing test suite passes
-    if method.upper() in ("POST", "PUT", "DELETE", "PATCH"):
-        has_origin = any(k.lower() == "origin" for k in headers)
-        has_referer = any(k.lower() == "referer" for k in headers)
-        has_cap = any(k.lower() in ("x-dashboard-capability", "authorization") for k in headers)
-        if not has_origin and not has_referer and not has_cap:
-            headers["X-Dashboard-Capability"] = settings.DASHBOARD_CAPABILITY
-            kwargs["headers"] = headers
+    # For existing test suite: inject capability if neither capability header nor cookie is present
+    has_cap = any(k.lower() in ("x-dashboard-capability", "authorization") for k in headers)
+    cookies = kwargs.get("cookies") or getattr(self, "cookies", {})
+    has_cookie = bool(cookies and "dashboard_session" in cookies)
+    if not has_cap and not has_cookie:
+        headers["X-Dashboard-Capability"] = settings.DASHBOARD_CAPABILITY
+        kwargs["headers"] = headers
 
     return _original_request(self, method, url, *args, **kwargs)
 

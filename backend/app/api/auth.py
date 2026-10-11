@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 import urllib.parse
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
@@ -13,6 +13,30 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 dhan_client = DhanClient()
+
+
+class SessionAuthRequest(BaseModel):
+    secret: str = Field(..., description="Master dashboard capability secret")
+
+
+@router.post("/session")
+def create_dashboard_session(body: SessionAuthRequest, response: Response):
+    import hmac
+    expected = settings.DASHBOARD_CAPABILITY.strip()
+    if not expected or not hmac.compare_digest(body.secret.strip(), expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid dashboard capability secret"
+        )
+    response.set_cookie(
+        key="dashboard_session",
+        value=expected,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        max_age=86400,
+    )
+    return {"status": "authenticated", "token": expected}
 
 
 class OAuthTokenRequest(BaseModel):

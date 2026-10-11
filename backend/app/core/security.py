@@ -3,7 +3,38 @@ import re
 from typing import Optional
 from fastapi import Request, HTTPException, status
 
+import hmac
+from app.core.config import settings
+
 JWT_PATTERN = re.compile(r"eyJ[a-zA-Z0-9_\-\.]{15,}")
+
+def is_valid_dashboard_capability(request: Request) -> bool:
+    """
+    Verify whether the request presents an authorized dashboard capability.
+    Checked sources:
+      1. 'X-Dashboard-Capability' or 'x-dashboard-capability' header
+      2. 'Authorization: Bearer <token>' header
+      3. 'dashboard_session' cookie
+    """
+    expected = settings.DASHBOARD_CAPABILITY.strip()
+    if not expected:
+        return False
+
+    cap_header = (request.headers.get("X-Dashboard-Capability") or request.headers.get("x-dashboard-capability") or "").strip()
+    if cap_header and hmac.compare_digest(cap_header, expected):
+        return True
+
+    auth_header = (request.headers.get("Authorization") or request.headers.get("authorization") or "").strip()
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        if token and hmac.compare_digest(token, expected):
+            return True
+
+    cookie_token = (request.cookies.get("dashboard_session") or "").strip()
+    if cookie_token and hmac.compare_digest(cookie_token, expected):
+        return True
+
+    return False
 
 def sanitize_token(token: Optional[str]) -> str:
     """Mask token so only partial prefix and suffix show."""

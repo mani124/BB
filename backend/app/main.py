@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.core.security import setup_security_logging
+from app.core.security import setup_security_logging, is_valid_dashboard_capability
 from app.services.universe_manager import UniverseManager
 from app.services.scanner_worker import ScannerWorker
 from app.api.auth import router as auth_router
@@ -74,64 +74,62 @@ def create_app() -> FastAPI:
             "active_mode": worker.get_state().active_mode
         }
 
-    # Finding 1 (post-fix): Use an exact allowed-origin set; reject null and unauthorized origins for writes
+    # Finding 1 & Finding 3: Enforce dashboard capability across all mutations and private endpoints
     @app.middleware("http")
-    async def verify_state_mutation_origin(request: Request, call_next):
+    async def verify_dashboard_authorization(request: Request, call_next):
+        path = request.url.path
+        is_public = (
+            path in ("/api/health", "/api/auth/session", "/api/auth/oauth/login-url", "/api/auth/status")
+            or path.startswith(("/docs", "/openapi.json", "/redoc"))
+            or not path.startswith("/api/")
+        )
+
         if request.method in ("POST", "PUT", "DELETE", "PATCH"):
-            origin = request.headers.get("origin")
-
-            referer = request.headers.get("referer")
-            # Browser requests MUST carry a valid Origin header that is in the allowlist
-            if origin is not None:
-                # Reject "null" origin (sandboxed iframe / cross-origin redirect)
-                if origin == "null":
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": "Forbidden: null origin is not permitted."}
-                    )
-                # Exact match only — no suffix / hostname logic
-                if origin.rstrip("/") not in _ALLOWED_ORIGINS:
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": "Forbidden: Unauthorized cross-origin mutation request blocked."}
-                    )
-            elif referer:
-                # Extract origin from Referer for same-origin form POSTs
-                try:
-                    parsed = urlparse(referer)
-                    ref_origin = f"{parsed.scheme}://{parsed.netloc}"
-                    if ref_origin.rstrip("/") not in _ALLOWED_ORIGINS:
-                        return JSONResponse(
-                            status_code=403,
-                            content={"detail": "Forbidden: Unauthorized origin (via Referer)."}
-                        )
-                except Exception:
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": "Forbidden: Malformed Referer header."}
-                    )
-            else:
-                # Direct non-browser client (no Origin, no Referer).
-                # Require valid capability token via X-Dashboard-Capability or Authorization header.
-                cap_header = request.headers.get("X-Dashboard-Capability") or request.headers.get("x-dashboard-capability")
-                auth_header = request.headers.get("Authorization") or request.headers.get("authorization")
-                expected_cap = settings.DASHBOARD_CAPABILITY
-
-                is_authorized = False
-                if cap_header and cap_header.strip() == expected_cap:
-                    is_authorized = True
-                elif auth_header:
-                    token = auth_header.strip()
-                    if token.startswith("Bearer "):
-                        token = token[7:].strip()
-                    if token == expected_cap:
-                        is_authorized = True
-
-                if not is_authorized:
+            # /api/auth/session is the bootstrap endpoint that exchanges the secret for session
+            if path != "/api/auth/session":
+                # 1. Require valid capability token/cookie for ALL mutations
+                if not is_valid_dashboard_capability(request):
                     return JSONResponse(
                         status_code=401,
-                        content={"detail": "Unauthorized: Dashboard capability required for direct-client mutations."}
+                        content={"detail": "Unauthorized: Dashboard capability required for mutations."}
                     )
+
+                # 2. Additional browser CSRF protection: validate Origin/Referer if present
+                origin = request.headers.get("origin")
+                referer = request.headers.get("referer")
+                if origin is not None:
+                    if origin == "null":
+                        return JSONResponse(
+                            status_code=403,
+                            content={"detail": "Forbidden: null origin is not permitted."}
+                        )
+                    if origin.rstrip("/") not in _ALLOWED_ORIGINS:
+                        return JSONResponse(
+                            status_code=403,
+                            content={"detail": "Forbidden: Unauthorized cross-origin mutation request blocked."}
+                        )
+                elif referer:
+                    try:
+                        parsed = urlparse(referer)
+                        ref_origin = f"{parsed.scheme}://{parsed.netloc}"
+                        if ref_origin.rstrip("/") not in _ALLOWED_ORIGINS:
+                            return JSONResponse(
+                                status_code=403,
+                                content={"detail": "Forbidden: Unauthorized origin (via Referer)."}
+                            )
+                    except Exception:
+                        return JSONResponse(
+                            status_code=403,
+                            content={"detail": "Forbidden: Malformed Referer header."}
+                        )
+        elif not is_public:
+            # Private GET / SSE endpoints require capability authorization
+            if not is_valid_dashboard_capability(request):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Unauthorized: Dashboard capability required for private endpoints."}
+                )
+
         return await call_next(request)
 
 
