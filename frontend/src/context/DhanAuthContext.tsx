@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiFetch } from '../api/client';
 
 export function formatTokenExpiryCountdown(expiryMs: number): string {
   const diff = expiryMs - Date.now();
@@ -71,7 +72,7 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
-    fetch('/api/auth/status')
+    apiFetch('/api/auth/status')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && data.authenticated) {
@@ -108,7 +109,7 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const connect = async (id: string, token: string): Promise<boolean> => {
     setError(null);
     try {
-      const res = await fetch('/api/auth/verify', {
+      const res = await apiFetch('/api/auth/verify', {
         method: 'POST',
         headers: {
           'X-Dhan-Client-Id': id.trim(),
@@ -154,7 +155,7 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         sessionStorage.setItem('dhan_client_id', clientId.trim());
       }
       const redirectUri = window.location.origin + window.location.pathname;
-      const res = await fetch('/api/auth/oauth/login-url', {
+      const res = await apiFetch('/api/auth/oauth/login-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -183,7 +184,7 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const exchangeOAuthToken = async (appId: string, appSecret: string, consentId: string): Promise<boolean> => {
     setError(null);
     try {
-      const res = await fetch('/api/auth/oauth/token', {
+      const res = await apiFetch('/api/auth/oauth/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -249,7 +250,7 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setAccessToken(null);
     setTokenExpiry(null);
     setTokenExpiryCountdown(null);
-    fetch('/api/auth/disconnect', { method: 'POST' }).catch(() => {});
+    apiFetch('/api/auth/disconnect', { method: 'POST' }).catch(() => {});
   };
 
   return (

@@ -8,7 +8,8 @@ import { SignalCard } from './components/SignalCard';
 import { SignalTable } from './components/SignalTable';
 import { PaperPortfolioView } from './components/PaperPortfolioView';
 import { ScannerState, Signal } from './types';
-import { LayoutGrid, Table, Radio, Briefcase, AlertCircle, X } from 'lucide-react';
+import { LayoutGrid, Table, Radio, Briefcase, AlertCircle, X, KeyRound, Lock, CheckCircle2 } from 'lucide-react';
+import { apiFetch, bootstrapDashboardSession, getDashboardCapability, setDashboardCapability } from './api/client';
 
 const DashboardContent: React.FC = () => {
   const [state, setState] = useState<ScannerState>({
@@ -33,6 +34,11 @@ const DashboardContent: React.FC = () => {
   const { connect } = useDhanAuth();
   const reconnectingRef = React.useRef(false);
 
+  const [capabilityModalOpen, setCapabilityModalOpen] = useState(false);
+  const [capabilityInput, setCapabilityInput] = useState(getDashboardCapability());
+  const [capabilityError, setCapabilityError] = useState<string | null>(null);
+  const [capabilitySuccess, setCapabilitySuccess] = useState(false);
+
   useEffect(() => {
     if (actionError) {
       const timer = setTimeout(() => setActionError(null), 8000);
@@ -40,28 +46,58 @@ const DashboardContent: React.FC = () => {
     }
   }, [actionError]);
 
+  const handleSaveCapability = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCapabilityError(null);
+    setCapabilitySuccess(false);
+    const ok = await bootstrapDashboardSession(capabilityInput);
+    if (ok) {
+      setCapabilitySuccess(true);
+      setTimeout(() => {
+        setCapabilityModalOpen(false);
+        setCapabilitySuccess(false);
+      }, 700);
+      try {
+        const res = await apiFetch('/api/signals');
+        if (res.ok) {
+          const data = await res.json();
+          setState((prev) => ({ ...prev, ...data }));
+          setWsConnected(Boolean(data.feed_status === 'WS_LIVE' || data.ws_connected));
+        }
+      } catch (err) {}
+    } else {
+      setCapabilityError('Invalid dashboard capability token. Please verify and try again.');
+    }
+  };
 
   // Fetch initial snapshot and connect to SSE stream on mount
   useEffect(() => {
     let eventSource: EventSource | null = null;
     let reconnectTimeout: any = null;
+    let isCancelled = false;
 
     // Fast initial fetch so UI renders immediately
     const fetchSnapshot = async () => {
       try {
-        const res = await fetch('/api/signals');
+        const res = await apiFetch('/api/signals');
+        if (res.status === 401) {
+          setCapabilityModalOpen(true);
+          return;
+        }
         if (res.ok) {
           const data = await res.json();
-          setState((prev) => ({ ...prev, ...data }));
-          setWsConnected(Boolean(data.feed_status === 'WS_LIVE' || data.ws_connected));
-          if (data.active_mode === 'demo' && !reconnectingRef.current) {
-            const savedId = sessionStorage.getItem('dhan_client_id');
-            const savedToken = sessionStorage.getItem('dhan_access_token');
-            if (savedId && savedToken && !savedToken.includes('*')) {
-              reconnectingRef.current = true;
-              connect(savedId, savedToken).finally(() => {
-                setTimeout(() => { reconnectingRef.current = false; }, 15000);
-              });
+          if (!isCancelled) {
+            setState((prev) => ({ ...prev, ...data }));
+            setWsConnected(Boolean(data.feed_status === 'WS_LIVE' || data.ws_connected));
+            if (data.active_mode === 'demo' && !reconnectingRef.current) {
+              const savedId = sessionStorage.getItem('dhan_client_id');
+              const savedToken = sessionStorage.getItem('dhan_access_token');
+              if (savedId && savedToken && !savedToken.includes('*')) {
+                reconnectingRef.current = true;
+                connect(savedId, savedToken).finally(() => {
+                  setTimeout(() => { reconnectingRef.current = false; }, 15000);
+                });
+              }
             }
           }
         }
@@ -69,9 +105,9 @@ const DashboardContent: React.FC = () => {
         // SSE will hydrate state
       }
     };
-    fetchSnapshot();
 
     const connectSSE = () => {
+      if (isCancelled) return;
       eventSource = new EventSource('/api/signals/stream');
 
       // Listen for sub-second real-time tick named events
@@ -127,22 +163,41 @@ const DashboardContent: React.FC = () => {
       eventSource.onerror = () => {
         eventSource?.close();
         setWsConnected(false);
-        reconnectTimeout = setTimeout(connectSSE, 3000);
+        if (!isCancelled) {
+          reconnectTimeout = setTimeout(connectSSE, 3000);
+        }
       };
     };
 
-    connectSSE();
+    const initialize = async () => {
+      const ok = await bootstrapDashboardSession();
+      if (!ok) {
+        const checkRes = await apiFetch('/api/signals').catch(() => null);
+        if (checkRes && checkRes.status === 401) {
+          setCapabilityModalOpen(true);
+          return;
+        }
+      }
+      await fetchSnapshot();
+      connectSSE();
+    };
+
+    initialize();
 
     return () => {
+      isCancelled = true;
       eventSource?.close();
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
   }, []);
 
-
   const handleScanNow = async () => {
     try {
-      await fetch('/api/signals/scan-now', { method: 'POST' });
+      const res = await apiFetch('/api/signals/scan-now', { method: 'POST' });
+      if (res.status === 401) {
+        setCapabilityModalOpen(true);
+        setActionError('Unauthorized: Dashboard capability required.');
+      }
     } catch (e) {
       console.error('Manual scan failed', e);
     }
@@ -152,14 +207,19 @@ const DashboardContent: React.FC = () => {
   const handlePaperBuy = async (signal: Signal) => {
     try {
       setActionError(null);
-      const res = await fetch('/api/paper/trade', {
+      const res = await apiFetch('/api/paper/trade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ signal, lots: state.paper_portfolio?.default_lots || 2 }),
       });
+      if (res.status === 401) {
+        setCapabilityModalOpen(true);
+        setActionError('Unauthorized: Dashboard capability required.');
+        return;
+      }
       if (res.ok) {
         // Refresh portfolio immediately
-        const portRes = await fetch('/api/paper/portfolio');
+        const portRes = await apiFetch('/api/paper/portfolio');
         if (portRes.ok) {
           const portData = await portRes.json();
           setState((prev) => ({ ...prev, paper_portfolio: portData }));
@@ -178,9 +238,14 @@ const DashboardContent: React.FC = () => {
   const handleClosePosition = async (id: string) => {
     try {
       setActionError(null);
-      const res = await fetch(`/api/paper/close/${id}`, { method: 'POST' });
+      const res = await apiFetch(`/api/paper/close/${id}`, { method: 'POST' });
+      if (res.status === 401) {
+        setCapabilityModalOpen(true);
+        setActionError('Unauthorized: Dashboard capability required.');
+        return;
+      }
       if (res.ok) {
-        const portRes = await fetch('/api/paper/portfolio');
+        const portRes = await apiFetch('/api/paper/portfolio');
         if (portRes.ok) {
           const portData = await portRes.json();
           setState((prev) => ({ ...prev, paper_portfolio: portData }));
@@ -196,14 +261,18 @@ const DashboardContent: React.FC = () => {
     }
   };
 
-
   const handleToggleAutoTrade = async (enabled: boolean) => {
     try {
-      const res = await fetch('/api/paper/settings', {
+      const res = await apiFetch('/api/paper/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ auto_trade_enabled: enabled }),
       });
+      if (res.status === 401) {
+        setCapabilityModalOpen(true);
+        setActionError('Unauthorized: Dashboard capability required.');
+        return;
+      }
       if (res.ok) {
         const portData = await res.json();
         setState((prev) => ({ ...prev, paper_portfolio: portData }));
@@ -215,11 +284,16 @@ const DashboardContent: React.FC = () => {
 
   const handleChangeLots = async (lots: number) => {
     try {
-      const res = await fetch('/api/paper/settings', {
+      const res = await apiFetch('/api/paper/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ default_lots: lots }),
       });
+      if (res.status === 401) {
+        setCapabilityModalOpen(true);
+        setActionError('Unauthorized: Dashboard capability required.');
+        return;
+      }
       if (res.ok) {
         const portData = await res.json();
         setState((prev) => ({ ...prev, paper_portfolio: portData }));
@@ -232,8 +306,13 @@ const DashboardContent: React.FC = () => {
   const handleResetPortfolio = async () => {
     if (!window.confirm('Are you sure you want to reset all forward-testing paper trade logs?')) return;
     try {
-      await fetch('/api/paper/reset', { method: 'POST' });
-      const portRes = await fetch('/api/paper/portfolio');
+      const res = await apiFetch('/api/paper/reset', { method: 'POST' });
+      if (res.status === 401) {
+        setCapabilityModalOpen(true);
+        setActionError('Unauthorized: Dashboard capability required.');
+        return;
+      }
+      const portRes = await apiFetch('/api/paper/portfolio');
       if (portRes.ok) {
         const portData = await portRes.json();
         setState((prev) => ({ ...prev, paper_portfolio: portData }));
@@ -333,6 +412,20 @@ const DashboardContent: React.FC = () => {
                   {activePositionsCount}
                 </span>
               )}
+            </button>
+
+            <button
+              onClick={() => {
+                setCapabilityInput(getDashboardCapability());
+                setCapabilityError(null);
+                setCapabilitySuccess(false);
+                setCapabilityModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 shadow-sm transition"
+              title="Manage Dashboard Capability Access Key"
+            >
+              <KeyRound className="h-4 w-4" />
+              <span>Access Key</span>
             </button>
           </div>
 
@@ -502,6 +595,84 @@ const DashboardContent: React.FC = () => {
             onChangeLots={handleChangeLots}
             onResetPortfolio={handleResetPortfolio}
           />
+        )}
+
+        {/* Dashboard Capability Access Key Modal */}
+        {capabilityModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-dark-700/60 mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-cyan-500/10 dark:bg-cyan-500/20 text-cyan-500 rounded-xl">
+                    <KeyRound className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                      Dashboard Capability Key
+                    </h3>
+                    <p className="text-xs text-slate-500">Authorization required for mutations & streaming</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setCapabilityModalOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+                  title="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {capabilityError && (
+                <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-500 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{capabilityError}</span>
+                </div>
+              )}
+
+              {capabilitySuccess && (
+                <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-500 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>Capability verified and session established!</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSaveCapability} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                    Access Token / Secret
+                  </label>
+                  <input
+                    type="password"
+                    value={capabilityInput}
+                    onChange={(e) => setCapabilityInput(e.target.value)}
+                    placeholder="Enter DASHBOARD_CAPABILITY token"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-dark-700 bg-slate-50 dark:bg-dark-900 text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Default: <code className="text-cyan-500 font-mono">bb-options-local-capability</code>
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setCapabilityModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-dark-700 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-xl text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-600/30 transition flex items-center gap-1.5"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    Authorize Session
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         )}
       </main>
 
