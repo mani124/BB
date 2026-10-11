@@ -153,23 +153,25 @@ class ScannerWorker:
     def get_option_quote(self, sec_id: str, max_age_s: float = 15.0) -> Optional[OptionQuote]:
         """Retrieve the latest OptionQuote if within max_age_s freshness window."""
         sec_id_str = str(sec_id)
-        now = time.monotonic()
         quote = self._latest_option_quotes.get(sec_id_str)
         if quote:
-            if (now - quote.timestamp) <= max_age_s:
+            age = (time.time() - quote.timestamp) if quote.timestamp > 1_000_000_000 else (time.monotonic() - quote.timestamp)
+            if age <= max_age_s:
                 return quote
             return None
 
         # Fallback for forming candle if last quote time is fresh
         quote_time = self._option_last_quote_time.get(sec_id_str, 0.0)
         candle = self._option_forming_candle.get(sec_id_str)
-        if candle and candle.get("close", 0) > 0 and (now - quote_time) <= max_age_s:
-            return OptionQuote(
-                ltp=float(candle["close"]),
-                bid=None,
-                timestamp=quote_time,
-                source="candle"
-            )
+        if candle and candle.get("close", 0) > 0:
+            age = (time.time() - quote_time) if quote_time > 1_000_000_000 else (time.monotonic() - quote_time)
+            if age <= max_age_s:
+                return OptionQuote(
+                    ltp=float(candle["close"]),
+                    bid=None,
+                    timestamp=quote_time,
+                    source="candle"
+                )
         return None
 
     def _on_paper_position_opened(self, pos: PaperPosition) -> None:
@@ -1263,6 +1265,8 @@ class ScannerWorker:
         step_min = 5
         if sec_id not in self._option_candle_history:
             self._option_candle_history[sec_id] = []
+
+        if sec_id not in self._option_forming_candle:
             forming_ts = now.replace(second=0, microsecond=0)
             forming_min = (forming_ts.minute // step_min) * step_min
             forming_ts = forming_ts.replace(minute=forming_min)
@@ -1375,6 +1379,17 @@ class ScannerWorker:
                         if "timestamp" in fetched_df.columns:
                             ts_series = pd.to_datetime(fetched_df["timestamp"])
                             completed_df = fetched_df[ts_series < current_slot_ts].copy()
+                            forming_rows = fetched_df[ts_series >= current_slot_ts]
+                            if not forming_rows.empty and sec_id_str not in self._option_forming_candle:
+                                seed_bar = forming_rows.iloc[-1].to_dict()
+                                self._option_forming_candle[sec_id_str] = {
+                                    "timestamp": seed_bar.get("timestamp", current_slot_ts),
+                                    "open": float(seed_bar.get("open", opt_ltp)),
+                                    "high": float(seed_bar.get("high", opt_ltp)),
+                                    "low": float(seed_bar.get("low", opt_ltp)),
+                                    "close": float(seed_bar.get("close", opt_ltp)),
+                                    "volume": int(seed_bar.get("volume", 0)),
+                                }
                         else:
                             completed_df = fetched_df.copy()
                         self._option_chart_cache[sec_id_str] = (current_slot_ts, completed_df)
