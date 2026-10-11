@@ -343,7 +343,7 @@ async def test_finding_6_disconnect_in_flight_aborts_scan():
 def test_finding_11_manual_close_stale_option_quote_modeled():
     """Finding 11: Manual close when option candle is older than 15s marks exit as modeled."""
     engine = PaperTradingEngine()
-    engine.reset()
+    engine.reset_sync()
     # Create active live position
     rec = OptionStrikeRecommendation(
         symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
@@ -383,7 +383,7 @@ def test_signals_close_alias_applies_freshness_check():
     from app.services.paper_trader import paper_trader
     from app.main import worker
 
-    paper_trader.reset()
+    paper_trader.reset_sync()
 
     rec_stale = OptionStrikeRecommendation(
         symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",

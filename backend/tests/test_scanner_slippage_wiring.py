@@ -65,9 +65,9 @@ def make_test_signal(
 
 @pytest.fixture(autouse=True)
 def clean_paper_trader():
-    paper_trader.reset()
+    paper_trader.reset_sync()
     yield
-    paper_trader.reset()
+    paper_trader.reset_sync()
 
 @pytest.mark.asyncio
 async def test_scanner_worker_ws_tick_passes_bid_and_computes_slippage():

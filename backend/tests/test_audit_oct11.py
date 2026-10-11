@@ -55,7 +55,7 @@ def test_server_owned_exit_pricing():
     from app.services.strike_selector import OptionStrikeRecommendation
     from app.main import worker
 
-    paper_trader.reset()
+    paper_trader.reset_sync()
     sec_id = "99881"
 
     rec1 = OptionStrikeRecommendation(

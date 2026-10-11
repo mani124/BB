@@ -12,9 +12,9 @@ from app.services.strike_selector import recommend_strike
 
 @pytest.fixture(autouse=True)
 def reset_paper_trader():
-    paper_trader.reset()
+    paper_trader.reset_sync()
     yield
-    paper_trader.reset()
+    paper_trader.reset_sync()
 
 
 @pytest.mark.asyncio

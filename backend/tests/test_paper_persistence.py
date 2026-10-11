@@ -123,7 +123,7 @@ def test_reset_clears_db_and_restarts_cleanly(tmp_path):
     engine1.open_position_from_signal(sig, lots=2)
     assert len(engine1.get_portfolio().active_positions) == 1
 
-    engine1.reset()
+    engine1.reset_sync()
     assert len(engine1.get_portfolio().active_positions) == 0
 
     # Engine 2 reboot

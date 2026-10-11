@@ -168,6 +168,6 @@ def update_settings(body: SettingsRequest):
     return paper_trader.get_portfolio()
 
 @router.post("/reset")
-def reset_portfolio():
-    paper_trader.reset()
+async def reset_portfolio():
+    await paper_trader.reset()
     return {"status": "portfolio_reset"}

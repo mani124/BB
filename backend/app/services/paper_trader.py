@@ -85,6 +85,9 @@ class PaperTradingEngine:
         self.on_position_opened: Optional[Callable[[PaperPosition], Any]] = None
         self._write_queue: Optional[asyncio.Queue] = None
         self._writer_task: Optional[asyncio.Task] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._portfolio_generation: int = 0
+        self._pending_errors: list[Exception] = []
         if db_path is not None:
             from app.services.paper_storage import PaperStorage
             self.storage = PaperStorage(db_path)
@@ -93,21 +96,18 @@ class PaperTradingEngine:
     def _execute_storage_op(self, op: str, arg: Any) -> None:
         if not self.storage:
             return
-        try:
-            if op == "upsert":
-                self.storage.upsert_position(arg)
-            elif op == "batch_upsert":
-                self.storage.batch_upsert_positions(arg)
-            elif op == "add_signal":
-                sig_id, ts = arg
-                self.storage.add_processed_signal(sig_id, ts)
-            elif op == "save_setting":
-                k, v = arg
-                self.storage.save_setting(k, v)
-            elif op == "clear_all":
-                self.storage.clear_all()
-        except Exception as e:
-            logger.error(f"Storage operation '{op}' failed: {e}")
+        if op == "upsert":
+            self.storage.upsert_position(arg)
+        elif op == "batch_upsert":
+            self.storage.batch_upsert_positions(arg)
+        elif op == "add_signal":
+            sig_id, ts = arg
+            self.storage.add_processed_signal(sig_id, ts)
+        elif op == "save_setting":
+            k, v = arg
+            self.storage.save_setting(k, v)
+        elif op == "clear_all":
+            self.storage.clear_all()
 
     async def _persistence_worker(self) -> None:
         while True:
@@ -118,9 +118,24 @@ class PaperTradingEngine:
                 if item is None:
                     self._write_queue.task_done()
                     break
-                op, arg = item
+                op, arg, gen, fut = item
+                # F2: Reject in-flight scan writes from older generations
+                if gen < self._portfolio_generation and op != "clear_all":
+                    if fut and not fut.done():
+                        fut.set_result(False)
+                    self._write_queue.task_done()
+                    continue
+
                 try:
                     await asyncio.to_thread(self._execute_storage_op, op, arg)
+                    if fut and not fut.done():
+                        fut.set_result(True)
+                except Exception as exc:
+                    logger.error(f"Persistence worker error executing {op}: {exc}")
+                    if fut and not fut.done():
+                        fut.set_exception(exc)
+                    else:
+                        self._pending_errors.append(exc)
                 finally:
                     self._write_queue.task_done()
             except asyncio.CancelledError:
@@ -128,18 +143,56 @@ class PaperTradingEngine:
             except Exception as e:
                 logger.error(f"Error in persistence worker loop: {e}")
 
-    def _enqueue_write(self, op: str, arg: Any) -> None:
+    def _enqueue_write(
+        self,
+        op: str,
+        arg: Any,
+        generation: Optional[int] = None,
+        future: Optional[asyncio.Future] = None
+    ) -> None:
         if not self.storage:
+            if future and not future.done():
+                future.set_result(True)
             return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
 
-        if self._write_queue is not None and loop and loop.is_running():
-            self._write_queue.put_nowait((op, arg))
+        gen = generation if generation is not None else self._portfolio_generation
+        if generation is not None and generation < self._portfolio_generation and op != "clear_all":
+            if future and not future.done():
+                future.set_result(False)
+            return
+
+        item = (op, arg, gen, future)
+
+        if self._write_queue is not None:
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
+
+            if running_loop is self._loop or (running_loop and self._loop is None):
+                self._write_queue.put_nowait(item)
+            elif self._loop and self._loop.is_running():
+                self._loop.call_soon_threadsafe(self._write_queue.put_nowait, item)
+            else:
+                try:
+                    self._execute_storage_op(op, arg)
+                    if future and not future.done():
+                        future.set_result(True)
+                except Exception as e:
+                    self._pending_errors.append(e)
+                    if future and not future.done():
+                        future.set_exception(e)
+                    raise
         else:
-            self._execute_storage_op(op, arg)
+            try:
+                self._execute_storage_op(op, arg)
+                if future and not future.done():
+                    future.set_result(True)
+            except Exception as e:
+                self._pending_errors.append(e)
+                if future and not future.done():
+                    future.set_exception(e)
+                raise
 
     async def start_persistence_worker(self) -> None:
         if not self.storage:
@@ -148,6 +201,7 @@ class PaperTradingEngine:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = asyncio.get_event_loop()
+        self._loop = loop
         if self._write_queue is None:
             self._write_queue = asyncio.Queue()
         if self._writer_task is None or self._writer_task.done():
@@ -156,18 +210,25 @@ class PaperTradingEngine:
     async def flush(self) -> None:
         if self._write_queue is not None:
             await self._write_queue.join()
+        if self._pending_errors:
+            err = self._pending_errors.pop(0)
+            raise err
 
     async def stop_persistence_worker(self) -> None:
         if self._write_queue is not None:
-            await self.flush()
-            await self._write_queue.put(None)
-            if self._writer_task and not self._writer_task.done():
-                try:
-                    await self._writer_task
-                except asyncio.CancelledError:
-                    pass
-            self._writer_task = None
-            self._write_queue = None
+            try:
+                await self.flush()
+            except Exception:
+                logger.warning("Error during flush in stop_persistence_worker", exc_info=True)
+            finally:
+                await self._write_queue.put(None)
+                if self._writer_task and not self._writer_task.done():
+                    try:
+                        await self._writer_task
+                    except asyncio.CancelledError:
+                        pass
+                self._writer_task = None
+                self._write_queue = None
 
     def _load_from_storage(self):
         if not self.storage:
@@ -255,13 +316,34 @@ class PaperTradingEngine:
         self._portfolio.max_risk_per_trade = max(500.0, float(amount))
         self._enqueue_write("save_setting", ("max_risk_per_trade", str(self._portfolio.max_risk_per_trade)))
 
-    def reset(self):
+    async def reset(self) -> None:
+        self._portfolio_generation += 1
         self._portfolio = PaperPortfolio()
         self._processed_signal_ids.clear()
-        self._enqueue_write("clear_all", None)
+        if self._write_queue is not None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = self._loop or asyncio.get_event_loop()
+            fut = loop.create_future()
+            self._enqueue_write("clear_all", None, generation=self._portfolio_generation, future=fut)
+            await fut
+        elif self.storage:
+            self.storage.clear_all()
 
-    def reset_portfolio(self):
-        self.reset()
+    def reset_sync(self) -> None:
+        if self._loop and self._loop.is_running():
+            fut = asyncio.run_coroutine_threadsafe(self.reset(), self._loop)
+            fut.result(timeout=10.0)
+        else:
+            self._portfolio_generation += 1
+            self._portfolio = PaperPortfolio()
+            self._processed_signal_ids.clear()
+            if self.storage:
+                self.storage.clear_all()
+
+    def reset_portfolio(self) -> None:
+        self.reset_sync()
 
     def open_position_from_signal(
         self,

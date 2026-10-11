@@ -97,3 +97,88 @@ def test_mutation_with_both_origin_and_capability(client):
         }
     )
     assert res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_reset_barrier_prevents_stale_upsert_resurrection(tmp_path):
+    """F2: A delayed in-flight position upsert cannot commit after reset and resurrect trades."""
+    import asyncio
+    import time
+    from app.services.paper_trader import PaperTradingEngine, PaperPosition
+    from app.services.strategy_engine import Signal, SetupType
+    from app.services.strike_selector import OptionStrikeRecommendation
+
+    db_path = str(tmp_path / "test_reset_barrier.db")
+    engine = PaperTradingEngine(db_path=db_path)
+    await engine.start_persistence_worker()
+
+    rec = OptionStrikeRecommendation(
+        symbol="NIFTY 50", underlying_price=22500.0, option_type="CE",
+        atm_strike=22500, recommended_strike=22500, strike_symbol="NIFTY 22500 CE",
+        lot_size=50, risk=20.0, stop_loss=22480.0, target_1=22530.0, target_2=22560.0,
+        estimated_option_entry=100.0, option_sl_pts=20.0, option_target_1_pts=30.0, option_target_2_pts=60.0,
+        option_sl_price=80.0, option_target_1_price=130.0, option_target_2_price=160.0,
+        option_security_id="88801", is_live_quote=True, real_ask_price=100.0, real_bid_price=99.5, real_ltp=100.0
+    )
+
+    sig = Signal(
+        id="SIG_BARRIER_1", symbol="NIFTY 50", timeframe="5m",
+        setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
+        timestamp="09:30:00", entry_price=22500.0, stop_loss=22480.0, target_1=22530.0, target_2=22560.0,
+        strike_recommendation=rec, is_confirmed=True, indicators_snapshot={}, rationale="test"
+    )
+
+    # 1. Open trade (queues an upsert)
+    pos = engine.open_position_from_signal(sig, feed_mode="demo")
+    assert pos is not None
+
+    # Capture the old generation
+    old_gen = engine._portfolio_generation
+
+    # 2. Reset portfolio through the ordered queue barrier
+    await engine.reset()
+
+    # 3. Simulate an in-flight scan attempting to enqueue a write with the old generation
+    engine._enqueue_write("upsert", pos, generation=old_gen)
+
+    # Await flush
+    await engine.flush()
+
+    # Verify database is completely empty upon reload!
+    loaded_active, loaded_closed = engine.storage.load_all_positions()
+    assert len(loaded_active) == 0, f"Resurrected trades found in DB: {loaded_active}"
+    assert len(loaded_closed) == 0
+
+    await engine.stop_persistence_worker()
+
+
+@pytest.mark.asyncio
+async def test_storage_error_tracked_and_surfaced_by_flush_and_reset(tmp_path):
+    """F7: Storage errors are tracked per operation and raised during flush and reset rather than swallowed."""
+    import asyncio
+    from unittest.mock import MagicMock
+    from app.services.paper_trader import PaperTradingEngine
+
+    db_path = str(tmp_path / "test_storage_err.db")
+    engine = PaperTradingEngine(db_path=db_path)
+    await engine.start_persistence_worker()
+
+    # Make storage.upsert_position raise an explicit SQLite error
+    failing_storage = MagicMock()
+    failing_storage.upsert_position.side_effect = RuntimeError("Disk I/O Error: Database locked")
+    failing_storage.clear_all.side_effect = RuntimeError("Disk I/O Error: Disk full")
+    engine.storage = failing_storage
+
+    # Enqueue a write
+    engine._enqueue_write("upsert", "dummy_pos")
+
+    # Flush must raise the tracked operation failure!
+    with pytest.raises(RuntimeError, match="Database locked"):
+        await engine.flush()
+
+    # Reset must also raise when clear_all fails!
+    with pytest.raises(RuntimeError, match="Disk full"):
+        await engine.reset()
+
+    await engine.stop_persistence_worker()
+
