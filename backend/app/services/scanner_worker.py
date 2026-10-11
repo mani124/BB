@@ -652,11 +652,29 @@ class ScannerWorker:
             if last_cum_vol is not None and quote_vol >= last_cum_vol:
                 incremental_vol = quote_vol - last_cum_vol
             elif quote_vol > 0 and last_cum_vol is None:
-                has_today_bars = any(
-                    (b.get("timestamp") and hasattr(b["timestamp"], "date") and b["timestamp"].date() == now.date())
+                # F6: Subtract volume already represented in today's completed and forming bars
+                def _is_today(ts):
+                    if not ts:
+                        return False
+                    if hasattr(ts, "date"):
+                        return ts.date() == now.date()
+                    try:
+                        return pd.to_datetime(ts).date() == now.date()
+                    except Exception:
+                        return False
+
+                completed_today_vol = sum(
+                    int(b.get("volume", 0) or 0)
                     for b in self._candle_history.get(sym, [])
+                    if _is_today(b.get("timestamp"))
                 )
-                incremental_vol = 0 if has_today_bars else quote_vol
+                forming_bar = self._current_forming_candle.get(sym)
+                forming_today_vol = 0
+                if forming_bar and _is_today(forming_bar.get("timestamp")):
+                    forming_today_vol = int(forming_bar.get("volume", 0) or 0)
+
+                total_represented_vol = completed_today_vol + forming_today_vol
+                incremental_vol = max(0, quote_vol - total_represented_vol)
             self._last_cumulative_volume[sym] = quote_vol
 
         # Initialize intraday history if not present

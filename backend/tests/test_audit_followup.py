@@ -337,3 +337,52 @@ async def test_option_chart_forming_candle_dynamic_update():
         assert timestamps.count(current_slot_ts) == 1, "Duplicate forming candle timestamp found in DataFrame!"
 
 
+def test_volume_baseline_with_seeded_forming_bar():
+    """F6: First live quote establishes baseline subtracting both today's completed bars and any seeded forming bar."""
+    from datetime import datetime, timedelta
+    from app.services.scanner_worker import ScannerWorker
+    from app.services.universe_manager import UniverseManager
+
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    inst = worker.universe_mgr.get_indices()[0]
+    sym = inst.symbol
+
+    now = datetime.now()
+    step_min = 5
+    current_slot_min = (now.minute // step_min) * step_min
+    current_slot_ts = now.replace(minute=current_slot_min, second=0, microsecond=0)
+
+    # 1. Seed today's completed bars totaling 50,000 volume
+    worker._candle_history[sym] = [
+        {"timestamp": current_slot_ts - timedelta(minutes=10), "open": 22000.0, "high": 22010.0, "low": 21990.0, "close": 22005.0, "volume": 30000},
+        {"timestamp": current_slot_ts - timedelta(minutes=5), "open": 22005.0, "high": 22015.0, "low": 22000.0, "close": 22010.0, "volume": 20000},
+    ]
+
+    # 2. Seed an unfinished forming bar with 2,000 volume
+    worker._current_forming_candle[sym] = {
+        "timestamp": current_slot_ts,
+        "open": 22010.0,
+        "high": 22015.0,
+        "low": 22008.0,
+        "close": 22012.0,
+        "volume": 2000
+    }
+
+    # Total volume represented in local state = 50,000 + 2,000 = 52,000.
+
+    # 3. First live quote arrives with cumulative session volume = 55,000
+    quote = {
+        "last_price": 22015.0,
+        "volume": 55000
+    }
+    df = worker.get_or_update_live_candles(inst, quote)
+
+    # The forming candle volume should now be: 2000 (initial) + (55000 - 52000) = 5000!
+    forming = worker._current_forming_candle[sym]
+    assert forming["volume"] == 5000, f"Expected forming volume 5000, got {forming['volume']}"
+
+    # Total volume across all bars in df (30k + 20k + 5k) should equal 55,000
+    assert df["volume"].sum() == 55000
+
+
+
