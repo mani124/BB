@@ -1331,17 +1331,17 @@ class ScannerWorker:
             sec_id_str = str(sec_id)
             strike_symbol = f"{inst.symbol} {int(atm_strike)} {opt_type}"
 
-            opt_candles = pd.DataFrame()
+            completed_df = pd.DataFrame()
             now_dt = datetime.now()
             current_slot_ts = now_dt.replace(minute=(now_dt.minute // 5) * 5, second=0, microsecond=0)
             now_loop = asyncio.get_running_loop().time()
 
             cached = self._option_chart_cache.get(sec_id_str)
             if cached and cached[0] == current_slot_ts:
-                opt_candles = cached[1]
+                completed_df = cached[1]
             elif self._can_retry_contract_candle(sec_id_str, now_loop):
                 try:
-                    opt_candles = await self.dhan_client.fetch_intraday_candles(
+                    fetched_df = await self.dhan_client.fetch_intraday_candles(
                         client_id=cid,
                         access_token=tok,
                         security_id=sec_id_str,
@@ -1349,18 +1349,42 @@ class ScannerWorker:
                         instrument_type=inst_type_dhan,
                         interval=5
                     )
-                    if opt_candles.empty:
+                    if fetched_df.empty:
                         self._failed_candle_sec_ids[sec_id_str] = now_loop
                     else:
                         self._failed_candle_sec_ids.pop(sec_id_str, None)
-                        self._option_chart_cache[sec_id_str] = (current_slot_ts, opt_candles)
+                        # F5: Cache only completed bars strictly before the current forming slot
+                        if "timestamp" in fetched_df.columns:
+                            ts_series = pd.to_datetime(fetched_df["timestamp"])
+                            completed_df = fetched_df[ts_series < current_slot_ts].copy()
+                        else:
+                            completed_df = fetched_df.copy()
+                        self._option_chart_cache[sec_id_str] = (current_slot_ts, completed_df)
                 except Exception as e:
                     logger.debug(f"Error checking option chart candles for {strike_symbol}: {e}")
                     self._failed_candle_sec_ids[sec_id_str] = now_loop
 
-            # If exchange intraday chart API does not support option contract, maintain live tick candle
-            if opt_candles.empty and opt_ltp > 0:
-                opt_candles = self._get_or_update_option_candles(sec_id_str, opt_ltp, opt_vol)
+            # Maintain and dynamically update live forming candle with latest tick
+            if opt_ltp > 0:
+                self._get_or_update_option_candles(sec_id_str, opt_ltp, opt_vol)
+
+            forming = self._option_forming_candle.get(sec_id_str)
+            forming_df = pd.DataFrame([forming]) if forming else pd.DataFrame()
+
+            # Merge completed historical bars with the live forming candle
+            if not completed_df.empty and not forming_df.empty:
+                opt_candles = pd.concat([completed_df, forming_df], ignore_index=True)
+            elif not completed_df.empty:
+                opt_candles = completed_df.copy()
+            elif not forming_df.empty:
+                local_history = self._option_candle_history.get(sec_id_str, [])
+                opt_candles = pd.DataFrame(local_history + [forming])
+            else:
+                opt_candles = pd.DataFrame()
+
+            # Deduplicate by timestamp ensuring no contract/slot bar is counted twice
+            if not opt_candles.empty and "timestamp" in opt_candles.columns:
+                opt_candles = opt_candles.drop_duplicates(subset=["timestamp"], keep="last")
 
             if not opt_candles.empty and len(opt_candles) >= 20:
                 ind_opt = calculate_indicators(opt_candles)

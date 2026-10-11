@@ -229,3 +229,111 @@ def test_websocket_quote_not_overwritten_by_older_cached_chain_quote():
         assert q.source == "ws"
         assert q.timestamp == 105.0
 
+
+@pytest.mark.asyncio
+async def test_option_chart_forming_candle_dynamic_update():
+    """F5: Option chart cache caches completed bars only; live forming candle updates dynamically without freezing."""
+    import asyncio
+    import pandas as pd
+    from datetime import datetime, timedelta
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from app.services.scanner_worker import ScannerWorker
+    from app.services.universe_manager import UniverseManager, Instrument
+
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    inst = worker.universe_mgr.get_indices()[0]
+
+    now = datetime.now()
+    step_min = 5
+    current_slot_min = (now.minute // step_min) * step_min
+    current_slot_ts = now.replace(minute=current_slot_min, second=0, microsecond=0)
+
+    # 25 completed bars before current slot
+    bars = []
+    for i in range(25, 0, -1):
+        ts = current_slot_ts - timedelta(minutes=step_min * i)
+        bars.append({
+            "timestamp": ts,
+            "open": 100.0,
+            "high": 102.0,
+            "low": 98.0,
+            "close": 100.0,
+            "volume": 1000
+        })
+
+    # Historical API returns 25 completed bars PLUS a premature forming bar at current_slot_ts
+    hist_bars = list(bars)
+    hist_bars.append({
+        "timestamp": current_slot_ts,
+        "open": 100.0,
+        "high": 101.0,
+        "low": 99.0,
+        "close": 100.0,
+        "volume": 200
+    })
+    hist_df = pd.DataFrame(hist_bars)
+
+    sec_id = "88991"
+    chain_oc = {
+        "22500": {
+            "ce": {
+                "security_id": sec_id,
+                "last_price": 100.0,
+                "volume": 200,
+                "top_ask_price": 100.5,
+                "top_bid_price": 99.5
+            }
+        }
+    }
+
+    captured_dfs = []
+    original_calc = None
+
+    with patch.object(worker.dhan_client, "fetch_intraday_candles", new_callable=AsyncMock) as mock_fetch, \
+         patch("app.services.scanner_worker.calculate_indicators") as mock_calc:
+
+        mock_fetch.return_value = hist_df
+
+        def capture_calc(df):
+            captured_dfs.append(df.copy())
+            # Minimal return matching indicator columns so evaluate doesn't error
+            out = df.copy()
+            out["bb_middle"] = 100.0
+            out["bb_upper"] = 110.0
+            out["bb_lower"] = 90.0
+            out["bb_bandwidth"] = 20.0
+            out["bb_percent_b"] = 0.5
+            out["vwap"] = 100.0
+            out["rsi"] = 50.0
+            out["adx"] = 20.0
+            out["vol_sma"] = 500.0
+            return out
+
+        mock_calc.side_effect = capture_calc
+
+        # First scan evaluation in the slot: tick 1 (LTP=100.0, vol=200)
+        res1 = await worker._evaluate_option_chart_setups("CID", "TOK", inst, chain_oc, "2026-10-15", 22500.0)
+        assert mock_fetch.call_count == 1
+        assert len(captured_dfs) == 1
+        last_row_1 = captured_dfs[0].iloc[-1]
+        assert last_row_1["close"] == 100.0
+
+        # Second scan evaluation in the same slot: tick 2 arrives with breakout price LTP=125.0 and vol=3500!
+        chain_oc["22500"]["ce"]["last_price"] = 125.0
+        chain_oc["22500"]["ce"]["volume"] = 3500
+        res2 = await worker._evaluate_option_chart_setups("CID", "TOK", inst, chain_oc, "2026-10-15", 22500.0)
+
+        # Historical API must NOT be called again (cache preserved)
+        assert mock_fetch.call_count == 1, "Historical chart was re-fetched over network within same slot!"
+        assert len(captured_dfs) == 2
+
+        # The last row passed to indicators MUST dynamically reflect tick 2 (LTP 125.0, vol 3500)!
+        last_row_2 = captured_dfs[1].iloc[-1]
+        assert last_row_2["close"] == 125.0, f"Expected dynamically updated close 125.0, got frozen {last_row_2['close']}"
+        assert last_row_2["volume"] == 3500, f"Expected dynamically updated volume 3500, got frozen {last_row_2['volume']}"
+
+        # Deduplication check: timestamp of current slot must only appear once in captured DataFrame
+        timestamps = captured_dfs[1]["timestamp"].tolist()
+        assert timestamps.count(current_slot_ts) == 1, "Duplicate forming candle timestamp found in DataFrame!"
+
+
