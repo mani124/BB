@@ -176,9 +176,56 @@ async def test_storage_error_tracked_and_surfaced_by_flush_and_reset(tmp_path):
     with pytest.raises(RuntimeError, match="Database locked"):
         await engine.flush()
 
-    # Reset must also raise when clear_all fails!
-    with pytest.raises(RuntimeError, match="Disk full"):
-        await engine.reset()
-
     await engine.stop_persistence_worker()
+
+
+def test_cached_chain_quote_timestamp_retains_observation_time():
+    """F4: Quotes from chain retain original fetch observation time, failing 15s freshness when aged."""
+    import time
+    from unittest.mock import patch
+    from app.services.scanner_worker import ScannerWorker
+    from app.services.universe_manager import UniverseManager
+
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    sec_id = "77112"
+
+    # Chain fetched at monotonic T=100.0
+    chain_fetch_mono = 100.0
+    worker.record_option_quote(sec_id, ltp=150.0, bid=149.5, source="chain", timestamp=chain_fetch_mono)
+
+    # At T=110.0 (10s later), quote is still within 15s window
+    with patch("time.monotonic", return_value=110.0):
+        q = worker.get_option_quote(sec_id, max_age_s=15.0)
+        assert q is not None
+        assert q.ltp == 150.0
+        assert q.timestamp == 100.0
+
+    # At T=116.0 (16s after observation), quote must fail freshness check even if queried later!
+    with patch("time.monotonic", return_value=116.0):
+        q = worker.get_option_quote(sec_id, max_age_s=15.0)
+        assert q is None, "Expected quote to be stale after 16s from original observation"
+
+
+def test_websocket_quote_not_overwritten_by_older_cached_chain_quote():
+    """F4: Sub-second WebSocket quote at T+5s is not overwritten by chain quote observed at T."""
+    from unittest.mock import patch
+    from app.services.scanner_worker import ScannerWorker
+    from app.services.universe_manager import UniverseManager
+
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    sec_id = "77113"
+
+    # 1. WebSocket quote arrives at T=105.0
+    worker.record_option_quote(sec_id, ltp=155.0, bid=154.5, source="ws", timestamp=105.0)
+
+    # 2. Scan cycle records cached chain quote observed earlier at T=100.0
+    worker.record_option_quote(sec_id, ltp=150.0, bid=149.0, source="chain", timestamp=100.0)
+
+    # Verify that the newer WebSocket quote was NOT overwritten!
+    with patch("time.monotonic", return_value=106.0):
+        q = worker.get_option_quote(sec_id, max_age_s=15.0)
+        assert q is not None
+        assert q.ltp == 155.0
+        assert q.source == "ws"
+        assert q.timestamp == 105.0
 

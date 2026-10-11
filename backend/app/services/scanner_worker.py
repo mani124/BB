@@ -122,11 +122,12 @@ class ScannerWorker:
         sec_id: str,
         ltp: float,
         bid: Optional[float] = None,
-        source: str = "ws"
+        source: str = "ws",
+        timestamp: Optional[float] = None
     ) -> None:
         """Store an atomic OptionQuote record with observed price, bid, timestamp, and source."""
         sec_id_str = str(sec_id)
-        now = time.time()
+        ts = timestamp if timestamp is not None else time.monotonic()
         bid_f = None
         if bid is not None:
             try:
@@ -135,27 +136,34 @@ class ScannerWorker:
                     bid_f = b
             except (ValueError, TypeError):
                 pass
+
+        # F4: Prevent older quote (e.g. from cached chain) from overwriting newer quote
+        existing = self._latest_option_quotes.get(sec_id_str)
+        if existing and existing.timestamp > ts:
+            return
+
         self._latest_option_quotes[sec_id_str] = OptionQuote(
             ltp=float(ltp),
             bid=bid_f,
-            timestamp=now,
+            timestamp=ts,
             source=source
         )
-        self._option_last_quote_time[sec_id_str] = now
+        self._option_last_quote_time[sec_id_str] = ts
 
     def get_option_quote(self, sec_id: str, max_age_s: float = 15.0) -> Optional[OptionQuote]:
         """Retrieve the latest OptionQuote if within max_age_s freshness window."""
         sec_id_str = str(sec_id)
+        now = time.monotonic()
         quote = self._latest_option_quotes.get(sec_id_str)
         if quote:
-            if (time.time() - quote.timestamp) <= max_age_s:
+            if (now - quote.timestamp) <= max_age_s:
                 return quote
             return None
 
         # Fallback for forming candle if last quote time is fresh
         quote_time = self._option_last_quote_time.get(sec_id_str, 0.0)
         candle = self._option_forming_candle.get(sec_id_str)
-        if candle and candle.get("close", 0) > 0 and (time.time() - quote_time) <= max_age_s:
+        if candle and candle.get("close", 0) > 0 and (now - quote_time) <= max_age_s:
             return OptionQuote(
                 ltp=float(candle["close"]),
                 bid=None,
@@ -706,7 +714,7 @@ class ScannerWorker:
         inst: Instrument
     ) -> tuple[str, dict]:
         """Fetch and cache (with 15s TTL) the nearest expiry option chain for an instrument."""
-        loop_time = asyncio.get_running_loop().time()
+        now_mono = time.monotonic()
         sym = inst.symbol
 
         today_str = datetime.now().strftime("%Y-%m-%d")
@@ -736,7 +744,7 @@ class ScannerWorker:
         cached = self._option_chain_cache.get(sym)
         if cached:
             ts, oc = cached
-            if (loop_time - ts) < 15.0:
+            if (now_mono - ts) < 15.0:
                 return expiry, oc
 
         try:
@@ -747,8 +755,9 @@ class ScannerWorker:
                 underlying_seg=inst.exchange_segment,
                 expiry=expiry
             )
+            fetch_mono = time.monotonic()
             if oc:
-                self._option_chain_cache[sym] = (loop_time, oc)
+                self._option_chain_cache[sym] = (fetch_mono, oc)
                 return expiry, oc
             else:
                 self._expiry_cache.pop(sym, None)
@@ -1100,6 +1109,8 @@ class ScannerWorker:
                     if self._session_generation != gen or (cid and not self._session_credentials and not client_id):
                         return self._state
                     if oc:
+                        cached_entry = self._option_chain_cache.get(inst.symbol)
+                        chain_fetch_ts = cached_entry[0] if cached_entry else time.monotonic()
                         # Extract strike quotes (LTP, bid) from option chain into option_price_map & option_bid_map
                         for strike_k, strike_data in oc.items():
                             if isinstance(strike_data, dict):
@@ -1138,7 +1149,13 @@ class ScannerWorker:
                                                     c_ltp_f = float(c_ltp)
                                                     if c_ltp_f > 0:
                                                         option_price_map[c_sec_id_str] = c_ltp_f
-                                                        self.record_option_quote(c_sec_id_str, ltp=c_ltp_f, bid=c_bid_f, source="chain")
+                                                        self.record_option_quote(
+                                                            c_sec_id_str,
+                                                            ltp=c_ltp_f,
+                                                            bid=c_bid_f,
+                                                            source="chain",
+                                                            timestamp=chain_fetch_ts
+                                                        )
                                                 except (ValueError, TypeError):
                                                     pass
 
