@@ -1,129 +1,26 @@
 import asyncio
 import uuid
 import logging
-from datetime import datetime, timedelta
 from typing import Any, Callable, Literal, Optional
-from pydantic import BaseModel
 from app.services.charges_calculator import calculate_option_trade_charges
 from app.services.strategy_engine import Signal, is_setup5
-from app.services.strike_selector import get_lot_size
 from app.services import market_hours
 from app.core.config import settings
 
+from app.services.paper_models import (
+    PaperPosition, PaperPortfolio, DailyPnl, STALE_CARRYOVER, EOD_SQUARE_OFF,
+    _now_stamp, _signed_slip, _view_mode, _parse_iso,
+)
+from app.services.paper_persistence import PaperPersistenceMixin
+from app.services.paper_guards import PaperGuardsMixin
+
 logger = logging.getLogger(__name__)
 
-class PaperPosition(BaseModel):
-    id: str
-    signal_id: str
-    symbol: str
-    option_type: Literal["CE", "PE"]
-    strike_symbol: str
-    timeframe: str
-    setup_type: str
-    entry_time: str
-    underlying_entry: float
-    underlying_sl: float
-    underlying_target_1: float
-    underlying_target_2: float
-    option_entry: float
-    option_sl: float
-    option_target_1: float
-    option_target_2: float
-    lot_size: int
-    lots: int
-    quantity: int
-    current_underlying: float
-    current_option_price: float
-    pnl_points: float
-    pnl_rupees: float
-    status: Literal["OPEN", "TARGET_1", "TARGET_2", "STOPPED_OUT", "CLOSED"]
-    exit_time: Optional[str] = None
-    exit_reason: Optional[str] = None
-    initial_lots: Optional[int] = None
-    initial_quantity: Optional[int] = None
-    booked_lots: int = 0
-    booked_pnl_rupees: float = 0.0
-    booked_slippage_cost: float = 0.0
-    pending_spot_exit: Optional[str] = None
-    pending_spot_tp1: bool = False
-    option_security_id: Optional[str] = None
-    feed_mode: str = "demo"  # "demo" or "live"
-    theoretical_entry: float = 0.0
-    entry_slippage: float = 0.0
-    theoretical_exit: Optional[float] = None
-    exit_slippage: float = 0.0
-    total_slippage_cost: float = 0.0
-    gross_pnl: float = 0.0
-    total_charges: float = 0.0
-    net_pnl: float = 0.0
-    charges_breakdown: Optional[dict] = None
-    # Full ISO datetimes (IST, with date). entry_time/exit_time stay HH:MM:SS for display.
-    entry_datetime: Optional[str] = None
-    exit_datetime: Optional[str] = None
-    # Non-destructive quarantine: rows with a reason stay visible but are excluded from totals.
-    quarantine_reason: Optional[str] = None
-    # True when the entry price was modelled (no real ask/last from the exchange feed).
-    entry_estimated: bool = False
+# Re-exported for existing importers (models live in paper_models)
+__all__ = ["PaperPosition", "PaperPortfolio", "DailyPnl", "STALE_CARRYOVER", "EOD_SQUARE_OFF",
+           "PaperTradingEngine", "paper_trader", "_now_stamp"]
 
-class DailyPnl(BaseModel):
-    date: str
-    trades: int = 0
-    wins: int = 0
-    losses: int = 0
-    gross_pnl: float = 0.0
-    total_charges: float = 0.0
-    net_pnl: float = 0.0
-    quarantined_excluded: int = 0
-
-STALE_CARRYOVER = "STALE_CARRYOVER"
-EOD_SQUARE_OFF = "EOD_SQUARE_OFF"
-
-def _now_stamp() -> tuple[str, str]:
-    """(HH:MM:SS display, ISO datetime with date) for the current IST instant."""
-    n = market_hours.now_ist().replace(microsecond=0)
-    return n.strftime("%H:%M:%S"), n.isoformat()
-
-def _signed_slip(level: float, fill: float) -> float:
-    """Slippage in points for a sell: positive = filled worse than the intended level,
-    negative = price improvement (e.g. a gap through a target)."""
-    return round(float(level) - float(fill), 2)
-
-def _view_mode(mode: Optional[str]) -> Optional[str]:
-    """Portfolio views are either demo or live. Every non-demo scan state (live, stale,
-    error, closed) shows the live book, so positions never vanish when the market closes."""
-    if not mode:
-        return None
-    return "demo" if mode == "demo" else "live"
-
-def _parse_iso(value: Optional[str]) -> Optional[datetime]:
-    if not value:
-        return None
-    try:
-        dt = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    return dt if dt.tzinfo else dt.replace(tzinfo=market_hours.IST)
-
-class PaperPortfolio(BaseModel):
-    active_positions: list[PaperPosition] = []
-    closed_trades: list[PaperPosition] = []
-    auto_trade_enabled: bool = True
-    default_lots: int = 2
-    max_risk_per_trade: float = 4000.0
-    total_realized_pnl: float = 0.0
-    total_unrealized_pnl: float = 0.0
-    total_pnl: float = 0.0
-    win_rate_pct: float = 0.0
-    total_trades_count: int = 0
-    winning_trades_count: int = 0
-    losing_trades_count: int = 0
-    total_gross_pnl: float = 0.0
-    total_slippage_cost: float = 0.0
-    avg_slippage_points: float = 0.0
-    total_charges: float = 0.0
-    total_net_pnl: float = 0.0
-
-class PaperTradingEngine:
+class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin):
     """Manages paper trading execution, position monitoring, and analytics."""
 
     def __init__(self, db_path: Optional[str] = None):
@@ -141,171 +38,12 @@ class PaperTradingEngine:
             self.storage = PaperStorage(db_path)
             self._load_from_storage()
 
-    def _execute_storage_op(self, op: str, arg: Any) -> None:
-        if not self.storage:
-            return
-        if op == "upsert":
-            self.storage.upsert_position(arg)
-        elif op == "batch_upsert":
-            self.storage.batch_upsert_positions(arg)
-        elif op == "add_signal":
-            sig_id, ts = arg
-            self.storage.add_processed_signal(sig_id, ts)
-        elif op == "save_setting":
-            k, v = arg
-            self.storage.save_setting(k, v)
-        elif op == "clear_all":
-            self.storage.clear_all()
 
-    async def _persistence_worker(self) -> None:
-        while True:
-            try:
-                if self._write_queue is None:
-                    break
-                item = await self._write_queue.get()
-                if item is None:
-                    self._write_queue.task_done()
-                    break
-                op, arg, gen, fut = item
-                # F2: Reject in-flight scan writes from older generations
-                if gen < self._portfolio_generation and op != "clear_all":
-                    if fut and not fut.done():
-                        fut.set_result(False)
-                    self._write_queue.task_done()
-                    continue
 
-                try:
-                    await asyncio.to_thread(self._execute_storage_op, op, arg)
-                    if fut and not fut.done():
-                        fut.set_result(True)
-                except Exception as exc:
-                    logger.error(f"Persistence worker error executing {op}: {exc}")
-                    if fut and not fut.done():
-                        fut.set_exception(exc)
-                    else:
-                        self._pending_errors.append(exc)
-                finally:
-                    self._write_queue.task_done()
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Error in persistence worker loop: {e}")
 
-    def _enqueue_write(
-        self,
-        op: str,
-        arg: Any,
-        generation: Optional[int] = None,
-        future: Optional[asyncio.Future] = None
-    ) -> None:
-        if not self.storage:
-            if future and not future.done():
-                future.set_result(True)
-            return
 
-        gen = generation if generation is not None else self._portfolio_generation
-        if generation is not None and generation < self._portfolio_generation and op != "clear_all":
-            if future and not future.done():
-                future.set_result(False)
-            return
 
-        item = (op, arg, gen, future)
 
-        if self._write_queue is not None:
-            try:
-                running_loop = asyncio.get_running_loop()
-            except RuntimeError:
-                running_loop = None
-
-            if running_loop is self._loop or (running_loop and self._loop is None):
-                self._write_queue.put_nowait(item)
-            elif self._loop and self._loop.is_running():
-                self._loop.call_soon_threadsafe(self._write_queue.put_nowait, item)
-            else:
-                try:
-                    self._execute_storage_op(op, arg)
-                    if future and not future.done():
-                        future.set_result(True)
-                except Exception as e:
-                    self._pending_errors.append(e)
-                    if future and not future.done():
-                        future.set_exception(e)
-                    raise
-        else:
-            try:
-                self._execute_storage_op(op, arg)
-                if future and not future.done():
-                    future.set_result(True)
-            except Exception as e:
-                self._pending_errors.append(e)
-                if future and not future.done():
-                    future.set_exception(e)
-                raise
-
-    async def start_persistence_worker(self) -> None:
-        if not self.storage:
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.get_event_loop()
-        self._loop = loop
-        if self._write_queue is None:
-            self._write_queue = asyncio.Queue()
-        if self._writer_task is None or self._writer_task.done():
-            self._writer_task = loop.create_task(self._persistence_worker())
-
-    async def flush(self) -> None:
-        if self._write_queue is not None:
-            await self._write_queue.join()
-        if self._pending_errors:
-            err = self._pending_errors.pop(0)
-            raise err
-
-    async def stop_persistence_worker(self) -> None:
-        if self._write_queue is not None:
-            try:
-                await self.flush()
-            except Exception:
-                logger.warning("Error during flush in stop_persistence_worker", exc_info=True)
-            finally:
-                await self._write_queue.put(None)
-                if self._writer_task and not self._writer_task.done():
-                    try:
-                        await self._writer_task
-                    except asyncio.CancelledError:
-                        pass
-                self._writer_task = None
-                self._write_queue = None
-
-    def _load_from_storage(self):
-        if not self.storage:
-            return
-        active, closed = self.storage.load_all_positions()
-        self._portfolio.active_positions = active
-        self._portfolio.closed_trades = closed
-        self._processed_signal_ids = self.storage.load_processed_signals()
-
-        saved_auto = self.storage.load_setting("auto_trade_enabled")
-        if saved_auto is not None:
-            self._portfolio.auto_trade_enabled = (saved_auto.lower() == "true")
-
-        saved_lots = self.storage.load_setting("default_lots")
-        if saved_lots is not None:
-            try:
-                self._portfolio.default_lots = int(saved_lots)
-            except ValueError:
-                pass
-
-        saved_risk = self.storage.load_setting("max_risk_per_trade")
-        if saved_risk is not None:
-            try:
-                self._portfolio.max_risk_per_trade = float(saved_risk)
-            except ValueError:
-                pass
-
-        self.flag_stale_carryover()
-        self._recalculate_metrics()
 
     def get_portfolio(self, mode: Optional[str] = None) -> PaperPortfolio:
         self._recalculate_metrics()
@@ -604,133 +342,11 @@ class PaperTradingEngine:
                 logger.warning(f"Error executing on_position_opened callback: {e}")
         return pos
 
-    def _persist_entry(self, pos: PaperPosition, signal_id: str) -> None:
-        """P1-4: write the new position and its processed-signal id in ONE synchronous
-        transaction, so a crash or --reload between the two can never let the same signal
-        open a second position after restart. Later updates still go through the queue."""
-        if not self.storage:
-            return
-        created = market_hours.now_ist().strftime("%Y-%m-%d %H:%M:%S")
-        try:
-            self.storage.record_entry(pos, signal_id, created)
-        except Exception as exc:
-            logger.error("Atomic entry persistence failed for %s: %s", pos.id, exc)
-            self._pending_errors.append(exc)
 
-    @staticmethod
-    def _quote_block_reason(rec) -> Optional[str]:
-        """P1-3: None if the live quote behind a recommendation is fresh and tradeable."""
-        if getattr(settings, "REQUIRE_REAL_DELTA", False) and getattr(rec, "delta_assumed", False):
-            return "option exits rely on an assumed delta (no Greeks in chain)"
-        if getattr(rec, "lot_size_known", True) is False:
-            return "lot size unknown (guessed default); refusing to size a position"
-        max_age = float(getattr(settings, "MAX_QUOTE_AGE_SECONDS", 0) or 0)
-        age = getattr(rec, "quote_age_s", None)
-        if max_age > 0 and age is not None and float(age) > max_age:
-            return f"quote is {float(age):.0f}s old (limit {max_age:.0f}s)"
-        ask = float(getattr(rec, "real_ask_price", 0.0) or 0.0)
-        bid = float(getattr(rec, "real_bid_price", 0.0) or 0.0)
-        max_spread = float(getattr(settings, "MAX_ENTRY_SPREAD_PCT", 0) or 0)
-        if max_spread > 0 and ask > 0 and bid > 0:
-            if ask < bid:
-                return f"crossed market (bid {bid} > ask {ask})"
-            spread_pct = (ask - bid) / ask * 100.0
-            if spread_pct > max_spread:
-                return f"spread {spread_pct:.1f}% exceeds {max_spread:.0f}% (bid {bid}, ask {ask})"
-        return None
 
-    @staticmethod
-    def _contract_key(security_id: Optional[str], strike_symbol: Optional[str]) -> Optional[str]:
-        if security_id and str(security_id).strip():
-            return f"id:{str(security_id).strip()}"
-        if strike_symbol and str(strike_symbol).strip():
-            return f"sym:{str(strike_symbol).strip()}"
-        return None
 
-    def _exposure_block_reason(self, signal: Signal) -> Optional[str]:
-        """P0-2: returns why a new entry must be refused, or None if it may proceed."""
-        rec = signal.strike_recommendation
-        key = self._contract_key(getattr(rec, "option_security_id", None), getattr(rec, "strike_symbol", None))
-        for p in self._portfolio.active_positions:
-            if key and self._contract_key(p.option_security_id, p.strike_symbol) == key:
-                return f"contract {key} already has an open position"
-            if p.symbol == signal.symbol and p.option_type == signal.option_type:
-                return f"{p.symbol} {p.option_type} already has an open position"
 
-        # P1-7: portfolio-level caps (0 disables a cap)
-        max_open = int(getattr(settings, "MAX_OPEN_POSITIONS", 0) or 0)
-        if max_open > 0 and len(self._portfolio.active_positions) >= max_open:
-            return f"max open positions reached ({max_open})"
 
-        max_notional = float(getattr(settings, "MAX_OPEN_NOTIONAL", 0) or 0)
-        if max_notional > 0:
-            open_notional = sum(p.option_entry * p.quantity for p in self._portfolio.active_positions)
-            lots = self._portfolio.default_lots
-            new_notional = float(getattr(rec, "estimated_option_entry", 0.0) or 0.0) * int(getattr(rec, "lot_size", 0) or 0) * max(1, lots)
-            if open_notional + new_notional > max_notional:
-                return f"open premium notional would exceed {max_notional:,.0f}"
-
-        max_per_day = int(getattr(settings, "MAX_ENTRIES_PER_SYMBOL_PER_DAY", 0) or 0)
-        if max_per_day > 0:
-            today = market_hours.now_ist().date()
-            entered = 0
-            for p in self._portfolio.active_positions + self._portfolio.closed_trades:
-                if p.symbol != signal.symbol or p.quarantine_reason:
-                    continue
-                ed = _parse_iso(p.entry_datetime)
-                if ed is not None and ed.date() == today:
-                    entered += 1
-            if entered >= max_per_day:
-                return f"{signal.symbol} already had {entered} entries today (limit {max_per_day})"
-
-        cooldown = int(getattr(settings, "REENTRY_COOLDOWN_SECONDS", 0) or 0)
-        if cooldown > 0:
-            now = market_hours.now_ist()
-            for p in reversed(self._portfolio.closed_trades):
-                if p.symbol != signal.symbol or p.option_type != signal.option_type or p.quarantine_reason:
-                    continue
-                exited = _parse_iso(p.exit_datetime)
-                if exited and timedelta(0) <= (now - exited) < timedelta(seconds=cooldown):
-                    return f"cooldown ({cooldown}s) after exit on {p.symbol} {p.option_type}"
-        return None
-
-    def flag_stale_carryover(self) -> list[PaperPosition]:
-        """P0-5: positions still open from a previous IST date can't be valid intraday
-        positions. Close them out as STALE_CARRYOVER (no repricing) and quarantine them
-        so they are excluded from performance stats."""
-        today = market_hours.now_ist().date()
-        stale = []
-        for pos in list(self._portfolio.active_positions):
-            entered = _parse_iso(pos.entry_datetime)
-            if entered is None or entered.date() >= today:
-                continue
-            _, now_iso = _now_stamp()
-            pos.status = "CLOSED"
-            pos.exit_reason = STALE_CARRYOVER
-            pos.exit_time = _now_stamp()[0]
-            pos.exit_datetime = now_iso
-            pos.quarantine_reason = STALE_CARRYOVER
-            self._portfolio.active_positions.remove(pos)
-            self._portfolio.closed_trades.append(pos)
-            self._enqueue_write("upsert", pos)
-            stale.append(pos)
-        if stale:
-            logger.warning("Flagged %d stale carried-over position(s) as %s", len(stale), STALE_CARRYOVER)
-            self._recalculate_metrics()
-        return stale
-
-    def square_off_if_due(self, feed_mode: Optional[str] = "live") -> list[PaperPosition]:
-        """P0-5: close open positions once the EOD square-off time is reached."""
-        if not market_hours.is_square_off_due():
-            return []
-        closed = []
-        for pos in list(self._portfolio.active_positions):
-            if feed_mode is not None and getattr(pos, "feed_mode", "demo") != feed_mode:
-                continue
-            res = self.close_position(pos.id, reason=EOD_SQUARE_OFF)
-            if res:
-                closed.append(res)
-        return closed
 
     def on_signals_cycle(self, signals: list[Signal], feed_mode: str = "demo"):
         """Automatically open paper positions if auto-trade is enabled."""
@@ -1196,5 +812,4 @@ class PaperTradingEngine:
         self._portfolio.total_slippage_cost = round(total_slip_cost, 2)
         self._portfolio.avg_slippage_points = round(avg_slip_pts, 2)
 
-from app.core.config import settings
 paper_trader = PaperTradingEngine(db_path=settings.DB_PATH)
