@@ -338,7 +338,7 @@ def evaluate_signals(
     curr_close = float(close)
     bar_range = curr_high - curr_low
 
-    if bw > 5.0 and adx <= 25.0 and bar_range > 0.0001:
+    if bw > abs_sq and adx <= 25.0 and bar_range > 0.0001:
         # Bearish PE Pin Bar: High > Upper Band, Upper Wick >= 50% range, Close < Upper Band, RSI >= 68
         upper_wick = curr_high - max(curr_open, curr_close)
         is_pe_pinbar = (
@@ -408,7 +408,7 @@ def evaluate_signals(
     # =========================================================================
     # SETUP 7: 2.5σ Puncture & Inside Bar Breakdown
     # =========================================================================
-    if bw > 5.0 and len(df) >= 22:
+    if bw > abs_sq and len(df) >= 22:
         prev2 = df.iloc[last_idx - 2]
         prev2_high = float(prev2.get("high", prev2["close"]))
         prev2_low = float(prev2.get("low", prev2["close"]))
@@ -489,7 +489,7 @@ def evaluate_signals(
     # =========================================================================
     # SETUP 8: Climax Swing RSI Divergence Fade
     # =========================================================================
-    if bw > 5.0 and len(df) >= 20:
+    if bw > abs_sq and len(df) >= 20:
         window_size = min(15, len(df))
         lookback_window = df.iloc[-window_size:]
         recent_3 = lookback_window.iloc[-3:]
