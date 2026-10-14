@@ -50,7 +50,7 @@ fi
 remote_info="$(curl -fsS --max-time 20 "$BASE_URL/DEPLOY_VERSION")" || die "cannot read $BASE_URL/DEPLOY_VERSION"
 remote_sha="$(printf '%s\n' "$remote_info" | sed -n 's/^sha=\([0-9a-f]\{40\}\)$/\1/p')"
 remote_built="$(printf '%s\n' "$remote_info" | sed -n 's/^built=\([0-9]\{1,\}\)$/\1/p')"
-[ -n "$remote_sha" ] && [ -n "$remote_built" ] || die "DEPLOY_VERSION is malformed"
+if [ -z "$remote_sha" ] || [ -z "$remote_built" ]; then die "DEPLOY_VERSION is malformed"; fi
 
 local_sha=""; local_built=0
 if [ -f "$STATE_DIR/deployed" ]; then
@@ -110,8 +110,9 @@ mkdir "$work/src"
 tar -xzf "$work/bundle.tgz" -C "$work/src" --strip-components=1 || die "cannot unpack bundle"
 [ "$(sed -n 's/^sha=//p' "$work/src/DEPLOY_VERSION" 2>/dev/null)" = "$remote_sha" ] \
   || { log "bundle changed while downloading, will retry next run"; exit 0; }
-[ -f "$work/src/backend/app/main.py" ] && [ -f "$work/src/frontend/dist/index.html" ] \
-  && [ -f "$work/src/backend/requirements.txt" ] || die "bundle is missing required files"
+for f in backend/app/main.py frontend/dist/index.html backend/requirements.txt; do
+  [ -f "$work/src/$f" ] || die "bundle is missing $f"
+done
 
 if [ "$DRY_RUN" = "1" ]; then
   log "dry-run: ${remote_sha:0:7} would be deployed now (all checks passed); nothing changed"
