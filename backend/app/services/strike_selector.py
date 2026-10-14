@@ -70,6 +70,10 @@ def clean_symbol_key(symbol: str) -> str:
             s = s[len(prefix):].strip()
     return s
 
+def is_lot_size_known(symbol: str) -> bool:
+    return clean_symbol_key(symbol) in DEFAULT_LOT_SIZES
+
+
 def get_lot_size(symbol: str) -> int:
     clean = clean_symbol_key(symbol)
     return DEFAULT_LOT_SIZES.get(clean, 100)
@@ -82,6 +86,7 @@ class OptionStrikeRecommendation(BaseModel):
     recommended_strike: int  # 1-strike ITM for best delta/gamma balance
     strike_symbol: str
     lot_size: int
+    lot_size_known: bool = True  # False => lot size is a guessed default; entries are refused
     # Underlying spot levels
     risk: float
     stop_loss: float
@@ -264,6 +269,7 @@ def recommend_strike(
         recommended_strike=recommended_strike,
         strike_symbol=strike_symbol,
         lot_size=lot_size,
+        lot_size_known=is_lot_size_known(symbol),
         risk=risk,
         stop_loss=stop_loss,
         target_1=round(calc_target_1, 2),
@@ -412,6 +418,7 @@ def resolve_live_strike_from_chain(
             recommended_strike=recommended_strike,
             strike_symbol=strike_symbol,
             lot_size=lot_size,
+        lot_size_known=is_lot_size_known(symbol),
             risk=risk,
             stop_loss=stop_loss,
             target_1=round(calc_target_1, 2),

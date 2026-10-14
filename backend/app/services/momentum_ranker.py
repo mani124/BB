@@ -60,6 +60,16 @@ class MomentumRanker:
 
             ohlc = q.get("ohlc", {})
             prev_close = float(ohlc.get("close", 0.0))
+            # P2-4: cross-check prev close against the exchange's own net_change; when they
+            # disagree by >1% the OHLC 'close' is stale/intraday, so trust ltp - net_change.
+            try:
+                net_chg = q.get("net_change")
+                if net_chg is not None and float(net_chg) != 0.0:
+                    implied_prev = ltp - float(net_chg)
+                    if implied_prev > 0 and (prev_close <= 0 or abs(prev_close - implied_prev) / implied_prev > 0.01):
+                        prev_close = implied_prev
+            except (TypeError, ValueError):
+                pass
             day_open = float(ohlc.get("open", ltp))
             day_high = max(float(ohlc.get("high", ltp)), ltp)
             day_low = min(float(ohlc.get("low", ltp)), ltp)
@@ -74,6 +84,10 @@ class MomentumRanker:
                 change_pct = ((ltp - day_open) / day_open) * 100.0
             else:
                 change_pct = 0.0
+
+            # Implausible day change (bad tick / corporate action): skip rather than rank on it
+            if abs(change_pct) > 25.0:
+                continue
 
             # 2. VWAP Distance %
             vwap_dist_pct = ((ltp - vwap) / vwap) * 100.0

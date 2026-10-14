@@ -53,6 +53,10 @@ def entry_cutoff_time() -> time:
     return _parse_hhmm(settings.ENTRY_CUTOFF_TIME, time(15, 15))
 
 
+def expiry_day_cutoff_time() -> time:
+    return _parse_hhmm(settings.EXPIRY_DAY_CUTOFF_TIME, time(14, 30))
+
+
 def square_off_time() -> time:
     return _parse_hhmm(settings.EOD_SQUARE_OFF_TIME, time(15, 20))
 

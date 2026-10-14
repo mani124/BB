@@ -21,6 +21,7 @@ class Settings(BaseModel):
     # Exchange-session guard (all times IST, HH:MM)
     ENTRY_CUTOFF_TIME: str = os.getenv("ENTRY_CUTOFF_TIME", "15:15")
     EOD_SQUARE_OFF_TIME: str = os.getenv("EOD_SQUARE_OFF_TIME", "15:20")
+    EXPIRY_DAY_CUTOFF_TIME: str = os.getenv("EXPIRY_DAY_CUTOFF_TIME", "14:30")
     REENTRY_COOLDOWN_SECONDS: int = int(os.getenv("REENTRY_COOLDOWN_SECONDS", "300"))
     # Entry quality guards (live mode)
     MAX_QUOTE_AGE_SECONDS: float = float(os.getenv("MAX_QUOTE_AGE_SECONDS", "30"))

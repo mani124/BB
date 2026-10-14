@@ -103,6 +103,10 @@ def evaluate_option_chart_signal(
             return None
         if candle_dt.time() > market_hours.entry_cutoff_time():
             return None
+        # P2-7: on expiry day premiums decay/gap violently late in the session; stop earlier
+        if expiry_date and str(expiry_date)[:10] == market_hours.now_ist().date().isoformat() \
+                and candle_dt.time() > market_hours.expiry_day_cutoff_time():
+            return None
     except Exception:
         pass
 
