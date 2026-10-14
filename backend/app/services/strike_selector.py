@@ -284,6 +284,25 @@ def recommend_strike(
     )
 
 
+def chain_strike_grid(option_chain_oc: dict) -> list[float]:
+    out: list[float] = []
+    for k in (option_chain_oc or {}).keys():
+        try:
+            out.append(float(k))
+        except (ValueError, TypeError):
+            continue
+    return sorted(set(out))
+
+
+def _chain_step(strikes: list[float]) -> float:
+    gaps = sorted(b - a for a, b in zip(strikes, strikes[1:]) if b - a > 0)
+    return gaps[len(gaps) // 2] if gaps else 1.0
+
+
+def _num(v: float):
+    return int(v) if float(v).is_integer() else v
+
+
 def resolve_live_strike_from_chain(
     symbol: str,
     underlying_price: float,
@@ -300,28 +319,31 @@ def resolve_live_strike_from_chain(
     extract its real market quotes (Ask/LTP, Greeks), and calculate mathematically sound
     Option SL and Target levels based on real entry price and real Delta.
     """
-    step = get_strike_step(symbol, underlying_price)
     lot_size = get_lot_size(symbol)
+
+    # P2-6: take the strike grid from the live chain itself (nearest listed strike, real step);
+    # fall back to the static table only when the chain has too few strikes to infer a grid.
+    chain_strikes = chain_strike_grid(option_chain_oc)
+    if len(chain_strikes) >= 3 and all(float(k).is_integer() for k in chain_strikes):
+        step = _chain_step(chain_strikes)
+        atm_idx = min(range(len(chain_strikes)), key=lambda j: abs(chain_strikes[j] - underlying_price))
+        atm_strike = _num(chain_strikes[atm_idx])
+        pref_u = (strike_preference or "DEFAULT").upper()
+        shift = 0 if pref_u == "ATM" else (-1 if option_type == "CE" else 1)
+        rec_idx = max(0, min(len(chain_strikes) - 1, atm_idx + shift))
+        recommended_strike = _num(chain_strikes[rec_idx])
+        default_delta = {"ATM": 0.50, "ITM_1": 0.54}.get(pref_u, 0.55)
+    else:
+        step = get_strike_step(symbol, underlying_price)
+        atm_strike = int(round(underlying_price / step) * step)
+        pref = (strike_preference or "DEFAULT").upper()
+        if pref == "ATM":
+            recommended_strike = atm_strike
+            default_delta = 0.50
+        else:
+            recommended_strike = atm_strike - step if option_type == "CE" else atm_strike + step
+            default_delta = 0.54 if pref == "ITM_1" else 0.55
     min_risk = max(step * 0.25, 2.0)
-
-    atm_strike = int(round(underlying_price / step) * step)
-
-    pref = (strike_preference or "DEFAULT").upper()
-    if pref == "ATM":
-        recommended_strike = atm_strike
-        default_delta = 0.50
-    elif pref == "ITM_1":
-        if option_type == "CE":
-            recommended_strike = atm_strike - step
-        else:
-            recommended_strike = atm_strike + step
-        default_delta = 0.54
-    else:  # "DEFAULT"
-        if option_type == "CE":
-            recommended_strike = atm_strike - step
-        else:
-            recommended_strike = atm_strike + step
-        default_delta = 0.55
 
     if option_type == "CE":
         if stop_loss is None or stop_loss >= underlying_price:

@@ -45,3 +45,22 @@ def test_ranker_prefers_net_change_when_prev_close_stale_and_skips_implausible()
     dump = str(ranks.model_dump())
     assert "BBB" not in dump
     assert "AAA" in dump   # +10% once prev close is corrected to 100
+
+
+def _chain(strikes):
+    return {f"{k:.6f}": {"ce": {"last_price": 50.0, "top_ask_price": 51.0, "top_bid_price": 49.0, "greeks": {"delta": 0.5}},
+                         "pe": {"last_price": 50.0, "top_ask_price": 51.0, "top_bid_price": 49.0, "greeks": {"delta": -0.5}}}
+            for k in strikes}
+
+
+def test_strike_resolved_from_chain_grid_not_static_table():
+    from app.services.strike_selector import resolve_live_strike_from_chain
+    # RELIANCE is 20-wide in the static table; this chain lists 25-wide strikes only
+    chain = _chain([2950, 2975, 3000, 3025, 3050])
+    ce = resolve_live_strike_from_chain("RELIANCE", 3012.0, "CE", chain, "2026-10-29")
+    assert ce.atm_strike == 3000 and ce.recommended_strike == 2975
+    pe = resolve_live_strike_from_chain("RELIANCE", 3012.0, "PE", chain, "2026-10-29")
+    assert pe.recommended_strike == 3025
+    # clamped at the edge of the chain, never an unlisted strike
+    edge = resolve_live_strike_from_chain("RELIANCE", 2950.0, "CE", chain, "2026-10-29")
+    assert edge.recommended_strike == 2950
