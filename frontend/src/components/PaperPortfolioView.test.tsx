@@ -338,3 +338,23 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
   });
 });
 
+
+import { summarizeTrades } from './PaperPortfolioView';
+
+describe('summarizeTrades', () => {
+  it('excludes quarantined trades from count, win rate and P&L', () => {
+    const s = summarizeTrades([
+      { net_pnl: 775.87, gross_pnl: 835 },
+      { net_pnl: -516.65, gross_pnl: -460 },
+      { net_pnl: -416.85, gross_pnl: -360, quarantine_reason: 'OFF_SESSION_ENTRY' },
+    ]);
+    expect(s.count).toBe(2);
+    expect(s.winRate).toBe('50.0');
+    expect(s.gross).toBeCloseTo(375, 2);
+    expect(s.net).toBeCloseTo(259.22, 2);
+  });
+  it('handles an empty or fully quarantined list', () => {
+    expect(summarizeTrades([]).winRate).toBe('0.0');
+    expect(summarizeTrades([{ net_pnl: 5, quarantine_reason: 'X' }]).count).toBe(0);
+  });
+});
