@@ -95,6 +95,7 @@ class PaperStorage:
                 "ALTER TABLE positions ADD COLUMN entry_datetime TEXT DEFAULT NULL;",
                 "ALTER TABLE positions ADD COLUMN exit_datetime TEXT DEFAULT NULL;",
                 "ALTER TABLE positions ADD COLUMN quarantine_reason TEXT DEFAULT NULL;",
+                "ALTER TABLE positions ADD COLUMN entry_estimated INTEGER DEFAULT 0;",
             ]
             for stmt in migrations:
                 try:
@@ -174,7 +175,7 @@ class PaperStorage:
         "theoretical_entry", "entry_slippage", "theoretical_exit", "exit_slippage",
         "total_slippage_cost", "gross_pnl", "total_charges", "net_pnl", "charges_json",
         "booked_slippage_cost", "pending_spot_exit", "pending_spot_tp1",
-        "entry_datetime", "exit_datetime", "quarantine_reason",
+        "entry_datetime", "exit_datetime", "quarantine_reason", "entry_estimated",
     )
     # Columns that never change after the row is first inserted.
     _IMMUTABLE = frozenset({
@@ -219,11 +220,26 @@ class PaperStorage:
             1 if getattr(pos, "pending_spot_tp1", False) else 0,
             getattr(pos, "entry_datetime", None), getattr(pos, "exit_datetime", None),
             getattr(pos, "quarantine_reason", None),
+            1 if getattr(pos, "entry_estimated", False) else 0,
         )
 
     def upsert_position(self, pos: PaperPosition):
         with self._get_connection() as conn:
             conn.execute(self._upsert_sql(), self._row_params(pos))
+            conn.commit()
+
+    def record_entry(self, pos: PaperPosition, signal_id: str, created_at: str = "") -> None:
+        """Atomically persist a newly opened position together with its processed signal id.
+
+        Both rows are committed in one transaction so a crash or reload can never leave a
+        position without its processed-signal marker (which would let the same signal open
+        a second position after restart)."""
+        with self._get_connection() as conn:
+            conn.execute(self._upsert_sql(), self._row_params(pos))
+            conn.execute(
+                "INSERT OR IGNORE INTO processed_signals (signal_id, created_at) VALUES (?, ?);",
+                (signal_id, created_at),
+            )
             conn.commit()
 
     def batch_upsert_positions(self, positions: list[PaperPosition]):
@@ -264,7 +280,7 @@ class PaperStorage:
         closed: list[PaperPosition] = []
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM positions ORDER BY entry_time ASC;")
+            cursor.execute("SELECT * FROM positions ORDER BY (entry_datetime IS NOT NULL), COALESCE(entry_datetime, entry_time) ASC;")
             rows = cursor.fetchall()
             for row in rows:
                 d = dict(row)
@@ -295,6 +311,7 @@ class PaperStorage:
                 d["entry_datetime"] = d.get("entry_datetime") or None
                 d["exit_datetime"] = d.get("exit_datetime") or None
                 d["quarantine_reason"] = d.get("quarantine_reason") or None
+                d["entry_estimated"] = bool(d.get("entry_estimated") or 0)
 
                 pos = PaperPosition(**d)
                 if pos.status in ["OPEN", "TARGET_1"]:

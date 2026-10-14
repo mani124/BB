@@ -103,7 +103,11 @@ trap cleanup SIGINT SIGTERM EXIT
 # 4. Start FastAPI Backend on port 8001
 echo -e "${CYAN}Starting FastAPI Backend on http://localhost:8001...${NC}"
 cd "${BACKEND_DIR}"
-${PYTHON_EXEC} -m uvicorn app.main:app --host "${HOST:-127.0.0.1}" --port 8001 --reload &
+# --reload restarts the process on every code save, which drops in-memory candles and any
+# queued writes mid-session. Keep it off for trading sessions; opt in with DASH_RELOAD=1.
+RELOAD_FLAG=""
+if [ "${DASH_RELOAD:-0}" = "1" ]; then RELOAD_FLAG="--reload"; fi
+${PYTHON_EXEC} -m uvicorn app.main:app --host "${HOST:-127.0.0.1}" --port 8001 ${RELOAD_FLAG} &
 BACKEND_PID=$!
 
 # Wait for backend health

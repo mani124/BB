@@ -86,6 +86,11 @@ def now_ist() -> datetime:
     return raw.astimezone(IST)
 
 
+def now_ist_naive() -> datetime:
+    """Current IST wall-clock time without tzinfo (matches the naive-IST candle timestamps)."""
+    return now_ist().replace(tzinfo=None)
+
+
 def _resolve(now: Optional[datetime]) -> datetime:
     if now is None:
         return now_ist()

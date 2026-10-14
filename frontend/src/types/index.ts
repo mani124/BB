@@ -127,6 +127,10 @@ export interface PaperPosition {
   pnl_rupees: number;
   status: 'OPEN' | 'TARGET_1' | 'TARGET_2' | 'STOPPED_OUT' | 'CLOSED';
   exit_time?: string;
+  entry_datetime?: string | null;
+  exit_datetime?: string | null;
+  quarantine_reason?: string | null;
+  entry_estimated?: boolean;
   exit_reason?: string;
   initial_lots?: number;
   initial_quantity?: number;

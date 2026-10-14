@@ -103,6 +103,8 @@ class OptionStrikeRecommendation(BaseModel):
     real_ltp: Optional[float] = None
     real_delta: Optional[float] = None
     is_live_quote: bool = False
+    # Age (seconds) of the chain/tick quote these live fields came from; None = unknown.
+    quote_age_s: Optional[float] = None
 
 # Backwards-compatible alias
 OptionStrike = OptionStrikeRecommendation

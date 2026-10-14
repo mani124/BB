@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
+from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition, DailyPnl
 from app.services.strategy_engine import Signal
 
 router = APIRouter(prefix="/paper", tags=["paper"])
@@ -16,9 +16,28 @@ class SettingsRequest(BaseModel):
     default_lots: Optional[int] = None
     max_risk_per_trade: Optional[float] = None
 
+def _resolve_view(mode: Optional[str]) -> Optional[str]:
+    """Which book to show: "live" or "demo" follow the request; "all" is the raw
+    combined book; the default ("auto") follows the server's current scan mode so demo
+    rows never leak into live totals and vice versa."""
+    m = (mode or "auto").lower()
+    if m == "all":
+        return None
+    if m in ("live", "demo"):
+        return m
+    try:
+        from app.main import worker
+        return "demo" if getattr(worker._state, "active_mode", "demo") == "demo" else "live"
+    except Exception:
+        return "demo"
+
 @router.get("/portfolio")
-def get_portfolio() -> PaperPortfolio:
-    return paper_trader.get_portfolio()
+def get_portfolio(mode: Optional[str] = None) -> PaperPortfolio:
+    return paper_trader.get_portfolio(_resolve_view(mode))
+
+@router.get("/daily")
+def get_daily_pnl(mode: Optional[str] = None) -> list[DailyPnl]:
+    return paper_trader.get_daily_pnl(_resolve_view(mode))
 
 @router.post("/trade")
 def open_manual_trade(body: ManualTradeRequest) -> PaperPosition:
@@ -164,7 +183,7 @@ def update_settings(body: SettingsRequest):
         paper_trader.set_default_lots(body.default_lots)
     if body.max_risk_per_trade is not None:
         paper_trader.set_max_risk_per_trade(body.max_risk_per_trade)
-    return paper_trader.get_portfolio()
+    return paper_trader.get_portfolio(_resolve_view(None))
 
 @router.post("/reset")
 async def reset_portfolio():
