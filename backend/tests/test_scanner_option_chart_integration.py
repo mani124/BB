@@ -45,9 +45,12 @@ async def test_scanner_worker_evaluates_setup_5_from_live_option_candles():
     worker.dhan_client.fetch_option_chain = AsyncMock(return_value=mock_oc)
 
     # 3. Option candles: 30 candles with candle 30 breaking out above Option Upper BB
-    opt_candles = create_option_candles(n=30, base_premium=100.0)
+    # The breakout is a COMPLETED bar (previous 5m slot); Setup 5 never fires on the forming bar
+    from app.services import market_hours
+    prev_slot = market_hours.ist_slot_start() - timedelta(minutes=5)
+    opt_candles = create_option_candles(n=30, base_premium=100.0, start_time=prev_slot - timedelta(minutes=5 * 29))
     opt_candles.loc[29] = {
-        "timestamp": datetime.now(),
+        "timestamp": prev_slot,
         "open": 101.0,
         "high": 116.0,
         "low": 100.5,

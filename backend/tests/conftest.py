@@ -21,3 +21,25 @@ def _patched_request(self, method, url, *args, **kwargs):
     return _original_request(self, method, url, *args, **kwargs)
 
 TestClient.request = _patched_request
+
+
+import pytest
+from datetime import datetime
+from app.services import market_hours
+
+
+@pytest.fixture(autouse=True)
+def _pin_in_session_clock():
+    """Pin the exchange clock to an in-session instant (Wed 2026-10-14 11:00 IST) so
+    existing tests don't depend on the wall clock. Tests of the session guard
+    override it with ``market_hours.set_clock``."""
+    market_hours.set_clock(datetime(2026, 10, 14, 11, 0, 0, tzinfo=market_hours.IST))
+    yield
+    market_hours.set_clock(None)
+
+
+@pytest.fixture
+def no_reentry_cooldown(monkeypatch):
+    """For tests that exercise re-entry logic itself (not the cooldown) and exit and
+    re-enter the same stock/side within the same pinned instant."""
+    monkeypatch.setattr(settings, "REENTRY_COOLDOWN_SECONDS", 0)

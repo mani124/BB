@@ -1,12 +1,14 @@
 import asyncio
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Callable, Literal, Optional
 from pydantic import BaseModel
 from app.services.charges_calculator import calculate_option_trade_charges
 from app.services.strategy_engine import Signal
 from app.services.strike_selector import get_lot_size
+from app.services import market_hours
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +57,28 @@ class PaperPosition(BaseModel):
     total_charges: float = 0.0
     net_pnl: float = 0.0
     charges_breakdown: Optional[dict] = None
+    # Full ISO datetimes (IST, with date). entry_time/exit_time stay HH:MM:SS for display.
+    entry_datetime: Optional[str] = None
+    exit_datetime: Optional[str] = None
+    # Non-destructive quarantine: rows with a reason stay visible but are excluded from totals.
+    quarantine_reason: Optional[str] = None
+
+STALE_CARRYOVER = "STALE_CARRYOVER"
+EOD_SQUARE_OFF = "EOD_SQUARE_OFF"
+
+def _now_stamp() -> tuple[str, str]:
+    """(HH:MM:SS display, ISO datetime with date) for the current IST instant."""
+    n = market_hours.now_ist().replace(microsecond=0)
+    return n.strftime("%H:%M:%S"), n.isoformat()
+
+def _parse_iso(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=market_hours.IST)
 
 class PaperPortfolio(BaseModel):
     active_positions: list[PaperPosition] = []
@@ -256,6 +280,7 @@ class PaperTradingEngine:
             except ValueError:
                 pass
 
+        self.flag_stale_carryover()
         self._recalculate_metrics()
 
     def get_portfolio(self, mode: Optional[str] = None) -> PaperPortfolio:
@@ -264,7 +289,8 @@ class PaperTradingEngine:
             return self._portfolio
 
         active = [p for p in self._portfolio.active_positions if getattr(p, "feed_mode", "demo") == mode]
-        closed = [p for p in self._portfolio.closed_trades if getattr(p, "feed_mode", "demo") == mode]
+        all_closed = [p for p in self._portfolio.closed_trades if getattr(p, "feed_mode", "demo") == mode]
+        closed = [p for p in all_closed if not p.quarantine_reason]
         closed_pnl = sum(p.pnl_rupees for p in closed)
         active_booked_pnl = sum(p.booked_pnl_rupees for p in active)
         realized = round(closed_pnl + active_booked_pnl, 2)
@@ -286,7 +312,7 @@ class PaperTradingEngine:
 
         return PaperPortfolio(
             active_positions=active,
-            closed_trades=closed,
+            closed_trades=all_closed,
             auto_trade_enabled=self._portfolio.auto_trade_enabled,
             default_lots=self._portfolio.default_lots,
             max_risk_per_trade=self._portfolio.max_risk_per_trade,
@@ -359,9 +385,22 @@ class PaperTradingEngine:
             logger.info("Skipping trade opening for feed_mode '%s' (not live or demo)", feed_mode)
             return None
 
+        # P0-1: no new live entries outside the exchange session or after the entry cutoff.
+        # (demo mode runs on synthetic offline data and is not tied to exchange hours)
+        if feed_mode == "live" and not market_hours.is_entry_allowed():
+            logger.info("Entry skipped for %s: outside entry window (session closed or past cutoff)", signal.symbol)
+            return None
+
+        # P0-2: exposure guards (one position per contract, per stock+side, plus cooldown)
+        block = self._exposure_block_reason(signal)
+        if block:
+            logger.info("Entry blocked for %s %s: %s", signal.symbol, signal.option_type, block)
+            self._processed_signal_ids.add(signal.id)
+            return None
+
         # Check re-entry gate: prevent consecutive stop-out churn in the same chop box
         last_closed = next(
-            (p for p in reversed(self._portfolio.closed_trades) if p.symbol == signal.symbol and p.option_type == signal.option_type),
+            (p for p in reversed(self._portfolio.closed_trades) if p.symbol == signal.symbol and p.option_type == signal.option_type and not p.quarantine_reason),
             None
         )
         if last_closed and last_closed.status == "STOPPED_OUT":
@@ -455,7 +494,8 @@ class PaperTradingEngine:
             strike_symbol=rec.strike_symbol,
             timeframe=signal.timeframe,
             setup_type=signal.setup_type.value if hasattr(signal.setup_type, "value") else str(signal.setup_type),
-            entry_time=datetime.now().strftime("%H:%M:%S"),
+            entry_time=_now_stamp()[0],
+            entry_datetime=_now_stamp()[1],
             underlying_entry=signal.entry_price,
             underlying_sl=signal.stop_loss,
             underlying_target_1=signal.target_1,
@@ -506,6 +546,73 @@ class PaperTradingEngine:
                 logger.warning(f"Error executing on_position_opened callback: {e}")
         return pos
 
+    @staticmethod
+    def _contract_key(security_id: Optional[str], strike_symbol: Optional[str]) -> Optional[str]:
+        if security_id and str(security_id).strip():
+            return f"id:{str(security_id).strip()}"
+        if strike_symbol and str(strike_symbol).strip():
+            return f"sym:{str(strike_symbol).strip()}"
+        return None
+
+    def _exposure_block_reason(self, signal: Signal) -> Optional[str]:
+        """P0-2: returns why a new entry must be refused, or None if it may proceed."""
+        rec = signal.strike_recommendation
+        key = self._contract_key(getattr(rec, "option_security_id", None), getattr(rec, "strike_symbol", None))
+        for p in self._portfolio.active_positions:
+            if key and self._contract_key(p.option_security_id, p.strike_symbol) == key:
+                return f"contract {key} already has an open position"
+            if p.symbol == signal.symbol and p.option_type == signal.option_type:
+                return f"{p.symbol} {p.option_type} already has an open position"
+
+        cooldown = int(getattr(settings, "REENTRY_COOLDOWN_SECONDS", 0) or 0)
+        if cooldown > 0:
+            now = market_hours.now_ist()
+            for p in reversed(self._portfolio.closed_trades):
+                if p.symbol != signal.symbol or p.option_type != signal.option_type or p.quarantine_reason:
+                    continue
+                exited = _parse_iso(p.exit_datetime)
+                if exited and timedelta(0) <= (now - exited) < timedelta(seconds=cooldown):
+                    return f"cooldown ({cooldown}s) after exit on {p.symbol} {p.option_type}"
+        return None
+
+    def flag_stale_carryover(self) -> list[PaperPosition]:
+        """P0-5: positions still open from a previous IST date can't be valid intraday
+        positions. Close them out as STALE_CARRYOVER (no repricing) and quarantine them
+        so they are excluded from performance stats."""
+        today = market_hours.now_ist().date()
+        stale = []
+        for pos in list(self._portfolio.active_positions):
+            entered = _parse_iso(pos.entry_datetime)
+            if entered is None or entered.date() >= today:
+                continue
+            _, now_iso = _now_stamp()
+            pos.status = "CLOSED"
+            pos.exit_reason = STALE_CARRYOVER
+            pos.exit_time = _now_stamp()[0]
+            pos.exit_datetime = now_iso
+            pos.quarantine_reason = STALE_CARRYOVER
+            self._portfolio.active_positions.remove(pos)
+            self._portfolio.closed_trades.append(pos)
+            self._enqueue_write("upsert", pos)
+            stale.append(pos)
+        if stale:
+            logger.warning("Flagged %d stale carried-over position(s) as %s", len(stale), STALE_CARRYOVER)
+            self._recalculate_metrics()
+        return stale
+
+    def square_off_if_due(self, feed_mode: Optional[str] = "live") -> list[PaperPosition]:
+        """P0-5: close open positions once the EOD square-off time is reached."""
+        if not market_hours.is_square_off_due():
+            return []
+        closed = []
+        for pos in list(self._portfolio.active_positions):
+            if feed_mode is not None and getattr(pos, "feed_mode", "demo") != feed_mode:
+                continue
+            res = self.close_position(pos.id, reason=EOD_SQUARE_OFF)
+            if res:
+                closed.append(res)
+        return closed
+
     def on_signals_cycle(self, signals: list[Signal], feed_mode: str = "demo"):
         """Automatically open paper positions if auto-trade is enabled."""
         if not self._portfolio.auto_trade_enabled:
@@ -552,6 +659,7 @@ class PaperTradingEngine:
         # 3. Update position state and P&L
         pos.status = status
         pos.exit_time = exit_time
+        pos.exit_datetime = _now_stamp()[1]
         pos.exit_reason = reason
         pos.theoretical_exit = round(float(theoretical_exit), 2)
         pos.exit_slippage = exit_slippage
@@ -592,7 +700,7 @@ class PaperTradingEngine:
     ):
         """Update active positions with current underlying prices and live option prices from Dhan."""
         delta = 0.55
-        now_str = datetime.now().strftime("%H:%M:%S")
+        now_str = _now_stamp()[0]
         still_active = []
         changed_active: list[PaperPosition] = []
 
@@ -917,7 +1025,7 @@ class PaperTradingEngine:
                     theoretical_exit=theo_exit,
                     status="CLOSED",
                     reason=reason,
-                    exit_time=datetime.now().strftime("%H:%M:%S"),
+                    exit_time=_now_stamp()[0],
                     real_bid_price=real_bid_price,
                     real_opt_price=real_opt_price,
                 )
@@ -929,14 +1037,15 @@ class PaperTradingEngine:
         return None
 
     def _recalculate_metrics(self):
-        closed_pnl = sum(p.pnl_rupees for p in self._portfolio.closed_trades)
+        counted = [p for p in self._portfolio.closed_trades if not p.quarantine_reason]
+        closed_pnl = sum(p.pnl_rupees for p in counted)
         active_booked_pnl = sum(p.booked_pnl_rupees for p in self._portfolio.active_positions)
         realized = closed_pnl + active_booked_pnl
         unrealized = sum(round(p.pnl_points * p.quantity, 2) for p in self._portfolio.active_positions)
-        
-        wins = sum(1 for p in self._portfolio.closed_trades if p.pnl_rupees > 0)
-        losses = sum(1 for p in self._portfolio.closed_trades if p.pnl_rupees < 0)
-        total_closed = len(self._portfolio.closed_trades)
+
+        wins = sum(1 for p in counted if p.pnl_rupees > 0)
+        losses = sum(1 for p in counted if p.pnl_rupees < 0)
+        total_closed = len(counted)
 
         self._portfolio.total_realized_pnl = round(realized, 2)
         self._portfolio.total_unrealized_pnl = round(unrealized, 2)
@@ -946,12 +1055,12 @@ class PaperTradingEngine:
         self._portfolio.total_trades_count = total_closed
         self._portfolio.win_rate_pct = round((wins / total_closed * 100.0) if total_closed > 0 else 0.0, 1)
 
-        total_gross = sum(getattr(p, "gross_pnl", 0.0) or p.pnl_rupees for p in self._portfolio.closed_trades)
-        total_charges = sum(getattr(p, "total_charges", 0.0) for p in self._portfolio.closed_trades)
-        total_net = sum(getattr(p, "net_pnl", 0.0) for p in self._portfolio.closed_trades)
-        total_slip_cost = sum(getattr(p, "total_slippage_cost", 0.0) for p in self._portfolio.closed_trades)
+        total_gross = sum(getattr(p, "gross_pnl", 0.0) or p.pnl_rupees for p in counted)
+        total_charges = sum(getattr(p, "total_charges", 0.0) for p in counted)
+        total_net = sum(getattr(p, "net_pnl", 0.0) for p in counted)
+        total_slip_cost = sum(getattr(p, "total_slippage_cost", 0.0) for p in counted)
         avg_slip_pts = (
-            sum((getattr(p, "entry_slippage", 0.0) + getattr(p, "exit_slippage", 0.0)) for p in self._portfolio.closed_trades) / total_closed
+            sum((getattr(p, "entry_slippage", 0.0) + getattr(p, "exit_slippage", 0.0)) for p in counted) / total_closed
             if total_closed > 0 else 0.0
         )
 

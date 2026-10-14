@@ -51,7 +51,7 @@ def test_stopped_out_trade_blocks_reentry_in_same_chop_box(tmp_path):
     # Must be BLOCKED to prevent consecutive stop-out churn
     assert pos2 is None, "Should block re-entry inside the failed chop box"
 
-def test_stopped_out_trade_permits_reentry_on_higher_high_breakout(tmp_path):
+def test_stopped_out_trade_permits_reentry_on_higher_high_breakout(tmp_path, no_reentry_cooldown):
     db_file = str(tmp_path / "test_trades.db")
     engine = PaperTradingEngine(db_path=db_file)
     engine.set_auto_trade(True)
@@ -72,7 +72,7 @@ def test_stopped_out_trade_permits_reentry_on_higher_high_breakout(tmp_path):
     # Must be PERMITTED because genuine breakout momentum is proven
     assert pos2 is not None, "Should permit re-entry when price breaks above failed trade high"
 
-def test_winning_trade_permits_immediate_reentry(tmp_path):
+def test_winning_trade_permits_immediate_reentry(tmp_path, no_reentry_cooldown):
     db_file = str(tmp_path / "test_trades.db")
     engine = PaperTradingEngine(db_path=db_file)
     engine.set_auto_trade(True)
@@ -92,7 +92,7 @@ def test_winning_trade_permits_immediate_reentry(tmp_path):
     pos2 = engine.open_position_from_signal(sig2)
     assert pos2 is not None, "Winning trades must have zero re-entry block"
 
-def test_pe_stopped_out_trade_blocks_reentry_and_permits_on_lower_low(tmp_path):
+def test_pe_stopped_out_trade_blocks_reentry_and_permits_on_lower_low(tmp_path, no_reentry_cooldown):
     db_file = str(tmp_path / "test_trades.db")
     engine = PaperTradingEngine(db_path=db_file)
     engine.set_auto_trade(True)

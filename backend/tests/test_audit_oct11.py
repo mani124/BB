@@ -47,7 +47,7 @@ def test_direct_client_capability_required():
     assert res_get.status_code == 200
 
 
-def test_server_owned_exit_pricing():
+def test_server_owned_exit_pricing(no_reentry_cooldown):
     """F2, F4: Both close routes use server-owned OptionQuote records and reject caller-supplied fill prices."""
     from datetime import datetime
     from app.services.paper_trader import paper_trader
@@ -250,7 +250,7 @@ def test_finding_6_intraday_volume_baseline_checks_today_bars():
 
 
 @pytest.mark.asyncio
-async def test_finding_8_ordered_async_persistence_queue_and_flush(tmp_path):
+async def test_finding_8_ordered_async_persistence_queue_and_flush(tmp_path, no_reentry_cooldown):
     """F8: Dedicated asyncio.Queue guarantees FIFO sequential commits and flushes pending writes on shutdown."""
     import asyncio
     from app.services.paper_trader import PaperTradingEngine
@@ -272,11 +272,15 @@ async def test_finding_8_ordered_async_persistence_queue_and_flush(tmp_path):
 
     positions = []
     for i in range(5):
+        # Distinct stock + contract per signal: stacking the same contract/side is now rejected
+        rec_i = rec.model_copy(update={
+            "symbol": f"STOCK{i}", "option_security_id": f"8880{i}", "strike_symbol": f"STOCK{i} 22500 CE",
+        })
         sig = Signal(
-            id=f"SIG_F8_{i}", symbol="NIFTY 50", timeframe="5m",
+            id=f"SIG_F8_{i}", symbol=f"STOCK{i}", timeframe="5m",
             setup_type=SetupType.SETUP_1_SQUEEZE, option_type="CE",
             timestamp=f"09:3{i}:00", entry_price=22500.0, stop_loss=22480.0, target_1=22530.0, target_2=22560.0,
-            strike_recommendation=rec, is_confirmed=True, indicators_snapshot={}, rationale="test"
+            strike_recommendation=rec_i, is_confirmed=True, indicators_snapshot={}, rationale="test"
         )
         pos = engine.open_position_from_signal(sig, feed_mode="demo")
         assert pos is not None
