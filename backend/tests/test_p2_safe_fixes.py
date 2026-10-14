@@ -84,3 +84,19 @@ def test_squeeze_threshold_is_configurable(monkeypatch):
     from app.core.config import settings
     monkeypatch.setattr(settings, "SQUEEZE_ABS_BW_PCT", 0.0001)
     assert settings.SQUEEZE_ABS_BW_PCT == 0.0001
+
+
+def test_delta_assumed_flag_and_optional_block(monkeypatch):
+    from app.services.strike_selector import resolve_live_strike_from_chain
+    from app.core.config import settings
+    real = _chain([2950, 2975, 3000, 3025, 3050])
+    rec = resolve_live_strike_from_chain("RELIANCE", 3012.0, "CE", real, "2026-10-29")
+    assert rec.delta_assumed is False and rec.real_delta == 0.5
+    nog = {k: {"ce": {"last_price": 50.0, "top_ask_price": 51.0, "top_bid_price": 49.0},
+               "pe": {"last_price": 50.0, "top_ask_price": 51.0, "top_bid_price": 49.0}} for k in real}
+    rec2 = resolve_live_strike_from_chain("RELIANCE", 3012.0, "CE", nog, "2026-10-29")
+    assert rec2.delta_assumed is True
+    assert PaperTradingEngine._quote_block_reason(rec2) is None or "delta" not in PaperTradingEngine._quote_block_reason(rec2)
+    monkeypatch.setattr(settings, "REQUIRE_REAL_DELTA", True)
+    assert "assumed delta" in PaperTradingEngine._quote_block_reason(rec2)
+    assert PaperTradingEngine._quote_block_reason(rec) is None

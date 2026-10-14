@@ -107,6 +107,9 @@ class OptionStrikeRecommendation(BaseModel):
     real_bid_price: Optional[float] = None
     real_ltp: Optional[float] = None
     real_delta: Optional[float] = None
+    # True when the option SL/targets were scaled with a default delta (0.50-0.55) instead of the
+    # contract's own Greek, i.e. the premium exits are an approximation.
+    delta_assumed: bool = False
     is_live_quote: bool = False
     # Age (seconds) of the chain/tick quote these live fields came from; None = unknown.
     quote_age_s: Optional[float] = None
@@ -400,7 +403,8 @@ def resolve_live_strike_from_chain(
                     "last_price": price_val,
                     "top_ask_price": price_val,
                     "top_bid_price": price_val,
-                    "greeks": {"delta": default_delta}
+                    "greeks": {"delta": default_delta},
+                    "delta_assumed": True,
                 }
 
     if opt_contract and isinstance(opt_contract, dict):
@@ -410,6 +414,7 @@ def resolve_live_strike_from_chain(
         bid = float(opt_contract.get("top_bid_price", 0.0))
         greeks = opt_contract.get("greeks") or {}
         raw_delta = float(greeks.get("delta", 0.0))
+        delta_assumed = bool(opt_contract.get("delta_assumed")) or not (0.05 <= abs(raw_delta) <= 0.95)
         delta = abs(raw_delta) if (0.05 <= abs(raw_delta) <= 0.95) else default_delta
 
         # For buying an option: entry is the real Ask price (or LTP if Ask is 0)
@@ -458,6 +463,7 @@ def resolve_live_strike_from_chain(
             real_bid_price=bid,
             real_ltp=ltp,
             real_delta=round(delta, 4),
+            delta_assumed=delta_assumed,
             is_live_quote=(ask > 0 or ltp > 0),
         )
 

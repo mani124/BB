@@ -24,6 +24,8 @@ class Settings(BaseModel):
     # Setup 1 absolute squeeze threshold (BandWidth %). 5.0 is the legacy value, which is nearly
     # always true on 5m bars; lower it (e.g. 1.5) only after comparing signal counts on recorded data.
     SQUEEZE_ABS_BW_PCT: float = float(os.getenv("SQUEEZE_ABS_BW_PCT", "5.0"))
+    # Refuse entries whose option SL/targets rely on an assumed (non-chain) delta.
+    REQUIRE_REAL_DELTA: bool = os.getenv("REQUIRE_REAL_DELTA", "0") == "1"
     EXPIRY_DAY_CUTOFF_TIME: str = os.getenv("EXPIRY_DAY_CUTOFF_TIME", "14:30")
     REENTRY_COOLDOWN_SECONDS: int = int(os.getenv("REENTRY_COOLDOWN_SECONDS", "300"))
     # Entry quality guards (live mode)
