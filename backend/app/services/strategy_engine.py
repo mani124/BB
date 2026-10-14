@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel
 import pandas as pd
+from app.core.config import settings
 from app.services.strike_selector import recommend_strike, OptionStrikeRecommendation
 
 class SetupType(str, enum.Enum):
@@ -92,14 +93,15 @@ def evaluate_signals(
     # SETUP 1: Volatility Squeeze & Expansion Breakout
     # =========================================================================
     # Squeeze condition: BandWidth was recently at or near 20-period minimum, or in absolute squeeze (<= 5.0%)
+    abs_sq = float(settings.SQUEEZE_ABS_BW_PCT)
     if bw_min <= 0.0001:
-        is_squeeze = bw <= 5.0 or prev["bandwidth"] <= 5.0
+        is_squeeze = bw <= abs_sq or prev["bandwidth"] <= abs_sq
     else:
         is_squeeze = (
             prev["bandwidth"] <= bw_min * 1.3
             or bw <= bw_min * 1.3
-            or bw <= 5.0
-            or prev["bandwidth"] <= 5.0
+            or bw <= abs_sq
+            or prev["bandwidth"] <= abs_sq
         )
 
     if is_squeeze:

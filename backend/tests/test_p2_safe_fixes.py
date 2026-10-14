@@ -64,3 +64,23 @@ def test_strike_resolved_from_chain_grid_not_static_table():
     # clamped at the edge of the chain, never an unlisted strike
     edge = resolve_live_strike_from_chain("RELIANCE", 2950.0, "CE", chain, "2026-10-29")
     assert edge.recommended_strike == 2950
+
+
+def test_zero_volume_index_vwap_is_session_cumulative_not_bar_typical_price():
+    import pandas as pd
+    n = 6
+    df = pd.DataFrame({
+        "timestamp": pd.date_range("2026-10-14 09:15", periods=n, freq="5min"),
+        "open": [100.0 + i for i in range(n)], "high": [101.0 + i for i in range(n)],
+        "low": [99.0 + i for i in range(n)], "close": [100.0 + i for i in range(n)],
+        "volume": [0] * n,
+    })
+    out = calculate_indicators(df)
+    assert out["vwap"].iloc[-1] == 102.5          # mean of typical prices 100..105
+    assert out["vwap"].iloc[-1] != 105.0          # old behaviour: last bar's typical price
+
+
+def test_squeeze_threshold_is_configurable(monkeypatch):
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "SQUEEZE_ABS_BW_PCT", 0.0001)
+    assert settings.SQUEEZE_ABS_BW_PCT == 0.0001

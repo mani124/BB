@@ -104,7 +104,13 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     cum_tp_vol = tp_vol.groupby(res["session_date"]).cumsum()
     cum_vol = vol_clean.groupby(res["session_date"]).cumsum()
 
-    res["vwap"] = (cum_tp_vol / cum_vol.replace(0, np.nan)).fillna(typical_price)
+    # Instruments with no traded volume (cash indices) have no true VWAP. Fall back to the
+    # session-cumulative mean of typical price (equal-weighted), not the single bar's own
+    # typical price, which would make "price vs VWAP" meaningless.
+    cum_tp = typical_price.groupby(res["session_date"]).cumsum()
+    cum_n = typical_price.groupby(res["session_date"]).cumcount() + 1
+    session_twap = cum_tp / cum_n
+    res["vwap"] = (cum_tp_vol / cum_vol.replace(0, np.nan)).fillna(session_twap)
     res.drop(columns=["session_date"], inplace=True)
 
     # 3. 14-period Wilder's RSI

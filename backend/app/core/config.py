@@ -21,6 +21,9 @@ class Settings(BaseModel):
     # Exchange-session guard (all times IST, HH:MM)
     ENTRY_CUTOFF_TIME: str = os.getenv("ENTRY_CUTOFF_TIME", "15:15")
     EOD_SQUARE_OFF_TIME: str = os.getenv("EOD_SQUARE_OFF_TIME", "15:20")
+    # Setup 1 absolute squeeze threshold (BandWidth %). 5.0 is the legacy value, which is nearly
+    # always true on 5m bars; lower it (e.g. 1.5) only after comparing signal counts on recorded data.
+    SQUEEZE_ABS_BW_PCT: float = float(os.getenv("SQUEEZE_ABS_BW_PCT", "5.0"))
     EXPIRY_DAY_CUTOFF_TIME: str = os.getenv("EXPIRY_DAY_CUTOFF_TIME", "14:30")
     REENTRY_COOLDOWN_SECONDS: int = int(os.getenv("REENTRY_COOLDOWN_SECONDS", "300"))
     # Entry quality guards (live mode)
