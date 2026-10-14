@@ -213,18 +213,34 @@ def test_percent_b_breakouts():
     assert result_down["percent_b"].iloc[29] < 0.0
 
 def test_adx_responsive_trend():
-    """Verify that a sustained 25-candle trend generates ADX > 25."""
-    dates = pd.date_range("2026-10-08 09:15", periods=25, freq="5min")
+    """A sustained trend generates ADX > 25 once ADX is defined (textbook Wilder ADX needs
+    2 x 14 bars: DX starts at bar 14 and is seeded with the mean of its first 14 values)."""
+    n = 40
+    dates = pd.date_range("2026-10-08 09:15", periods=n, freq="5min")
     df = pd.DataFrame({
         "timestamp": dates,
-        "open": [100.0 + i * 2.0 for i in range(25)],
-        "high": [101.5 + i * 2.0 for i in range(25)],
-        "low": [99.5 + i * 2.0 for i in range(25)],
-        "close": [101.0 + i * 2.0 for i in range(25)],
-        "volume": [5000] * 25
+        "open": [100.0 + i * 2.0 for i in range(n)],
+        "high": [101.5 + i * 2.0 for i in range(n)],
+        "low": [99.5 + i * 2.0 for i in range(n)],
+        "close": [101.0 + i * 2.0 for i in range(n)],
+        "volume": [5000] * n
     })
     result = calculate_indicators(df)
     assert result["adx"].iloc[-1] > 25.0
+
+
+def test_adx_is_neutral_until_defined():
+    n = 25   # fewer than 2 x 14 bars: ADX is not yet defined and stays at the neutral 20
+    dates = pd.date_range("2026-10-08 09:15", periods=n, freq="5min")
+    df = pd.DataFrame({
+        "timestamp": dates,
+        "open": [100.0 + i * 2.0 for i in range(n)],
+        "high": [101.5 + i * 2.0 for i in range(n)],
+        "low": [99.5 + i * 2.0 for i in range(n)],
+        "close": [101.0 + i * 2.0 for i in range(n)],
+        "volume": [5000] * n
+    })
+    assert (calculate_indicators(df)["adx"] == 20.0).all()
 
 def test_unsorted_timestamps():
     """Verify calculate_indicators sorts timestamps chronologically."""

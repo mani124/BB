@@ -22,6 +22,26 @@ INDICATOR_COLUMNS = [
 ]
 
 
+PERIOD = 14
+
+
+def _wilder(series: pd.Series, period: int = PERIOD, first_valid: int = 1) -> pd.Series:
+    """Wilder smoothing seeded the textbook way: the first value is the simple mean of the
+    first ``period`` valid observations, then avg = (prev * (period - 1) + x) / period.
+
+    ``first_valid`` is the index of the first usable observation (1 for diffs, since the
+    first bar has no previous close). Bars before the seed stay NaN, so early values are no
+    longer biased by an arbitrary start (pandas' plain ewm seeds with the first sample)."""
+    out = pd.Series(np.nan, index=series.index, dtype="float64")
+    seed_idx = first_valid + period - 1
+    if len(series) <= seed_idx:
+        return out
+    seeded = series.astype("float64").copy()
+    seeded.iloc[:seed_idx] = np.nan
+    seeded.iloc[seed_idx] = float(series.iloc[first_valid:seed_idx + 1].mean())
+    return seeded.ewm(alpha=1.0 / period, adjust=False).mean()
+
+
 def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """
     Compute vectorized technical indicators for Bollinger Bands options trading:
@@ -92,8 +112,8 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     gain = delta.clip(lower=0.0)
     loss = -delta.clip(upper=0.0)
 
-    avg_gain = gain.ewm(alpha=1.0 / 14.0, min_periods=14, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1.0 / 14.0, min_periods=14, adjust=False).mean()
+    avg_gain = _wilder(gain)
+    avg_loss = _wilder(loss)
 
     # Exact Wilder formulation: 100 * AvgGain / (AvgGain + AvgLoss)
     total_change = avg_gain + avg_loss
@@ -117,22 +137,10 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
     minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
 
-    atr14 = tr.ewm(alpha=1.0 / 14.0, min_periods=14, adjust=False).mean()
+    atr14 = _wilder(tr)
     atr14_safe = atr14.replace(0, np.nan)
-    plus_di14 = (
-        pd.Series(plus_dm, index=res.index)
-        .ewm(alpha=1.0 / 14.0, min_periods=14, adjust=False)
-        .mean()
-        / atr14_safe
-        * 100.0
-    ).fillna(0.0)
-    minus_di14 = (
-        pd.Series(minus_dm, index=res.index)
-        .ewm(alpha=1.0 / 14.0, min_periods=14, adjust=False)
-        .mean()
-        / atr14_safe
-        * 100.0
-    ).fillna(0.0)
+    plus_di14 = (_wilder(pd.Series(plus_dm, index=res.index)) / atr14_safe * 100.0).fillna(0.0)
+    minus_di14 = (_wilder(pd.Series(minus_dm, index=res.index)) / atr14_safe * 100.0).fillna(0.0)
 
     res["plus_di"] = plus_di14
     res["minus_di"] = minus_di14
@@ -140,12 +148,10 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     di_sum = (plus_di14 + minus_di14).replace(0, np.nan)
     di_diff = (plus_di14 - minus_di14).abs()
     dx = (di_diff / di_sum * 100.0).fillna(0.0)
+    # DX is first defined where ATR is (index PERIOD); ADX seeds with the mean of the first
+    # PERIOD DX values and is Wilder-smoothed after that. Before that it stays neutral (20).
     dx_masked = pd.Series(np.where(atr14.isna(), np.nan, dx), index=res.index)
-    res["adx"] = (
-        dx_masked.ewm(alpha=1.0 / 14.0, min_periods=1, adjust=False)
-        .mean()
-        .fillna(20.0)
-    )
+    res["adx"] = _wilder(dx_masked, first_valid=PERIOD).fillna(20.0)
 
     # 6. Opening Range (09:15 - 09:30 AM IST of the latest trading session)
     latest_date = res["timestamp"].dt.date.max()

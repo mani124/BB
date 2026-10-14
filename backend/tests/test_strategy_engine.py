@@ -71,8 +71,8 @@ def test_setup1_squeeze_breakout_pe():
 def test_setup2_walking_bands_ce():
     records = []
     start_t = datetime(2026, 10, 8, 9, 15)
-    p = 100.0
-    for i in range(20):
+    p = 92.5
+    for i in range(35):
         ts = start_t + timedelta(minutes=5 * i)
         p += 0.5
         records.append({
@@ -84,7 +84,7 @@ def test_setup2_walking_bands_ce():
             "volume": 2000
         })
 
-    for i in range(20, 26):
+    for i in range(35, 41):
         ts = start_t + timedelta(minutes=5 * i)
         p += 3.0
         records.append({
@@ -96,8 +96,8 @@ def test_setup2_walking_bands_ce():
             "volume": 5000
         })
 
-    # Candle 26: retests 9 EMA and closes green
-    ts = start_t + timedelta(minutes=5 * 26)
+    # Candle 41: retests 9 EMA and closes green
+    ts = start_t + timedelta(minutes=5 * 41)
     records.append({
         "timestamp": ts,
         "open": 123.0,
@@ -123,8 +123,8 @@ def test_setup2_walking_bands_ce():
 def test_setup2_walking_bands_pe():
     records = []
     start_t = datetime(2026, 10, 8, 9, 15)
-    p = 200.0
-    for i in range(20):
+    p = 207.5
+    for i in range(35):
         ts = start_t + timedelta(minutes=5 * i)
         p -= 0.5
         records.append({
@@ -136,7 +136,7 @@ def test_setup2_walking_bands_pe():
             "volume": 2000
         })
 
-    for i in range(20, 26):
+    for i in range(35, 41):
         ts = start_t + timedelta(minutes=5 * i)
         p -= 3.0
         records.append({
@@ -148,8 +148,8 @@ def test_setup2_walking_bands_pe():
             "volume": 5000
         })
 
-    # Candle 26: retest near 9 EMA and closes red
-    ts = start_t + timedelta(minutes=5 * 26)
+    # Candle 41: retest near 9 EMA and closes red
+    ts = start_t + timedelta(minutes=5 * 41)
     records.append({
         "timestamp": ts,
         "open": 177.0,
