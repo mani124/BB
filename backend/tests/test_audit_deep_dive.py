@@ -378,7 +378,7 @@ def test_finding_11_manual_close_stale_option_quote_modeled():
     assert "(Modeled: Unquoted)" in data["exit_reason"]
 
 
-def test_signals_close_alias_applies_freshness_check():
+def test_signals_close_alias_applies_freshness_check(no_reentry_cooldown):
     """F2 (post-fix): /api/signals/close/{id} applies 15-second freshness check and (Modeled: Unquoted) labeling."""
     from app.services.paper_trader import paper_trader
     from app.main import worker

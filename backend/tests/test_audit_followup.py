@@ -240,13 +240,14 @@ async def test_option_chart_forming_candle_dynamic_update():
     from app.services.scanner_worker import ScannerWorker
     from app.services.universe_manager import UniverseManager, Instrument
 
+    from app.services import market_hours
+
     worker = ScannerWorker(universe_mgr=UniverseManager())
     inst = worker.universe_mgr.get_indices()[0]
 
-    now = datetime.now()
+    now = market_hours.now_ist().replace(tzinfo=None)
     step_min = 5
-    current_slot_min = (now.minute // step_min) * step_min
-    current_slot_ts = now.replace(minute=current_slot_min, second=0, microsecond=0)
+    current_slot_ts = market_hours.ist_slot_start(step_min=step_min)
 
     # 25 completed bars before current slot
     bars = []
@@ -327,14 +328,16 @@ async def test_option_chart_forming_candle_dynamic_update():
         assert mock_fetch.call_count == 1, "Historical chart was re-fetched over network within same slot!"
         assert len(captured_dfs) == 2
 
-        # The last row passed to indicators MUST dynamically reflect tick 2 (LTP 125.0, vol 3500)!
-        last_row_2 = captured_dfs[1].iloc[-1]
-        assert last_row_2["close"] == 125.0, f"Expected dynamically updated close 125.0, got frozen {last_row_2['close']}"
-        assert last_row_2["volume"] == 3500, f"Expected dynamically updated volume 3500, got frozen {last_row_2['volume']}"
+        # P0-4: Setup 5 is evaluated on COMPLETED bars only. Neither tick may leak into the
+        # frame passed to the indicators; the premature forming bar from the API is excluded too.
+        for df_i in captured_dfs:
+            assert df_i["timestamp"].max() < current_slot_ts
+            assert df_i.iloc[-1]["close"] == 100.0
+            assert df_i["timestamp"].is_unique
 
-        # Deduplication check: timestamp of current slot must only appear once in captured DataFrame
-        timestamps = captured_dfs[1]["timestamp"].tolist()
-        assert timestamps.count(current_slot_ts) == 1, "Duplicate forming candle timestamp found in DataFrame!"
+        # The live forming candle itself still tracks the ticks (high/low/close), for display & exits
+        forming = worker._option_forming_candle[sec_id]
+        assert forming["close"] == 125.0 and forming["high"] == 125.0
 
 
 def test_volume_baseline_with_seeded_forming_bar():
@@ -385,7 +388,7 @@ def test_volume_baseline_with_seeded_forming_bar():
     assert df["volume"].sum() == 55000
 
 
-def test_close_ignores_caller_exit_price_and_preserves_slippage_integrity(client):
+def test_close_ignores_caller_exit_price_and_preserves_slippage_integrity(client, no_reentry_cooldown):
     """F8: Public close requests cannot alter theoretical exit or distort slippage metrics via exit_price."""
     from app.services.paper_trader import paper_trader
     from app.services.strategy_engine import Signal, SetupType

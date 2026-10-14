@@ -18,6 +18,10 @@ class Settings(BaseModel):
     SCAN_INTERVAL_SECONDS: float = 3.0
     DATA_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
     DB_PATH: str = os.path.join(DATA_DIR, "trades.db")
+    # Exchange-session guard (all times IST, HH:MM)
+    ENTRY_CUTOFF_TIME: str = os.getenv("ENTRY_CUTOFF_TIME", "15:15")
+    EOD_SQUARE_OFF_TIME: str = os.getenv("EOD_SQUARE_OFF_TIME", "15:20")
+    REENTRY_COOLDOWN_SECONDS: int = int(os.getenv("REENTRY_COOLDOWN_SECONDS", "300"))
     DASHBOARD_CAPABILITY: str = os.getenv("DASHBOARD_CAPABILITY", "bb-options-local-capability")
 
 settings = Settings()

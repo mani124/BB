@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta
+from app.services import market_hours
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -55,8 +56,8 @@ class ScannerState(BaseModel):
     is_scanning: bool = False
     scan_progress: float = 0.0
     universe_count: int = 0
-    active_mode: str = "demo"  # "live", "stale", "error", or "demo"
-    feed_status: str = "DEMO"  # "WS_LIVE", "LIVE", "STALE", "ERROR", "DEMO"
+    active_mode: str = "demo"  # "live", "stale", "error", "closed" (outside exchange session), or "demo"
+    feed_status: str = "DEMO"  # "WS_LIVE", "LIVE", "STALE", "ERROR", "CLOSED", "DEMO"
     ws_connected: bool = False
     last_quote_time: str = ""
 
@@ -97,7 +98,8 @@ class ScannerWorker:
         self._failed_candle_sec_ids: dict[str, float] = {}
         self._historical_seed_attempts: dict[str, float] = {}
         self._historical_seed_fail_count: dict[str, int] = {}
-        self._last_session_date = datetime.now().date()
+        self._last_session_date = market_hours.now_ist().date()
+        self._option_last_cum_volume: dict[str, int] = {}
         self._last_successful_quote_time: Optional[float] = None
         self._scan_lock = asyncio.Lock()
         self._ws_connect_task: Optional[asyncio.Task] = None
@@ -319,7 +321,7 @@ class ScannerWorker:
             if ltp > 0:
                 self.record_option_quote(sec_id_str, ltp=ltp, bid=bid, source="ws")
             # Maintain live option candle formation
-            self._get_or_update_option_candles(sec_id_str, ltp, vol or 0)
+            self._get_or_update_option_candles(sec_id_str, ltp, vol)
             option_bid_map: Optional[dict[str, float]] = None
             if bid is not None:
                 try:
@@ -391,13 +393,15 @@ class ScannerWorker:
         await self.broadcast(broadcast_data)
 
     def check_session_reset(self):
-        today = datetime.now().date()
+        today = market_hours.now_ist().date()
         if self._last_session_date != today:
             logger.info(f"Resetting session candles for new trading day {today}")
             self._candle_history.clear()
             self._current_forming_candle.clear()
             self._option_candle_history.clear()
             self._option_forming_candle.clear()
+            self._option_chart_cache.clear()
+            self._option_last_cum_volume.clear()
             self._last_cumulative_volume.clear()
             self._instrument_last_quote_time.clear()
             self._last_session_date = today
@@ -903,6 +907,13 @@ class ScannerWorker:
             self._state.active_mode = "demo"
             self._state.feed_status = "DEMO"
 
+        # P0-1: outside the exchange session a credentialed scan is "closed", never "live":
+        # no auto-entries, no new option forming bars, no Setup 1-5 evaluation on stale data.
+        if mode != "demo" and not market_hours.is_market_open():
+            mode = "closed"
+            self._state.active_mode = "closed"
+            self._state.feed_status = "CLOSED"
+
         # Extract live option quotes and bid prices from NSE_FNO
         option_price_map: dict[str, float] = {}
         option_bid_map: dict[str, float] = {}
@@ -1233,6 +1244,10 @@ class ScannerWorker:
             feed_mode=mode,
             option_bid_map=option_bid_map,
         )
+        if mode != "demo":
+            # P0-5: close stale carry-overs and square off at the EOD time (live positions only)
+            paper_trader.flag_stale_carryover()
+            paper_trader.square_off_if_due(feed_mode="live")
         if mode in ("live", "demo"):
             paper_trader.on_signals_cycle(new_signals, feed_mode=mode)
         if mode == "live" and ws_healthy:
@@ -1260,48 +1275,60 @@ class ScannerWorker:
         await self.broadcast(self._state.model_dump())
         return self._state
 
-    def _get_or_update_option_candles(self, sec_id: str, ltp: float, volume: int) -> pd.DataFrame:
-        now = datetime.now()
+    def _option_volume_increment(self, sec_id: str, cumulative: Optional[int]) -> Optional[int]:
+        """Per-update volume increment from Dhan's cumulative day volume.
+
+        Returns None when no increment can be derived (volume missing, first observation,
+        or the counter went backwards, e.g. a new session), in which case the bar volume
+        is treated as unknown rather than being taken as the day's total.
+        """
+        if cumulative is None:
+            return None
+        last = self._option_last_cum_volume.get(sec_id)
+        self._option_last_cum_volume[sec_id] = cumulative
+        if last is None or cumulative < last:
+            return None
+        return cumulative - last
+
+    def _get_or_update_option_candles(
+        self,
+        sec_id: str,
+        ltp: float,
+        volume: Optional[int] = None,
+        now: Optional[datetime] = None,
+    ) -> pd.DataFrame:
+        """Maintain 5m option bars from ticks. ``volume`` is the CUMULATIVE day volume
+        (None if unknown). Bars are only created/updated while the exchange is open and
+        are keyed on IST slot starts, never on wall-clock elapsed time."""
         step_min = 5
-        if sec_id not in self._option_candle_history:
-            self._option_candle_history[sec_id] = []
-
-        if sec_id not in self._option_forming_candle:
-            forming_ts = now.replace(second=0, microsecond=0)
-            forming_min = (forming_ts.minute // step_min) * step_min
-            forming_ts = forming_ts.replace(minute=forming_min)
-            self._option_forming_candle[sec_id] = {
-                "timestamp": forming_ts,
-                "open": ltp,
-                "high": ltp,
-                "low": ltp,
-                "close": ltp,
-                "volume": volume
-            }
-
+        history = self._option_candle_history.setdefault(sec_id, [])
         forming = self._option_forming_candle.get(sec_id)
-        if forming:
-            forming_ts = forming["timestamp"]
-            bar_elapsed = (now - forming_ts).total_seconds()
-            if bar_elapsed >= (step_min * 60):
-                self._option_candle_history[sec_id].append(forming)
-                next_ts = forming_ts + timedelta(minutes=step_min)
+
+        if market_hours.is_market_open(now):
+            slot = market_hours.ist_slot_start(now, step_min)
+            inc = self._option_volume_increment(sec_id, volume)
+
+            if forming is not None and pd.Timestamp(forming["timestamp"]) < slot:
+                history.append(forming)
+                forming = None
+
+            if forming is None:
                 forming = {
-                    "timestamp": next_ts,
-                    "open": ltp,
-                    "high": ltp,
-                    "low": ltp,
-                    "close": ltp,
-                    "volume": volume
+                    "timestamp": slot,
+                    "open": ltp, "high": ltp, "low": ltp, "close": ltp,
+                    "volume": inc or 0,
+                    "volume_known": inc is not None,
                 }
                 self._option_forming_candle[sec_id] = forming
             else:
                 forming["high"] = max(forming["high"], ltp)
                 forming["low"] = min(forming["low"], ltp)
                 forming["close"] = ltp
-                forming["volume"] = max(forming.get("volume", 0), volume)
+                if inc is not None:
+                    forming["volume"] = int(forming.get("volume", 0)) + inc
+                    forming["volume_known"] = True
 
-        all_bars = self._option_candle_history[sec_id] + ([forming] if forming else [])
+        all_bars = history + ([forming] if forming else [])
         return pd.DataFrame(all_bars)
 
     async def _evaluate_option_chart_setups(
@@ -1315,6 +1342,9 @@ class ScannerWorker:
     ) -> list[Signal]:
         results: list[Signal] = []
         if not oc or underlying_price <= 0:
+            return results
+        # P0-1/P0-4: no Setup 5 evaluation outside the session or after the 15:15 entry cutoff
+        if not market_hours.is_entry_allowed():
             return results
 
         strikes = []
@@ -1349,13 +1379,14 @@ class ScannerWorker:
                 continue
 
             opt_ltp = float(opt_info.get("last_price", 0.0))
-            opt_vol = int(opt_info.get("volume", 0))
+            # Dhan chain volume is the CUMULATIVE day volume; None when absent (unknown)
+            raw_opt_vol = opt_info.get("volume")
+            opt_vol = int(raw_opt_vol) if raw_opt_vol is not None else None
             sec_id_str = str(sec_id)
             strike_symbol = f"{inst.symbol} {int(atm_strike)} {opt_type}"
 
             completed_df = pd.DataFrame()
-            now_dt = datetime.now()
-            current_slot_ts = now_dt.replace(minute=(now_dt.minute // 5) * 5, second=0, microsecond=0)
+            current_slot_ts = market_hours.ist_slot_start()
             now_loop = asyncio.get_running_loop().time()
 
             cached = self._option_chart_cache.get(sec_id_str)
@@ -1389,6 +1420,7 @@ class ScannerWorker:
                                     "low": float(seed_bar.get("low", opt_ltp)),
                                     "close": float(seed_bar.get("close", opt_ltp)),
                                     "volume": int(seed_bar.get("volume", 0)),
+                                    "volume_known": True,
                                 }
                         else:
                             completed_df = fetched_df.copy()
@@ -1397,27 +1429,28 @@ class ScannerWorker:
                     logger.debug(f"Error checking option chart candles for {strike_symbol}: {e}")
                     self._failed_candle_sec_ids[sec_id_str] = now_loop
 
-            # Maintain and dynamically update live forming candle with latest tick
+            # Maintain the live forming candle with the latest tick (only while the market is open)
             if opt_ltp > 0:
                 self._get_or_update_option_candles(sec_id_str, opt_ltp, opt_vol)
 
-            forming = self._option_forming_candle.get(sec_id_str)
-            forming_df = pd.DataFrame([forming]) if forming else pd.DataFrame()
-
-            # Merge completed historical bars with the live forming candle
-            if not completed_df.empty and not forming_df.empty:
-                opt_candles = pd.concat([completed_df, forming_df], ignore_index=True)
-            elif not completed_df.empty:
-                opt_candles = completed_df.copy()
-            elif not forming_df.empty:
-                local_history = self._option_candle_history.get(sec_id_str, [])
-                opt_candles = pd.DataFrame(local_history + [forming])
+            # P0-4: Setup 5 is evaluated on COMPLETED bars only. The forming bar is excluded,
+            # so a signal can never be raised (or acted on) from a half-formed candle.
+            local_history = self._option_candle_history.get(sec_id_str, [])
+            local_df = pd.DataFrame(local_history) if local_history else pd.DataFrame()
+            frames = [f for f in (local_df, completed_df) if not f.empty]
+            if frames:
+                # Exchange-fetched bars (listed last) win over locally built bars for the same slot
+                opt_candles = pd.concat(frames, ignore_index=True)
+                opt_candles["timestamp"] = pd.to_datetime(opt_candles["timestamp"])
+                opt_candles = opt_candles[opt_candles["timestamp"] < current_slot_ts]
+                opt_candles = opt_candles.drop_duplicates(subset=["timestamp"], keep="last")
+                opt_candles = opt_candles.sort_values("timestamp").reset_index(drop=True)
             else:
                 opt_candles = pd.DataFrame()
 
-            # Deduplicate by timestamp ensuring no contract/slot bar is counted twice
-            if not opt_candles.empty and "timestamp" in opt_candles.columns:
-                opt_candles = opt_candles.drop_duplicates(subset=["timestamp"], keep="last")
+            # Ignore stale series (e.g. last completed bar is from a previous session / long gap)
+            if not opt_candles.empty and opt_candles["timestamp"].iloc[-1] < current_slot_ts - timedelta(minutes=10):
+                opt_candles = pd.DataFrame()
 
             if not opt_candles.empty and len(opt_candles) >= 20:
                 ind_opt = calculate_indicators(opt_candles)

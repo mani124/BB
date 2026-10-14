@@ -1,7 +1,9 @@
 import logging
+import math
 from typing import Literal, Optional
 from datetime import datetime
 import pandas as pd
+from app.services import market_hours
 from app.services.strategy_engine import Signal, SetupType
 from app.services.strike_selector import OptionStrikeRecommendation
 
@@ -32,8 +34,22 @@ def evaluate_option_chart_signal(
     if option_df.empty or len(option_df) < 20 or not required_cols.issubset(option_df.columns):
         return None
 
+    # Exchange-session guard: no Setup 5 entries outside the session or after the entry cutoff
+    if not market_hours.is_entry_allowed():
+        return None
+
     last_idx = len(option_df) - 1
     curr = option_df.iloc[last_idx]
+
+    # Volume must be a real per-bar figure. Bars whose volume could not be derived
+    # (flagged volume_known=False) or that are NaN never pass the volume filter.
+    vol_known_col = option_df["volume_known"] if "volume_known" in option_df.columns else None
+    if vol_known_col is not None:
+        flag = vol_known_col.iloc[last_idx]
+        if not pd.isna(flag) and not bool(flag):
+            return None
+    if pd.isna(curr["volume"]):
+        return None
 
     close = float(curr["close"])
     bb_upper = float(curr["bb_upper"])
@@ -57,7 +73,12 @@ def evaluate_option_chart_signal(
     # 4. Volume Surge Liquidity Filter: Volume must be >= 1.2x 20-bar avg and >= 1000 contracts
     lookback = min(20, len(option_df) - 1)
     if lookback > 0:
-        avg_vol = float(option_df["volume"].iloc[last_idx - lookback:last_idx].mean())
+        hist_vol = option_df["volume"].iloc[last_idx - lookback:last_idx]
+        if vol_known_col is not None:
+            hist_vol = hist_vol.where(vol_known_col.iloc[last_idx - lookback:last_idx] != False)  # noqa: E712
+        avg_vol = float(hist_vol.mean())
+        if math.isnan(avg_vol):
+            return None
     else:
         avg_vol = volume
 
@@ -77,8 +98,10 @@ def evaluate_option_chart_signal(
     ts_raw = curr.get("timestamp", last_idx)
     try:
         candle_dt = pd.to_datetime(ts_raw)
-        if candle_dt.date() < datetime.now().date():
+        if candle_dt.date() < market_hours.now_ist().date():
             # Finding 1 & 2: Prior session breakout candles must not trigger signals
+            return None
+        if candle_dt.time() > market_hours.entry_cutoff_time():
             return None
     except Exception:
         pass

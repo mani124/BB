@@ -4,6 +4,12 @@ from datetime import datetime, timedelta
 from app.services.indicators import calculate_indicators
 from app.services.strategy_engine import SetupType
 from app.services.option_chart_strategy import evaluate_option_chart_signal
+from app.services import market_hours
+
+
+def _now() -> datetime:
+    """Naive IST 'now' from the injectable exchange clock (not the wall clock)."""
+    return market_hours.now_ist().replace(tzinfo=None)
 
 from typing import Optional
 
@@ -14,7 +20,7 @@ def create_option_candles(
 ) -> pd.DataFrame:
     """Create a realistic sequence of option premium candles."""
     if start_time is None:
-        start_time = datetime.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=3)
+        start_time = _now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=3)
     records = []
     prem = base_premium
     for i in range(n):
@@ -35,7 +41,7 @@ def create_option_candles(
 def test_setup5_ce_breakout_above_option_upper_bb_and_vwap():
     df = create_option_candles(n=30, base_premium=100.0)
     # Candle 30: strong surge breaking above option Upper BB with high volume
-    ts = datetime.now()
+    ts = _now()
     df.loc[29] = {
         "timestamp": ts,
         "open": 101.0,
@@ -125,7 +131,7 @@ def test_setup5_ce_rejected_when_low_volume():
 
 def test_setup5_pe_breakout_above_option_upper_bb_and_vwap():
     df = create_option_candles(n=30, base_premium=80.0)
-    ts = datetime.now()
+    ts = _now()
     df.loc[29] = {
         "timestamp": ts,
         "open": 82.0,
@@ -163,7 +169,7 @@ def test_setup5_paper_trader_does_not_instant_exit_on_market_price():
 
     df = create_option_candles(n=30, base_premium=100.0)
     df.loc[29] = {
-        "timestamp": datetime.now(),
+        "timestamp": _now(),
         "open": 101.0,
         "high": 115.0,
         "low": 100.5,
