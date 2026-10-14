@@ -32,6 +32,15 @@ class Signal(BaseModel):
     rationale: str
     is_confirmed: bool = True
 
+def is_setup5(setup_type) -> bool:
+    """True for Setup 5 whether given as the enum, its value, or a legacy stored label."""
+    if setup_type == SetupType.SETUP_5_OPTION_BB:
+        return True
+    return str(getattr(setup_type, "value", setup_type)) in (
+        SetupType.SETUP_5_OPTION_BB.value, "BB_EXPANSION_SCALP", "SETUP_5_OPTION_BB",
+    ) or "Setup 5" in str(setup_type)
+
+
 INDEX_SYMBOLS = {"NIFTY 50", "NIFTY", "NIFTY BANK", "BANKNIFTY", "FINNIFTY", "NIFTY FINANCIAL SERVICES", "SENSEX", "MIDCPNIFTY"}
 
 def evaluate_signals(

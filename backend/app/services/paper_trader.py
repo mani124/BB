@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Literal, Optional
 from pydantic import BaseModel
 from app.services.charges_calculator import calculate_option_trade_charges
-from app.services.strategy_engine import Signal
+from app.services.strategy_engine import Signal, is_setup5
 from app.services.strike_selector import get_lot_size
 from app.services import market_hours
 from app.core.config import settings
@@ -454,8 +454,7 @@ class PaperTradingEngine:
         )
         if last_closed and last_closed.status == "STOPPED_OUT":
             is_s5 = (
-                signal.setup_type in ("Setup 5: Option Chart BB Scalp", "BB_EXPANSION_SCALP", "SETUP_5_OPTION_BB")
-                or "Setup 5" in str(signal.setup_type)
+                is_setup5(signal.setup_type)
             )
             if is_s5:
                 failed_peak = last_closed.option_entry
@@ -499,7 +498,7 @@ class PaperTradingEngine:
             # P1-3: reject stale or untradeable quotes (frozen last trade, wide/one-sided market).
             quote_block = self._quote_block_reason(rec)
             if quote_block:
-                logger.info("Live position entry skipped for %s: %s", signal.symbol, quote_block)
+                logger.warning("DATA_QUALITY entry_blocked symbol=%s side=%s reason=%s", signal.symbol, signal.option_type, quote_block)
                 self._processed_signal_ids.add(signal.id)
                 return None
 
@@ -529,8 +528,7 @@ class PaperTradingEngine:
 
         p_signal = float(rec.estimated_option_entry)
         is_s5 = (
-            signal.setup_type in ("Setup 5: Option Chart BB Scalp", "BB_EXPANSION_SCALP", "SETUP_5_OPTION_BB")
-            or "Setup 5" in str(signal.setup_type)
+            is_setup5(signal.setup_type)
         )
         entry_estimated = False
         if getattr(rec, "real_ask_price", 0.0) is not None and float(rec.real_ask_price or 0.0) > 0:
@@ -540,6 +538,8 @@ class PaperTradingEngine:
         else:
             p_fill_entry = float(p_signal)
             entry_estimated = True
+            logger.warning("DATA_QUALITY entry_estimated symbol=%s side=%s price=%s feed=%s (no live ask/ltp; fill modeled from signal)",
+                           signal.symbol, signal.option_type, p_signal, feed_mode)
 
         entry_slippage = max(0.0, round(p_fill_entry - p_signal, 2))
         init_slip_cost = round(entry_slippage * qty, 2)
@@ -848,8 +848,7 @@ class PaperTradingEngine:
                 pos.current_underlying = round(curr_spot, 2)
 
             is_opt_chart_setup = (
-                pos.setup_type in ("Setup 5: Option Chart BB Scalp", "BB_EXPANSION_SCALP", "SETUP_5_OPTION_BB")
-                or "Setup 5" in str(pos.setup_type)
+                is_setup5(pos.setup_type)
             )
 
             # Check if live option quote is directly provided from Dhan (NSE_FNO)
