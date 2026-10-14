@@ -70,6 +70,10 @@ def clean_symbol_key(symbol: str) -> str:
             s = s[len(prefix):].strip()
     return s
 
+def is_lot_size_known(symbol: str) -> bool:
+    return clean_symbol_key(symbol) in DEFAULT_LOT_SIZES
+
+
 def get_lot_size(symbol: str) -> int:
     clean = clean_symbol_key(symbol)
     return DEFAULT_LOT_SIZES.get(clean, 100)
@@ -82,6 +86,7 @@ class OptionStrikeRecommendation(BaseModel):
     recommended_strike: int  # 1-strike ITM for best delta/gamma balance
     strike_symbol: str
     lot_size: int
+    lot_size_known: bool = True  # False => lot size is a guessed default; entries are refused
     # Underlying spot levels
     risk: float
     stop_loss: float
@@ -102,6 +107,9 @@ class OptionStrikeRecommendation(BaseModel):
     real_bid_price: Optional[float] = None
     real_ltp: Optional[float] = None
     real_delta: Optional[float] = None
+    # True when the option SL/targets were scaled with a default delta (0.50-0.55) instead of the
+    # contract's own Greek, i.e. the premium exits are an approximation.
+    delta_assumed: bool = False
     is_live_quote: bool = False
     # Age (seconds) of the chain/tick quote these live fields came from; None = unknown.
     quote_age_s: Optional[float] = None
@@ -264,6 +272,7 @@ def recommend_strike(
         recommended_strike=recommended_strike,
         strike_symbol=strike_symbol,
         lot_size=lot_size,
+        lot_size_known=is_lot_size_known(symbol),
         risk=risk,
         stop_loss=stop_loss,
         target_1=round(calc_target_1, 2),
@@ -276,6 +285,25 @@ def recommend_strike(
         option_target_1_price=opt_t1_price,
         option_target_2_price=opt_t2_price
     )
+
+
+def chain_strike_grid(option_chain_oc: dict) -> list[float]:
+    out: list[float] = []
+    for k in (option_chain_oc or {}).keys():
+        try:
+            out.append(float(k))
+        except (ValueError, TypeError):
+            continue
+    return sorted(set(out))
+
+
+def _chain_step(strikes: list[float]) -> float:
+    gaps = sorted(b - a for a, b in zip(strikes, strikes[1:]) if b - a > 0)
+    return gaps[len(gaps) // 2] if gaps else 1.0
+
+
+def _num(v: float):
+    return int(v) if float(v).is_integer() else v
 
 
 def resolve_live_strike_from_chain(
@@ -294,28 +322,31 @@ def resolve_live_strike_from_chain(
     extract its real market quotes (Ask/LTP, Greeks), and calculate mathematically sound
     Option SL and Target levels based on real entry price and real Delta.
     """
-    step = get_strike_step(symbol, underlying_price)
     lot_size = get_lot_size(symbol)
+
+    # P2-6: take the strike grid from the live chain itself (nearest listed strike, real step);
+    # fall back to the static table only when the chain has too few strikes to infer a grid.
+    chain_strikes = chain_strike_grid(option_chain_oc)
+    if len(chain_strikes) >= 3 and all(float(k).is_integer() for k in chain_strikes):
+        step = _chain_step(chain_strikes)
+        atm_idx = min(range(len(chain_strikes)), key=lambda j: abs(chain_strikes[j] - underlying_price))
+        atm_strike = _num(chain_strikes[atm_idx])
+        pref_u = (strike_preference or "DEFAULT").upper()
+        shift = 0 if pref_u == "ATM" else (-1 if option_type == "CE" else 1)
+        rec_idx = max(0, min(len(chain_strikes) - 1, atm_idx + shift))
+        recommended_strike = _num(chain_strikes[rec_idx])
+        default_delta = {"ATM": 0.50, "ITM_1": 0.54}.get(pref_u, 0.55)
+    else:
+        step = get_strike_step(symbol, underlying_price)
+        atm_strike = int(round(underlying_price / step) * step)
+        pref = (strike_preference or "DEFAULT").upper()
+        if pref == "ATM":
+            recommended_strike = atm_strike
+            default_delta = 0.50
+        else:
+            recommended_strike = atm_strike - step if option_type == "CE" else atm_strike + step
+            default_delta = 0.54 if pref == "ITM_1" else 0.55
     min_risk = max(step * 0.25, 2.0)
-
-    atm_strike = int(round(underlying_price / step) * step)
-
-    pref = (strike_preference or "DEFAULT").upper()
-    if pref == "ATM":
-        recommended_strike = atm_strike
-        default_delta = 0.50
-    elif pref == "ITM_1":
-        if option_type == "CE":
-            recommended_strike = atm_strike - step
-        else:
-            recommended_strike = atm_strike + step
-        default_delta = 0.54
-    else:  # "DEFAULT"
-        if option_type == "CE":
-            recommended_strike = atm_strike - step
-        else:
-            recommended_strike = atm_strike + step
-        default_delta = 0.55
 
     if option_type == "CE":
         if stop_loss is None or stop_loss >= underlying_price:
@@ -372,7 +403,8 @@ def resolve_live_strike_from_chain(
                     "last_price": price_val,
                     "top_ask_price": price_val,
                     "top_bid_price": price_val,
-                    "greeks": {"delta": default_delta}
+                    "greeks": {"delta": default_delta},
+                    "delta_assumed": True,
                 }
 
     if opt_contract and isinstance(opt_contract, dict):
@@ -382,6 +414,7 @@ def resolve_live_strike_from_chain(
         bid = float(opt_contract.get("top_bid_price", 0.0))
         greeks = opt_contract.get("greeks") or {}
         raw_delta = float(greeks.get("delta", 0.0))
+        delta_assumed = bool(opt_contract.get("delta_assumed")) or not (0.05 <= abs(raw_delta) <= 0.95)
         delta = abs(raw_delta) if (0.05 <= abs(raw_delta) <= 0.95) else default_delta
 
         # For buying an option: entry is the real Ask price (or LTP if Ask is 0)
@@ -412,6 +445,7 @@ def resolve_live_strike_from_chain(
             recommended_strike=recommended_strike,
             strike_symbol=strike_symbol,
             lot_size=lot_size,
+        lot_size_known=is_lot_size_known(symbol),
             risk=risk,
             stop_loss=stop_loss,
             target_1=round(calc_target_1, 2),
@@ -429,6 +463,7 @@ def resolve_live_strike_from_chain(
             real_bid_price=bid,
             real_ltp=ltp,
             real_delta=round(delta, 4),
+            delta_assumed=delta_assumed,
             is_live_quote=(ask > 0 or ltp > 0),
         )
 

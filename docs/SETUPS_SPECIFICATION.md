@@ -455,3 +455,41 @@ $$\text{Risk per Lot (₹)} = (\text{Option Entry} - \text{Option SL}) \times \t
 | **Paper Trader**   | [`backend/app/services/paper_trader.py`](file:///Users/manigopal/Documents/BB_OPTIONS_DASHBOARD/backend/app/services/paper_trader.py) | Forward-testing journal, partial booking, re-entry gate. |
 | **Dhan HQ Client** | [`backend/app/services/dhan_client.py`](file:///Users/manigopal/Documents/BB_OPTIONS_DASHBOARD/backend/app/services/dhan_client.py) | Async throttled client, 429 retry backoff, zero-token auth. |
 | **Frontend UI**    | [`frontend/src/App.tsx`](file:///Users/manigopal/Documents/BB_OPTIONS_DASHBOARD/frontend/src/App.tsx) | Live dashboard with Hero Radar, Setup tabs, Paper Journal. |
+
+
+---
+
+## 11. Implementation Status vs. This Specification (audit of 2026-10-14)
+
+This section records where the code deliberately or accidentally differs from sections 1–10. The code is the source of truth for live behaviour until a decision below says otherwise.
+
+### 11.1 Setups 6–8 (snap-back family) are implemented but were not specified above
+All three require `BandWidth > SQUEEZE_ABS_BW_PCT` ("bands are wide") and use a 1-strike ITM strike, with targets at the 20 SMA (Target 1) and the opposite band (Target 2).
+
+| Setup | Enum | Trigger (PE shown; CE is the mirror) |
+|---|---|---|
+| 6 | `SETUP_6_PINBAR_SNAPBACK` | `ADX <= 25`; high pierces the upper band, close back inside, upper wick >= 50% of the bar range, body in the lower 60%, `RSI >= 68`, close above the 20 SMA. SL above the pin-bar high. |
+| 7 | `SETUP_7_INSIDE_BAR_SNAPBACK` | Bar t-2 reaches the 2.5σ band, bar t-1 is an inside bar, bar t closes below the inside bar's low, close above the 20 SMA. SL above the mother-bar high. |
+| 8 | `SETUP_8_DIVERGENCE_SNAPBACK` | Climax swing with RSI divergence fading back toward the mean (see `strategy_engine.py`, Setup 8 block). |
+
+### 11.2 Setup 3 differs from section 4 (decision needed; not changed)
+| Rule | Spec (section 4) | Code |
+|---|---|---|
+| Swing window | Leg 1 5–20 candles back | Last 12 candles, split 6 / 6 |
+| Second low | `Low2 >= Low1 × 0.995` and inside band | Only `close2 > lower band` |
+| RSI divergence | `RSI2 > RSI1 + 1.5` | `RSI2 > RSI1` (no margin) |
+| Trigger | Close > peak high **and** above 9 EMA | Close crosses the neckline (max high between the lows); 9 EMA not checked |
+| Stop-loss | Second low − 2.0 | Lower of both lows − 1.0 |
+
+Tightening the code to the spec would reduce Setup 3 signal frequency; loosening the spec to the code keeps current behaviour. This needs an owner decision.
+
+### 11.3 Stock ranking and risk cap
+* The momentum ranker is constructed with `top_n = 10` in `scanner_worker.py` (the class default and section 7 say 5).
+* The risk cap skips a trade when risk per lot exceeds **1×** the max risk cap (`paper_trader.py`), not 2× as section 8 states.
+
+### 11.4 Changes made after this spec was written
+* VWAP for instruments with no volume (cash indices) is the session-cumulative mean of typical price, not the single bar's typical price.
+* RSI / ATR / DI / ADX use Wilder smoothing seeded with an SMA; ADX is undefined (neutral 20) before bar 28.
+* "Bands are wide / squeeze" uses `SQUEEZE_ABS_BW_PCT` (default 5.0 = legacy; nearly always true on 5m bars). Recalibrate with `scripts/compare_squeeze.py` on recorded candles.
+* Option exits scale spot risk by the contract's chain delta; when the chain has no Greek the default 0.50–0.55 is used and the recommendation carries `delta_assumed = true` (`REQUIRE_REAL_DELTA=1` refuses such entries).
+* Setup 5 stops entering after 14:30 IST on the contract's expiry day.

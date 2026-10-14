@@ -620,6 +620,10 @@ class PaperTradingEngine:
     @staticmethod
     def _quote_block_reason(rec) -> Optional[str]:
         """P1-3: None if the live quote behind a recommendation is fresh and tradeable."""
+        if getattr(settings, "REQUIRE_REAL_DELTA", False) and getattr(rec, "delta_assumed", False):
+            return "option exits rely on an assumed delta (no Greeks in chain)"
+        if getattr(rec, "lot_size_known", True) is False:
+            return "lot size unknown (guessed default); refusing to size a position"
         max_age = float(getattr(settings, "MAX_QUOTE_AGE_SECONDS", 0) or 0)
         age = getattr(rec, "quote_age_s", None)
         if max_age > 0 and age is not None and float(age) > max_age:
