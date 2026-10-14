@@ -182,15 +182,17 @@ class PaperPersistenceMixin:
         self.flag_stale_carryover()
         self._recalculate_metrics()
 
-    def _persist_entry(self, pos: PaperPosition, signal_id: str) -> None:
+    def _persist_entry(self, pos: PaperPosition, signal_id: str) -> bool:
         """P1-4: write the new position and its processed-signal id in ONE synchronous
         transaction, so a crash or --reload between the two can never let the same signal
         open a second position after restart. Later updates still go through the queue."""
         if not self.storage:
-            return
+            return True
         created = market_hours.now_ist().strftime("%Y-%m-%d %H:%M:%S")
         try:
             self.storage.record_entry(pos, signal_id, created)
         except Exception as exc:
             logger.error("Atomic entry persistence failed for %s: %s", pos.id, exc)
             self._pending_errors.append(exc)
+            return False
+        return True

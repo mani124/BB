@@ -38,6 +38,7 @@ const DashboardContent: React.FC = () => {
   const [capabilityInput, setCapabilityInput] = useState(getDashboardCapability());
   const [capabilityError, setCapabilityError] = useState<string | null>(null);
   const [capabilitySuccess, setCapabilitySuccess] = useState(false);
+  const [sessionNonce, setSessionNonce] = useState(0);
 
   useEffect(() => {
     if (actionError) {
@@ -53,6 +54,7 @@ const DashboardContent: React.FC = () => {
     const ok = await bootstrapDashboardSession(capabilityInput);
     if (ok) {
       setCapabilitySuccess(true);
+      setSessionNonce((n) => n + 1); // restart snapshot + live stream now that we are authorized
       setTimeout(() => {
         setCapabilityModalOpen(false);
         setCapabilitySuccess(false);
@@ -189,7 +191,7 @@ const DashboardContent: React.FC = () => {
       eventSource?.close();
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
-  }, []);
+  }, [sessionNonce]);
 
   const handleScanNow = async () => {
     try {
@@ -310,6 +312,10 @@ const DashboardContent: React.FC = () => {
       if (res.status === 401) {
         setCapabilityModalOpen(true);
         setActionError('Unauthorized: Dashboard capability required.');
+        return;
+      }
+      if (!res.ok) {
+        setActionError('Failed to reset paper portfolio. Please try again.');
         return;
       }
       const portRes = await apiFetch('/api/paper/portfolio');

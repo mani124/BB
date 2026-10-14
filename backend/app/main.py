@@ -25,6 +25,9 @@ async def lifespan(app: FastAPI):
             "SECURITY: DASHBOARD_CAPABILITY is the built-in default; set a private value "
             "(and COOKIE_SECURE=1 over HTTPS) before exposing this beyond localhost."
         )
+    if settings.COOKIE_SECURE and settings.DASHBOARD_CAPABILITY.strip() == settings.DEFAULT_DASHBOARD_CAPABILITY:
+        # COOKIE_SECURE=1 signals a non-localhost deployment; the default capability is public (bundled in the UI).
+        raise RuntimeError("Refusing to start: set a private DASHBOARD_CAPABILITY when COOKIE_SECURE=1.")
     await paper_trader.start_persistence_worker()
     worker.start()
     yield

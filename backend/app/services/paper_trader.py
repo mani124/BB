@@ -169,7 +169,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             return None
 
         # P0-2: exposure guards (one position per contract, per stock+side, plus cooldown)
-        block = self._exposure_block_reason(signal)
+        block = self._exposure_block_reason(signal, lots)
         if block:
             logger.info("Entry blocked for %s %s: %s", signal.symbol, signal.option_type, block)
             self._processed_signal_ids.add(signal.id)
@@ -318,7 +318,11 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
 
         self._portfolio.active_positions.append(pos)
         self._recalculate_metrics()
-        self._persist_entry(pos, signal.id)
+        if not self._persist_entry(pos, signal.id):
+            # The entry never reached storage: do not report a trade that would vanish on restart.
+            self._portfolio.active_positions.remove(pos)
+            self._recalculate_metrics()
+            return None
         if self.on_position_opened:
             try:
                 res = self.on_position_opened(pos)

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition, DailyPnl
 from app.services.strategy_engine import Signal
@@ -8,7 +8,7 @@ router = APIRouter(prefix="/paper", tags=["paper"])
 
 class ManualTradeRequest(BaseModel):
     signal: Signal
-    lots: Optional[int] = 1
+    lots: Optional[int] = Field(default=1, ge=1)
     feed_mode: Optional[str] = None
 
 class SettingsRequest(BaseModel):

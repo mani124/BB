@@ -46,7 +46,7 @@ class PaperGuardsMixin:
             return f"sym:{str(strike_symbol).strip()}"
         return None
 
-    def _exposure_block_reason(self, signal: Signal) -> Optional[str]:
+    def _exposure_block_reason(self, signal: Signal, lots: Optional[int] = None) -> Optional[str]:
         """P0-2: returns why a new entry must be refused, or None if it may proceed."""
         rec = signal.strike_recommendation
         key = self._contract_key(getattr(rec, "option_security_id", None), getattr(rec, "strike_symbol", None))
@@ -64,7 +64,7 @@ class PaperGuardsMixin:
         max_notional = float(getattr(settings, "MAX_OPEN_NOTIONAL", 0) or 0)
         if max_notional > 0:
             open_notional = sum(p.option_entry * p.quantity for p in self._portfolio.active_positions)
-            lots = self._portfolio.default_lots
+            lots = lots if lots is not None else self._portfolio.default_lots
             new_notional = float(getattr(rec, "estimated_option_entry", 0.0) or 0.0) * int(getattr(rec, "lot_size", 0) or 0) * max(1, lots)
             if open_notional + new_notional > max_notional:
                 return f"open premium notional would exceed {max_notional:,.0f}"
