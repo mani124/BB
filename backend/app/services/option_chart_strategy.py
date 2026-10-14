@@ -1,5 +1,6 @@
 import logging
 import math
+import time
 from typing import Literal, Optional
 from datetime import datetime
 import pandas as pd
@@ -159,6 +160,7 @@ def evaluate_option_chart_signal(
         real_bid_price=real_bid,
         is_live_quote=is_live,
         quote_age_s=(float(current_quote["quote_age_s"]) if (current_quote and current_quote.get("quote_age_s") is not None) else None),
+        quote_as_of=(time.time() - float(current_quote["quote_age_s"]) if (current_quote and current_quote.get("quote_age_s") is not None) else None),
     )
 
     indicators_snap = {

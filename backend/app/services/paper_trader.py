@@ -17,6 +17,13 @@ from app.services.paper_exits import PaperExitsMixin
 logger = logging.getLogger(__name__)
 
 
+def _outcome_pnl(p) -> float:
+    """Win/loss basis: net of charges when the trade carries them (matches the dashboard rows), else gross."""
+    if getattr(p, "net_pnl", 0.0) or getattr(p, "total_charges", 0.0):
+        return p.net_pnl
+    return p.pnl_rupees
+
+
 class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixin):
     """Manages paper trading execution, position monitoring, and analytics."""
 
@@ -50,8 +57,8 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         unrealized = round(sum(round(p.pnl_points * p.quantity, 2) for p in active), 2)
         total = round(realized + unrealized, 2)
         total_trades = len(closed)
-        winning = sum(1 for p in closed if p.pnl_rupees > 0)
-        losing = sum(1 for p in closed if p.pnl_rupees <= 0)
+        winning = sum(1 for p in closed if _outcome_pnl(p) > 0)
+        losing = sum(1 for p in closed if _outcome_pnl(p) <= 0)
         win_rate = round((winning / total_trades) * 100, 1) if total_trades > 0 else 0.0
 
         total_gross = sum(getattr(p, "gross_pnl", 0.0) or p.pnl_rupees for p in closed)
@@ -98,13 +105,22 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                 day.quarantined_excluded += 1
                 continue
             day.trades += 1
-            if p.pnl_rupees > 0:
+            if _outcome_pnl(p) > 0:
                 day.wins += 1
-            elif p.pnl_rupees < 0:
+            elif _outcome_pnl(p) < 0:
                 day.losses += 1
             day.gross_pnl = round(day.gross_pnl + (p.gross_pnl or p.pnl_rupees), 2)
             day.total_charges = round(day.total_charges + p.total_charges, 2)
             day.net_pnl = round(day.net_pnl + p.net_pnl, 2)
+        # Profit already booked at Target 1 on still-open runners is realized today.
+        today = market_hours.now_ist().date().isoformat()
+        for p in self._portfolio.active_positions:
+            if (mode is not None and getattr(p, "feed_mode", "demo") != mode) or p.quarantine_reason:
+                continue
+            if p.booked_pnl_rupees:
+                day = days.setdefault(today, DailyPnl(date=today))
+                day.gross_pnl = round(day.gross_pnl + p.booked_pnl_rupees, 2)
+                day.net_pnl = round(day.net_pnl + p.booked_pnl_rupees, 2)
         return sorted(days.values(), key=lambda d: d.date, reverse=True)
 
     def set_auto_trade(self, enabled: bool):
@@ -232,7 +248,23 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
 
         lot_size = rec.lot_size
 
-        risk_per_unit = max(0.1, abs(rec.estimated_option_entry - rec.option_sl_price))
+        p_signal = float(rec.estimated_option_entry)
+        is_s5 = (
+            is_setup5(signal.setup_type)
+        )
+        entry_estimated = False
+        if getattr(rec, "real_ask_price", 0.0) is not None and float(rec.real_ask_price or 0.0) > 0:
+            p_fill_entry = float(rec.real_ask_price)
+        elif not is_s5 and getattr(rec, "real_ltp", 0.0) is not None and float(rec.real_ltp or 0.0) > 0:
+            p_fill_entry = round(float(rec.real_ltp) * 1.001, 2)
+        else:
+            p_fill_entry = float(p_signal)
+            entry_estimated = True
+            logger.warning("DATA_QUALITY entry_estimated symbol=%s side=%s price=%s feed=%s (no live ask/ltp; fill modeled from signal)",
+                           signal.symbol, signal.option_type, p_signal, feed_mode)
+
+        # Size risk from the price we will actually fill at, not the signal candle close.
+        risk_per_unit = max(0.1, abs(max(p_fill_entry, float(rec.estimated_option_entry)) - rec.option_sl_price))
         risk_per_lot = risk_per_unit * lot_size
 
         target_lots = lots if lots is not None else self._portfolio.default_lots
@@ -253,21 +285,6 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
 
         pos_id = f"POS_{signal.symbol}_{signal.option_type}_{int(market_hours.now_ist().timestamp())}_{uuid.uuid4().hex[:6]}"
         rec = signal.strike_recommendation
-
-        p_signal = float(rec.estimated_option_entry)
-        is_s5 = (
-            is_setup5(signal.setup_type)
-        )
-        entry_estimated = False
-        if getattr(rec, "real_ask_price", 0.0) is not None and float(rec.real_ask_price or 0.0) > 0:
-            p_fill_entry = float(rec.real_ask_price)
-        elif not is_s5 and getattr(rec, "real_ltp", 0.0) is not None and float(rec.real_ltp or 0.0) > 0:
-            p_fill_entry = round(float(rec.real_ltp) * 1.001, 2)
-        else:
-            p_fill_entry = float(p_signal)
-            entry_estimated = True
-            logger.warning("DATA_QUALITY entry_estimated symbol=%s side=%s price=%s feed=%s (no live ask/ltp; fill modeled from signal)",
-                           signal.symbol, signal.option_type, p_signal, feed_mode)
 
         entry_slippage = max(0.0, round(p_fill_entry - p_signal, 2))
         init_slip_cost = round(entry_slippage * qty, 2)
@@ -321,6 +338,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         if not self._persist_entry(pos, signal.id):
             # The entry never reached storage: do not report a trade that would vanish on restart.
             self._portfolio.active_positions.remove(pos)
+            self._processed_signal_ids.discard(signal.id)  # allow a retry once storage recovers
             self._recalculate_metrics()
             return None
         if self.on_position_opened:
