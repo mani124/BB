@@ -45,3 +45,19 @@ def test_ranker_prefers_net_change_when_prev_close_stale_and_skips_implausible()
     dump = str(ranks.model_dump())
     assert "BBB" not in dump
     assert "AAA" in dump   # +10% once prev close is corrected to 100
+
+
+def test_strike_step_is_derived_from_the_chain():
+    from app.services.strike_selector import derive_strike_step_from_chain, resolve_live_strike_from_chain
+    oc = {f"{k}.000000": {"ce": {"security_id": i, "last_price": 10.0, "top_ask_price": 10.0},
+                          "pe": {"security_id": i + 100, "last_price": 10.0, "top_ask_price": 10.0}}
+          for i, k in enumerate(range(2400, 2600, 25))}
+    assert derive_strike_step_from_chain(oc) == 25
+    assert derive_strike_step_from_chain({}) is None
+    assert derive_strike_step_from_chain({"2500": {}}) is None
+    assert derive_strike_step_from_chain({"2400": {}, "2500": {}}) is None   # sparse: one gap only
+    # a symbol whose static step differs: ATM must follow the chain's 25 interval
+    rec = resolve_live_strike_from_chain("RELIANCE", 2512.0, "CE", oc, strike_preference="ATM")
+    assert rec.recommended_strike == 2500
+    rec = resolve_live_strike_from_chain("RELIANCE", 2514.0, "CE", oc, strike_preference="ATM")
+    assert rec.recommended_strike == 2525

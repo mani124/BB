@@ -166,6 +166,26 @@ def get_strike_step(symbol: str, price: float) -> int:
     else:
         return 100
 
+def derive_strike_step_from_chain(option_chain_oc: dict) -> Optional[int]:
+    """Strike interval actually listed in a live option chain (most common gap between
+    adjacent strikes, seen at least twice), or None if it can't be determined. Preferred over the static
+    tables, which go stale when the exchange changes strike intervals."""
+    strikes = []
+    for k in (option_chain_oc or {}):
+        try:
+            strikes.append(float(k))
+        except (ValueError, TypeError):
+            continue
+    strikes = sorted(set(strikes))
+    gaps = [round(b - a, 4) for a, b in zip(strikes, strikes[1:]) if b - a > 0]
+    if not gaps:
+        return None
+    step = max(set(gaps), key=lambda g: (gaps.count(g), -g))
+    if gaps.count(step) < 2:
+        return None  # a sparse chain (e.g. two strikes) says nothing reliable about the interval
+    return int(step) if float(step).is_integer() else None
+
+
 def estimate_option_entry(symbol: str, underlying_price: float, step: int) -> float:
     """Estimate realistic 1-strike ITM option entry premium based on underlying tier and step."""
     clean = clean_symbol_key(symbol)
@@ -300,7 +320,7 @@ def resolve_live_strike_from_chain(
     extract its real market quotes (Ask/LTP, Greeks), and calculate mathematically sound
     Option SL and Target levels based on real entry price and real Delta.
     """
-    step = get_strike_step(symbol, underlying_price)
+    step = derive_strike_step_from_chain(option_chain_oc) or get_strike_step(symbol, underlying_price)
     lot_size = get_lot_size(symbol)
     min_risk = max(step * 0.25, 2.0)
 
