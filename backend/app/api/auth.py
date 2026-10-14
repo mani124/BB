@@ -33,7 +33,7 @@ def create_dashboard_session(body: SessionAuthRequest, response: Response):
         value=expected,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=settings.COOKIE_SECURE,
         max_age=86400,
     )
     return {"status": "authenticated", "token": expected}

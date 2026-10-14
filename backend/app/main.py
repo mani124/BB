@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +20,11 @@ worker = ScannerWorker(universe_mgr=universe_mgr)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.DASHBOARD_CAPABILITY.strip() == settings.DEFAULT_DASHBOARD_CAPABILITY:
+        logging.getLogger(__name__).warning(
+            "SECURITY: DASHBOARD_CAPABILITY is the built-in default; set a private value "
+            "(and COOKIE_SECURE=1 over HTTPS) before exposing this beyond localhost."
+        )
     await paper_trader.start_persistence_worker()
     worker.start()
     yield

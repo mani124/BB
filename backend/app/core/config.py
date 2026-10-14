@@ -37,6 +37,9 @@ class Settings(BaseModel):
     MAX_OPEN_POSITIONS: int = int(os.getenv("MAX_OPEN_POSITIONS", "8"))
     MAX_ENTRIES_PER_SYMBOL_PER_DAY: int = int(os.getenv("MAX_ENTRIES_PER_SYMBOL_PER_DAY", "3"))
     MAX_OPEN_NOTIONAL: float = float(os.getenv("MAX_OPEN_NOTIONAL", "1000000"))
+    DEFAULT_DASHBOARD_CAPABILITY: str = "bb-options-local-capability"
     DASHBOARD_CAPABILITY: str = os.getenv("DASHBOARD_CAPABILITY", "bb-options-local-capability")
+    # Set COOKIE_SECURE=1 whenever the dashboard is served over HTTPS / beyond localhost.
+    COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "0") == "1"
 
 settings = Settings()
