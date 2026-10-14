@@ -21,26 +21,26 @@ describe('SetupFilterTabs', () => {
     );
 
     // Verify all 8 setups are rendered
-    expect(screen.getByText(/All Setups/i)).toBeInTheDocument();
-    expect(screen.getByText(/Setup 1: Squeeze Breakout/i)).toBeInTheDocument();
-    expect(screen.getByText(/Setup 2: Walking Bands/i)).toBeInTheDocument();
-    expect(screen.getByText(/Setup 3: W\/M Reversal/i)).toBeInTheDocument();
-    expect(screen.getByText(/Setup 4: 9:30 AM ORB/i)).toBeInTheDocument();
-    expect(screen.getByText(/Setup 5: Option BB Scalp/i)).toBeInTheDocument();
-    expect(screen.getByText(/Setup 6: Pin Bar Snapback/i)).toBeInTheDocument();
-    expect(screen.getByText(/Setup 7: 2.5σ Inside Bar/i)).toBeInTheDocument();
-    expect(screen.getByText(/Setup 8: Divergence Fade/i)).toBeInTheDocument();
+    expect(screen.getByText(/All setups/i)).toBeInTheDocument();
+    expect(screen.getByText(/S1 Squeeze/i)).toBeInTheDocument();
+    expect(screen.getByText(/S2 Walking Bands/i)).toBeInTheDocument();
+    expect(screen.getByText(/S3 W\/M Reversal/i)).toBeInTheDocument();
+    expect(screen.getByText(/S4 9:30 ORB/i)).toBeInTheDocument();
+    expect(screen.getByText(/S5 Option BB Scalp/i)).toBeInTheDocument();
+    expect(screen.getByText(/S6 Pin Bar/i)).toBeInTheDocument();
+    expect(screen.getByText(/S7 Inside Bar/i)).toBeInTheDocument();
+    expect(screen.getByText(/S8 Divergence Fade/i)).toBeInTheDocument();
 
     // Fire click on Setup 6
-    fireEvent.click(screen.getByText(/Setup 6: Pin Bar Snapback/i));
+    fireEvent.click(screen.getByText(/S6 Pin Bar/i));
     expect(handleSelectSetup).toHaveBeenCalledWith('Setup 6: Pin Bar Exhaustion Snapback');
 
     // Fire click on Setup 7
-    fireEvent.click(screen.getByText(/Setup 7: 2.5σ Inside Bar/i));
+    fireEvent.click(screen.getByText(/S7 Inside Bar/i));
     expect(handleSelectSetup).toHaveBeenCalledWith('Setup 7: 2.5σ Puncture & Inside Bar');
 
     // Fire click on Setup 8
-    fireEvent.click(screen.getByText(/Setup 8: Divergence Fade/i));
+    fireEvent.click(screen.getByText(/S8 Divergence Fade/i));
     expect(handleSelectSetup).toHaveBeenCalledWith('Setup 8: Climax Swing Divergence Fade');
   });
 });

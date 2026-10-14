@@ -125,7 +125,7 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
     expect(screen.getByText('BANKNIFTY 48500 PE')).toBeInTheDocument();
 
     // Click Setup 1 pill
-    const s1Button = screen.getByRole('button', { name: /Setup 1/i });
+    const s1Button = screen.getByRole('button', { name: /S1 Squeeze/i });
     fireEvent.click(s1Button);
 
     expect(screen.getByText('NIFTY 22450 CE')).toBeInTheDocument();
@@ -144,7 +144,7 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
       />
     );
 
-    const s4Button = screen.getByRole('button', { name: /Setup 4/i });
+    const s4Button = screen.getByRole('button', { name: /S4 9:30 ORB/i });
     fireEvent.click(s4Button);
 
     expect(screen.getByText(/0 Trades/i)).toBeInTheDocument();
@@ -166,7 +166,7 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
     fireEvent.click(receiptBtn);
 
     expect(screen.getByText(/Dhan & Statutory Taxes Receipt/i)).toBeInTheDocument();
-    const modal = screen.getByText(/Dhan & Statutory Taxes Receipt/i).closest('.shadow-2xl') as HTMLElement;
+    const modal = screen.getByText(/Dhan & Statutory Taxes Receipt/i).closest('.desk-modal') as HTMLElement;
     expect(modal).toBeInTheDocument();
     expect(within(modal).getByText(/Brokerage/i)).toBeInTheDocument();
     expect(within(modal).getByText(/STT/i)).toBeInTheDocument();
@@ -184,11 +184,11 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
       />
     );
 
-    // POS_1 has exit_slippage = 0.8 -> (Slip: -0.8 pts)
-    expect(screen.getByText('(Slip: -0.8 pts)')).toBeInTheDocument();
-    // POS_2 has exit_slippage = 0.0 -> (Slip: 0.0 pts) (not -0.0 pts)
-    expect(screen.getByText('(Slip: 0.0 pts)')).toBeInTheDocument();
-    expect(screen.queryByText('(Slip: -0.0 pts)')).not.toBeInTheDocument();
+    // Slippage now lives in the price cell tooltip. POS_1 has exit_slippage = 0.8,
+    // POS_2 has 0.0 and must never render as -0.0.
+    expect(screen.getByTitle(/Exit slippage 0\.8 pts/)).toBeInTheDocument();
+    expect(screen.getByTitle(/Exit slippage 0\.0 pts/)).toBeInTheDocument();
+    expect(screen.queryByTitle(/-0\.0 pts/)).not.toBeInTheDocument();
   });
 
   it('filters closed trades by Setups 6, 7, and 8 correctly and updates dynamic summary strip', () => {
@@ -309,7 +309,7 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
     );
 
     // 1. Verify Setup 6 (Pin Bar) filter
-    const s6Btn = screen.getByRole('button', { name: /Setup 6 \(Pin Bar\)/i });
+    const s6Btn = screen.getByRole('button', { name: /S6 Pin Bar/i });
     fireEvent.click(s6Btn);
     expect(screen.getByText('NIFTY 22400 PE')).toBeInTheDocument();
     expect(screen.queryByText('BANKNIFTY 48600 CE')).not.toBeInTheDocument();
@@ -319,7 +319,7 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
     expect(screen.getByText(/100.0% Win Rate/i)).toBeInTheDocument();
 
     // 2. Verify Setup 7 (Inside Bar) filter
-    const s7Btn = screen.getByRole('button', { name: /Setup 7 \(Inside Bar\)/i });
+    const s7Btn = screen.getByRole('button', { name: /S7 Inside Bar/i });
     fireEvent.click(s7Btn);
     expect(screen.getByText('BANKNIFTY 48600 CE')).toBeInTheDocument();
     expect(screen.queryByText('NIFTY 22400 PE')).not.toBeInTheDocument();
@@ -328,7 +328,7 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
     expect(screen.getByText(/0.0% Win Rate/i)).toBeInTheDocument();
 
     // 3. Verify Setup 8 (Climax Divergence) filter
-    const s8Btn = screen.getByRole('button', { name: /Setup 8 \(Climax Divergence\)/i });
+    const s8Btn = screen.getByRole('button', { name: /S8 Climax Divergence/i });
     fireEvent.click(s8Btn);
     expect(screen.getByText('FINNIFTY 21200 PE')).toBeInTheDocument();
     expect(screen.queryByText('NIFTY 22400 PE')).not.toBeInTheDocument();
@@ -356,5 +356,36 @@ describe('summarizeTrades', () => {
   it('handles an empty or fully quarantined list', () => {
     expect(summarizeTrades([]).winRate).toBe('0.0');
     expect(summarizeTrades([{ net_pnl: 5, quarantine_reason: 'X' }]).count).toBe(0);
+  });
+});
+
+describe('PaperPortfolioView journal', () => {
+  it('never shows quarantined (pre-live) trades and groups the rest by day', () => {
+    const base = {
+      signal_id: 's', symbol: 'NIFTY 50', option_type: 'CE' as const, timeframe: '5m',
+      setup_type: 'SETUP_5_OPTION_BB_SCALP', entry_time: '10:00:00', exit_time: '10:30:00',
+      underlying_entry: 1, underlying_sl: 1, underlying_target_1: 1, underlying_target_2: 1,
+      option_entry: 40, option_sl: 38, option_target_1: 45, option_target_2: 50,
+      lot_size: 100, lots: 1, quantity: 100, current_underlying: 1, current_option_price: 45,
+      pnl_points: 5, pnl_rupees: 500, gross_pnl: 500, net_pnl: 450, status: 'CLOSED' as const,
+    };
+    const portfolio: PaperPortfolio = {
+      active_positions: [],
+      closed_trades: [
+        { ...base, id: 'A', strike_symbol: 'OLD 100 CE', exit_datetime: '2026-10-13T10:30:00', quarantine_reason: 'OFF_SESSION_ENTRY' },
+        { ...base, id: 'B', strike_symbol: 'LIVE 100 CE', exit_datetime: '2026-10-15T10:30:00' },
+        { ...base, id: 'C', strike_symbol: 'LIVE2 100 CE', exit_datetime: '2026-10-16T10:30:00' },
+      ],
+      auto_trade_enabled: false, default_lots: 2, total_realized_pnl: 900, total_unrealized_pnl: 0,
+      total_pnl: 900, win_rate_pct: 100, total_trades_count: 2, winning_trades_count: 2, losing_trades_count: 0,
+    };
+    render(
+      <PaperPortfolioView portfolio={portfolio} onClosePosition={() => {}} onToggleAutoTrade={() => {}} onChangeLots={() => {}} onResetPortfolio={() => {}} />
+    );
+    expect(screen.queryByText('OLD 100 CE')).not.toBeInTheDocument();
+    expect(screen.getByText('LIVE 100 CE')).toBeInTheDocument();
+    expect(screen.getByText('LIVE2 100 CE')).toBeInTheDocument();
+    expect(screen.getByText(/Fri, 16 Oct|Fri 16 Oct|16 Oct/)).toBeInTheDocument();
+    expect(screen.getByText(/Journal \(2\)|Closed Trades Journal \(2\)/)).toBeInTheDocument();
   });
 });

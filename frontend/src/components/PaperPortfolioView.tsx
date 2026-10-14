@@ -1,18 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PaperPortfolio, PaperPosition } from '../types';
-import { 
-  ArrowUpRight, 
-  ArrowDownRight, 
-  CheckCircle2, 
-  XCircle, 
-  TrendingUp, 
-  TrendingDown, 
-  RefreshCcw, 
-  Power, 
-  Activity, 
-  Receipt,
-  X
-} from 'lucide-react';
+import { RefreshCcw, Power, Receipt, X } from 'lucide-react';
+import { setupCode } from './setupCode';
 
 // Show the date whenever a trade crosses midnight/sessions so an overnight exit never
 // looks like it happened before its entry (times alone are HH:MM:SS).
@@ -63,18 +52,19 @@ interface PaperPortfolioViewProps {
   onToggleAutoTrade: (enabled: boolean) => void;
   onChangeLots: (lots: number) => void;
   onResetPortfolio: () => void;
+  hideStrip?: boolean;
 }
 
 const SETUP_FILTER_OPTIONS = [
-  { id: 'ALL', label: 'All Setups' },
-  { id: 'SETUP_1', label: 'Setup 1 (Squeeze)' },
-  { id: 'SETUP_2', label: 'Setup 2 (Walking Bands)' },
-  { id: 'SETUP_3', label: 'Setup 3 (W/M Reversal)' },
-  { id: 'SETUP_4', label: 'Setup 4 (ORB 9:30 AM)' },
-  { id: 'SETUP_5', label: 'Setup 5 (Option Chart)' },
-  { id: 'SETUP_6', label: 'Setup 6 (Pin Bar)' },
-  { id: 'SETUP_7', label: 'Setup 7 (Inside Bar)' },
-  { id: 'SETUP_8', label: 'Setup 8 (Climax Divergence)' },
+  { id: 'ALL', label: 'All setups' },
+  { id: 'SETUP_1', label: 'S1 Squeeze' },
+  { id: 'SETUP_2', label: 'S2 Walking Bands' },
+  { id: 'SETUP_3', label: 'S3 W/M Reversal' },
+  { id: 'SETUP_4', label: 'S4 9:30 ORB' },
+  { id: 'SETUP_5', label: 'S5 Option Chart' },
+  { id: 'SETUP_6', label: 'S6 Pin Bar' },
+  { id: 'SETUP_7', label: 'S7 Inside Bar' },
+  { id: 'SETUP_8', label: 'S8 Climax Divergence' },
 ];
 
 const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
@@ -108,15 +98,162 @@ const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
   return false;
 };
 
+const INR = { minimumFractionDigits: 2, maximumFractionDigits: 2 } as const;
+
+export const formatCurrency = (val: number, showPlus = false) => {
+  const formatted = Math.abs(val).toLocaleString('en-IN', INR);
+  if (val > 0) return `${showPlus ? '+' : ''}₹${formatted}`;
+  if (val < 0) return `-₹${formatted}`;
+  return `₹${formatted}`;
+};
+
+const pnlClass = (v: number) => (v > 0 ? 'desk-up' : v < 0 ? 'desk-down' : '');
+
+// Quarantined rows come from before the live journal began; they are never shown or counted.
+export const liveTrades = (trades: PaperPosition[] | undefined): PaperPosition[] =>
+  (trades ?? []).filter((t) => !t.quarantine_reason);
+
+/* ---------- P&L strip ---------- */
+export const PortfolioStrip: React.FC<{ portfolio?: PaperPortfolio }> = ({ portfolio }) => {
+  const grossRealized = portfolio?.total_gross_pnl ?? portfolio?.total_realized_pnl ?? 0;
+  const slippageCost = portfolio?.total_slippage_cost ?? 0;
+  const avgSlippagePts = portfolio?.avg_slippage_points ?? 0;
+  const totalCharges = portfolio?.total_charges ?? 0;
+  const netRealized = portfolio?.total_net_pnl ?? portfolio?.total_realized_pnl ?? 0;
+  const floating = portfolio?.total_unrealized_pnl ?? 0;
+
+  return (
+    <section
+      className="desk-strip grid-cols-2 md:grid-cols-3 lg:grid-cols-[1.4fr_repeat(4,1fr)]"
+      aria-label="Portfolio performance"
+    >
+      <div className="col-span-2 md:col-span-3 lg:col-span-1">
+        <div className="desk-label">Net Realized P&L</div>
+        <div className={`desk-num text-[26px] font-semibold ${pnlClass(netRealized)}`}>
+          {formatCurrency(netRealized, true)}
+        </div>
+      </div>
+      <div>
+        <div className="desk-label">Gross Realized P&L</div>
+        <div className={`desk-num text-lg font-semibold ${pnlClass(grossRealized)}`}>
+          {formatCurrency(grossRealized, true)}
+        </div>
+        <div className="text-xs desk-muted">
+          {portfolio?.winning_trades_count ?? 0}W / {portfolio?.losing_trades_count ?? 0}L
+        </div>
+      </div>
+      <div>
+        <div className="desk-label">Execution Slippage Impact</div>
+        <div className="desk-num text-lg font-semibold" style={{ color: 'var(--warn)' }}>
+          {slippageCost > 0 ? `-₹${slippageCost.toLocaleString('en-IN', INR)}` : '₹0.00'}
+        </div>
+        <div className="text-xs desk-muted">
+          Avg drag {avgSlippagePts > 0 ? `-${avgSlippagePts.toFixed(1)}` : '0.0'} pts
+        </div>
+      </div>
+      <div>
+        <div className="desk-label">Brokerage & Regulatory Taxes</div>
+        <div className="desk-num text-lg font-semibold">
+          {totalCharges > 0 ? `-₹${totalCharges.toLocaleString('en-IN', INR)}` : '₹0.00'}
+        </div>
+        <div className="text-xs desk-muted">STT, GST, exchange, SEBI</div>
+      </div>
+      <div>
+        <div className="desk-label">Win rate</div>
+        <div className="desk-num text-lg font-semibold">{(portfolio?.win_rate_pct ?? 0).toFixed(1)}%</div>
+        <div className="text-xs desk-muted">
+          Floating <span className={`desk-num ${pnlClass(floating)}`}>₹{floating.toFixed(2)}</span>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+/* ---------- Open positions ---------- */
+export const OpenPositionsPanel: React.FC<{
+  positions: PaperPosition[];
+  onClosePosition: (id: string) => void;
+}> = ({ positions, onClosePosition }) => (
+  <section className="desk-panel" aria-labelledby="open-positions-title">
+    <div className="desk-ph">
+      <h2 id="open-positions-title">Active Open Paper Positions ({positions.length})</h2>
+      <span className="text-xs desk-muted ml-auto">Books 50% at T1, then trails the rest at breakeven</span>
+    </div>
+    {positions.length === 0 ? (
+      <div className="p-6 text-center text-xs desk-muted">
+        No open paper positions. New signals open trades automatically, or click "Paper buy" on a signal.
+      </div>
+    ) : (
+      positions.map((pos) => {
+        const isT1 = pos.status === 'TARGET_1';
+        const target = isT1 ? pos.option_target_2 : pos.option_target_1;
+        const span = target - pos.option_sl;
+        const frac = span > 0 ? Math.max(0, Math.min(1, (pos.current_option_price - pos.option_sl) / span)) : 0.5;
+        return (
+          <div key={pos.id} className="px-3.5 py-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1" style={{ borderBottom: '1px solid var(--line)' }}>
+            <div>
+              <span className="desk-sym">{pos.strike_symbol}</span>{' '}
+              <span className={`desk-side ${pos.option_type === 'CE' ? 'ce' : 'pe'}`}>BUY {pos.option_type}</span>
+              <span className="desk-sub">
+                {setupCode(pos.setup_type)} · {pos.symbol} {pos.timeframe} @ {pos.entry_time} · {pos.quantity} qty ({pos.lots}L × {pos.lot_size})
+              </span>
+            </div>
+            <div className={`desk-num text-xl font-semibold text-right ${pnlClass(pos.pnl_rupees)}`}>
+              {pos.pnl_rupees >= 0 ? '+' : ''}₹{pos.pnl_rupees.toLocaleString('en-IN', { minimumFractionDigits: 1 })}
+              <span className="desk-sub text-right">{pos.pnl_points >= 0 ? '+' : ''}{pos.pnl_points.toFixed(1)} pts</span>
+            </div>
+            <div
+              className="col-span-2 relative h-1.5 rounded-sm my-2"
+              style={{ background: 'linear-gradient(90deg, var(--down-soft) 0 33%, var(--line) 33% 66%, var(--up-soft) 66%)' }}
+            >
+              <i className="absolute block rounded-sm" style={{ top: -3, width: 3, height: 12, background: 'var(--fg)', left: `calc(${frac * 100}% - 1px)` }} />
+            </div>
+            <div className="col-span-2 flex flex-wrap justify-between gap-x-3 text-xs desk-num desk-muted">
+              <span className={isT1 ? '' : 'desk-down'}>{isT1 ? 'Trailed SL' : 'SL'} {pos.option_sl.toFixed(1)}</span>
+              <span>Entry {pos.option_entry.toFixed(1)}</span>
+              <span style={{ color: 'var(--fg)', fontWeight: 600 }}>LTP {pos.current_option_price.toFixed(1)}</span>
+              <span className="desk-up">{isT1 ? 'T2' : 'T1'} {target.toFixed(1)}</span>
+            </div>
+            {isT1 && (
+              <div className="col-span-2 text-xs" style={{ color: 'var(--accent)' }}>
+                ✓ 50% booked (+₹{pos.booked_pnl_rupees?.toFixed(1) || '0'})
+              </div>
+            )}
+            <div className="col-span-2 text-right mt-1">
+              <button type="button" className="desk-btn danger" onClick={() => onClosePosition(pos.id)}>
+                Close
+              </button>
+            </div>
+          </div>
+        );
+      })
+    )}
+  </section>
+);
+
+/* ---------- Journal helpers ---------- */
+const tradeDay = (t: PaperPosition): string =>
+  (t.exit_datetime ?? t.entry_datetime ?? '').slice(0, 10) || 'Undated';
+
+const dayLabel = (iso: string): string => {
+  if (iso === 'Undated') return iso;
+  const d = new Date(`${iso}T00:00:00`);
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
+};
+
+const DAYS_SHOWN = 5;
+
 export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
   portfolio,
   onClosePosition,
   onToggleAutoTrade,
   onChangeLots,
   onResetPortfolio,
+  hideStrip = false,
 }) => {
   const [selectedSetupFilter, setSelectedSetupFilter] = useState<string>('ALL');
   const [selectedTradeForReceipt, setSelectedTradeForReceipt] = useState<PaperPosition | null>(null);
+  const [showAllDays, setShowAllDays] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -131,484 +268,230 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
   }, [selectedTradeForReceipt]);
 
   if (!portfolio) {
-    return <div className="p-8 text-center text-slate-500">Loading paper portfolio...</div>;
+    return <div className="p-8 text-center desk-muted">Loading paper portfolio...</div>;
   }
 
-  const grossRealized = portfolio.total_gross_pnl ?? portfolio.total_realized_pnl ?? 0;
-  const slippageCost = portfolio.total_slippage_cost ?? 0;
-  const avgSlippagePts = portfolio.avg_slippage_points ?? 0;
-  const totalCharges = portfolio.total_charges ?? 0;
-  const netRealized = portfolio.total_net_pnl ?? portfolio.total_realized_pnl ?? 0;
-
-  const isGrossPositive = grossRealized >= 0;
-  const isNetPositive = netRealized >= 0;
-
-  const formatCurrency = (val: number, showPlus = false) => {
-    const absVal = Math.abs(val);
-    const formatted = absVal.toLocaleString('en-IN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-    if (val > 0) return `${showPlus ? '+' : ''}₹${formatted}`;
-    if (val < 0) return `-₹${formatted}`;
-    return `₹${formatted}`;
-  };
-
-  // Filtered trades and metrics
-  const closedTrades = portfolio.closed_trades ?? [];
+  const closedTrades = liveTrades(portfolio.closed_trades);
   const filteredTrades = closedTrades.filter((t) => matchSetup(t.setup_type, selectedSetupFilter));
-  
-  // Quarantined rows stay visible in the table but never count toward the summary
-  // (same rule the portfolio cards use on the backend).
   const summary = summarizeTrades(filteredTrades);
-  const quarantinedCount = filteredTrades.length - summary.count;
-  const filteredWinRate = summary.winRate;
-  const filteredGross = summary.gross;
-  const filteredNet = summary.net;
-  const filteredSlippage = summary.slippage;
+
+  // Group newest first by calendar day.
+  const ordered = filteredTrades.slice().reverse();
+  const dayMap = new Map<string, PaperPosition[]>();
+  ordered.forEach((t) => {
+    const k = tradeDay(t);
+    dayMap.set(k, [...(dayMap.get(k) ?? []), t]);
+  });
+  const days = Array.from(dayMap.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  const visibleDays = showAllDays ? days : days.slice(0, DAYS_SHOWN);
+
+  // Per-setup table over all live trades.
+  const bySetup = new Map<string, { trades: number; wins: number; net: number }>();
+  closedTrades.forEach((t) => {
+    const code = setupCode(t.setup_type);
+    const net = t.net_pnl ?? t.pnl_rupees ?? 0;
+    const row = bySetup.get(code) ?? { trades: 0, wins: 0, net: 0 };
+    row.trades += 1;
+    row.wins += net > 0 ? 1 : 0;
+    row.net += net;
+    bySetup.set(code, row);
+  });
+  const setupRows = Array.from(bySetup.entries()).sort((a, b) => a[0].localeCompare(b[0]));
 
   return (
-    <div className="space-y-6">
-      {/* 1. 4-Metric Glassmorphism Hero Performance Stats Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Gross Realized P&L */}
-        <div className={`p-4 rounded-2xl border backdrop-blur-md shadow-sm transition-all duration-200 ${
-          isGrossPositive 
-            ? 'bg-gradient-to-br from-emerald-50/70 via-white/80 to-emerald-50/30 border-emerald-300/80 dark:from-dark-800/80 dark:via-dark-800/60 dark:to-emerald-950/20 dark:border-emerald-800/60' 
-            : 'bg-gradient-to-br from-rose-50/70 via-white/80 to-rose-50/30 border-rose-300/80 dark:from-dark-800/80 dark:via-dark-800/60 dark:to-rose-950/20 dark:border-rose-800/60'
-        }`}>
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[11px]">Gross Realized P&L</span>
-            {isGrossPositive ? <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> : <TrendingDown className="h-4 w-4 text-rose-600 dark:text-rose-400" />}
-          </div>
-          <div className={`text-2xl font-black font-mono ${isGrossPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-            {formatCurrency(grossRealized, true)}
-          </div>
-          <div className="flex justify-between items-center text-[11px] text-slate-500 dark:text-slate-400 mt-2">
-            <span>Pure Strategy Edge</span>
-            <span className="font-semibold text-slate-700 dark:text-slate-300">{portfolio.winning_trades_count}W / {portfolio.losing_trades_count}L</span>
-          </div>
-        </div>
+    <div className="flex flex-col gap-3">
+      {!hideStrip && <PortfolioStrip portfolio={portfolio} />}
 
-        {/* Execution Slippage Impact */}
-        <div className="p-4 rounded-2xl border backdrop-blur-md shadow-sm transition-all duration-200 bg-gradient-to-br from-amber-50/70 via-white/80 to-orange-50/30 border-amber-300/80 dark:from-dark-800/80 dark:via-dark-800/60 dark:to-amber-950/20 dark:border-amber-800/60">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[11px]">Execution Slippage Impact</span>
-            <Activity className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-          </div>
-          <div className="text-2xl font-black font-mono text-amber-600 dark:text-amber-400">
-            {slippageCost > 0 ? `-₹${slippageCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₹0.00'}
-          </div>
-          <div className="flex justify-between items-center text-[11px] text-slate-500 dark:text-slate-400 mt-2">
-            <span>Avg Drag: <strong className="text-amber-600 dark:text-amber-400">{avgSlippagePts > 0 ? `-${avgSlippagePts.toFixed(1)}` : '0.0'} pts</strong></span>
-            <span className="text-slate-500 dark:text-slate-400">Spread & Latency</span>
-          </div>
-        </div>
-
-        {/* Brokerage & Regulatory Taxes */}
-        <div className="p-4 rounded-2xl border backdrop-blur-md shadow-sm transition-all duration-200 bg-gradient-to-br from-indigo-50/70 via-white/80 to-purple-50/30 border-indigo-300/80 dark:from-dark-800/80 dark:via-dark-800/60 dark:to-indigo-950/20 dark:border-indigo-800/60">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[11px]">Brokerage & Regulatory Taxes</span>
-            <Receipt className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-          </div>
-          <div className="text-2xl font-black font-mono text-indigo-600 dark:text-indigo-400">
-            {totalCharges > 0 ? `-₹${totalCharges.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₹0.00'}
-          </div>
-          <div className="flex justify-between items-center text-[11px] text-slate-500 dark:text-slate-400 mt-2">
-            <span>STT, GST, Exch & SEBI</span>
-            <span className="font-semibold text-slate-700 dark:text-slate-300">Dhan Rate Card</span>
-          </div>
-        </div>
-
-        {/* Net Realized P&L */}
-        <div className={`p-4 rounded-2xl border backdrop-blur-md shadow-sm transition-all duration-200 ${
-          isNetPositive 
-            ? 'bg-gradient-to-br from-emerald-50 via-white to-emerald-50/30 border-emerald-300 dark:from-dark-800 dark:to-emerald-950/30 dark:border-emerald-800/80' 
-            : 'bg-gradient-to-br from-rose-50 via-white to-rose-50/30 border-rose-300 dark:from-dark-800 dark:to-rose-950/30 dark:border-rose-800/80'
-        }`}>
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[11px]">Net Realized P&L</span>
-            {isNetPositive ? <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> : <TrendingDown className="h-4 w-4 text-rose-600 dark:text-rose-400" />}
-          </div>
-          <div className={`text-2xl font-black font-mono ${isNetPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-            {formatCurrency(netRealized, true)}
-          </div>
-          <div className="flex justify-between items-center text-[11px] text-slate-500 dark:text-slate-400 mt-2">
-            <span>Win Rate: <strong className="text-cyan-600 dark:text-cyan-400">{portfolio.win_rate_pct.toFixed(1)}%</strong></span>
-            <span>Floating: <strong className={portfolio.total_unrealized_pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>₹{portfolio.total_unrealized_pnl.toFixed(2)}</strong></span>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Controls & Configuration */}
-      <div className="bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-sm">
-        <div className="flex items-center gap-4">
-          {/* Auto Trade Toggle */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onToggleAutoTrade(!portfolio.auto_trade_enabled)}
-              className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-xl transition ${
-                portfolio.auto_trade_enabled
-                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                  : 'bg-slate-100 dark:bg-dark-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-dark-700'
-              }`}
-            >
-              <Power className="h-3.5 w-3.5" />
-              {portfolio.auto_trade_enabled ? 'Auto-Enter on Signal: ON' : 'Auto-Enter on Signal: OFF'}
-            </button>
-          </div>
-
-          {/* Lot Multiplier Selector */}
-          <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-            <span className="font-semibold">Lot Multiplier:</span>
-            <div className="flex bg-slate-100 dark:bg-dark-900 border border-slate-200 dark:border-dark-700 rounded-lg p-1">
-              {[2, 4, 6, 8, 10].map((l) => (
-                <button
-                  key={l}
-                  onClick={() => onChangeLots(l)}
-                  className={`px-2.5 py-0.5 rounded text-xs font-bold transition ${
-                    portfolio.default_lots === l
-                      ? 'bg-cyan-600 text-white shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                  }`}
-                >
-                  {l}x
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
+      {/* Controls */}
+      <div className="desk-panel px-3.5 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
         <button
-          onClick={onResetPortfolio}
-          className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
-          title="Reset paper testing stats"
+          type="button"
+          className={`desk-btn ${portfolio.auto_trade_enabled ? 'solid' : ''}`}
+          onClick={() => onToggleAutoTrade(!portfolio.auto_trade_enabled)}
         >
+          <Power className="h-3.5 w-3.5" />
+          {portfolio.auto_trade_enabled ? 'Auto-Enter on Signal: ON' : 'Auto-Enter on Signal: OFF'}
+        </button>
+        <div className="flex items-center gap-2 text-xs desk-muted">
+          <span className="desk-label">Lot Multiplier</span>
+          <div className="desk-seg" role="group" aria-label="Lot multiplier">
+            {[2, 4, 6, 8, 10].map((l) => (
+              <button key={l} type="button" aria-pressed={portfolio.default_lots === l} onClick={() => onChangeLots(l)}>
+                {l}x
+              </button>
+            ))}
+          </div>
+        </div>
+        <button type="button" className="desk-btn ml-auto" onClick={onResetPortfolio} title="Reset paper testing stats">
           <RefreshCcw className="h-3.5 w-3.5" />
           Reset Portfolio
         </button>
       </div>
 
-      {/* 3. Active Positions Table */}
-      <div className="bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 rounded-2xl overflow-hidden shadow-sm">
-        <div className="px-5 py-3.5 border-b border-slate-200 dark:border-dark-700 bg-slate-50 dark:bg-dark-900 flex items-center justify-between">
-          <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
-            Active Open Paper Positions ({portfolio.active_positions.length})
-          </h3>
-          <span className="text-[11px] text-cyan-600 dark:text-cyan-400 font-mono">
-            Auto-books 50% at Target 1 & trails remainder at Breakeven
-          </span>
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-3 items-start">
+        <OpenPositionsPanel positions={portfolio.active_positions} onClosePosition={onClosePosition} />
 
-        {portfolio.active_positions.length === 0 ? (
-          <div className="p-8 text-center text-xs text-slate-500">
-            No open paper positions. New signals will automatically open trades or you can click "Paper Buy" on any signal card.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-100 dark:bg-dark-950/70 border-b border-slate-200 dark:border-dark-700 text-slate-600 dark:text-slate-400 uppercase font-semibold">
-                <tr>
-                  <th className="py-2.5 px-4">Instrument / Strike</th>
-                  <th className="py-2.5 px-4">Direction</th>
-                  <th className="py-2.5 px-4">Qty (Lots)</th>
-                  <th className="py-2.5 px-4">Option Entry</th>
-                  <th className="py-2.5 px-4">Current LTP</th>
-                  <th className="py-2.5 px-4">Option SL / Target</th>
-                  <th className="py-2.5 px-4">P&L (Pts)</th>
-                  <th className="py-2.5 px-4">P&L (₹)</th>
-                  <th className="py-2.5 px-4">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-dark-700/60">
-                {portfolio.active_positions.map((pos) => {
-                  const isPos = pos.pnl_rupees >= 0;
-                  const isCE = pos.option_type === 'CE';
-                  const isT1 = pos.status === 'TARGET_1';
-
-                  return (
-                    <tr key={pos.id} className="hover:bg-slate-50 dark:hover:bg-dark-700/30 transition">
-                      <td className="py-3 px-4 font-mono">
-                        <strong className="text-slate-900 dark:text-white block text-sm">{pos.strike_symbol}</strong>
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                          {pos.symbol} • {pos.timeframe} @ {pos.entry_time}
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-4">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-black text-[10px] ${
-                          isCE ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800' : 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950 dark:text-rose-400 dark:border-rose-800'
-                        }`}>
-                          {isCE ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                          BUY {pos.option_type}
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-4 font-mono text-slate-700 dark:text-slate-300">
-                        {pos.quantity} <span className="text-[10px] text-slate-500">({pos.lots}L × {pos.lot_size})</span>
-                        {isT1 && (
-                          <span className="block text-[10px] text-cyan-600 dark:text-cyan-400 font-bold mt-0.5">
-                            ✓ 50% Booked (+₹{pos.booked_pnl_rupees?.toFixed(1) || '0'})
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="py-3 px-4 font-mono text-slate-700 dark:text-slate-200">
-                        ₹{pos.option_entry.toFixed(1)}
-                      </td>
-
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
-                        ₹{pos.current_option_price.toFixed(1)}
-                      </td>
-
-                      <td className="py-3 px-4 font-mono text-[11px]">
-                        {isT1 ? (
-                          <>
-                            <span className="text-cyan-600 dark:text-cyan-400 block font-semibold">Trailed SL (Cost): ₹{pos.option_sl.toFixed(1)}</span>
-                            <span className="text-emerald-600 dark:text-emerald-400 block">T2 Target: ₹{pos.option_target_2.toFixed(1)}</span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-rose-600 dark:text-rose-400 block">SL: ₹{pos.option_sl.toFixed(1)}</span>
-                            <span className="text-emerald-600 dark:text-emerald-400 block">T1: ₹{pos.option_target_1.toFixed(1)}</span>
-                          </>
-                        )}
-                      </td>
-
-                      <td className={`py-3 px-4 font-mono font-bold ${isPos ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {isPos ? '+' : ''}{pos.pnl_points.toFixed(1)} pts
-                      </td>
-
-                      <td className={`py-3 px-4 font-mono font-black text-sm ${isPos ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {isPos ? '+' : ''}₹{pos.pnl_rupees.toLocaleString('en-IN', { minimumFractionDigits: 1 })}
-                      </td>
-
-                      <td className="py-3 px-4">
-                        <button
-                          onClick={() => onClosePosition(pos.id)}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 dark:bg-dark-900 dark:hover:bg-rose-900/60 border border-slate-200 hover:border-rose-300 dark:border-dark-600 dark:hover:border-rose-700 text-rose-600 dark:text-rose-300 rounded-lg text-xs font-semibold transition"
-                        >
-                          Close
-                        </button>
-                      </td>
+        <section className="desk-panel" aria-labelledby="by-setup-title">
+          <div className="desk-ph"><h2 id="by-setup-title">By setup</h2></div>
+          {setupRows.length === 0 ? (
+            <div className="p-6 text-center text-xs desk-muted">Setup results appear after the first closed trade.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="desk-table">
+                <thead>
+                  <tr><th>Setup</th><th className="r">Trades</th><th className="r">Win</th><th className="r">Net</th></tr>
+                </thead>
+                <tbody>
+                  {setupRows.map(([code, r]) => (
+                    <tr key={code}>
+                      <td><span className="desk-code">{code}</span></td>
+                      <td className="r desk-num">{r.trades}</td>
+                      <td className="r desk-num">{Math.round((r.wins / r.trades) * 100)}%</td>
+                      <td className={`r desk-num ${pnlClass(r.net)}`}>{formatCurrency(r.net, true)}</td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </div>
 
-      {/* 4. Closed Trades History */}
-      <div className="bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 rounded-2xl overflow-hidden shadow-sm">
-        <div className="px-5 py-3.5 border-b border-slate-200 dark:border-dark-700 bg-slate-50 dark:bg-dark-900 flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
+      {/* Closed trades journal, grouped by day */}
+      <section className="desk-panel" aria-labelledby="journal-title">
+        <div className="desk-ph">
+          <h2 id="journal-title">
             Closed Trades Journal ({filteredTrades.length}{selectedSetupFilter !== 'ALL' ? ` of ${closedTrades.length}` : ''})
-          </h3>
+          </h2>
+          <div className="flex flex-wrap gap-1.5 ml-auto" role="group" aria-label="Journal setup filter">
+            {SETUP_FILTER_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                className="desk-chip"
+                aria-pressed={selectedSetupFilter === opt.id}
+                onClick={() => setSelectedSetupFilter(opt.id)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Setup Filter Tabs & Dynamic Summary Strip */}
-        <div className="p-4 border-b border-slate-200 dark:border-dark-700 space-y-3 bg-white dark:bg-dark-800">
-          <div className="flex flex-wrap items-center gap-2">
-            {SETUP_FILTER_OPTIONS.map((opt) => {
-              const isActive = selectedSetupFilter === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  onClick={() => setSelectedSetupFilter(opt.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                    isActive
-                      ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30'
-                      : 'bg-slate-100 hover:bg-slate-200 dark:bg-dark-900 dark:hover:bg-dark-700 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-dark-700'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Dynamic Setup Summary Strip */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-dark-900/60 px-4 py-2.5 rounded-xl border border-slate-200/80 dark:border-dark-700/80 text-xs">
-            <div className="flex items-center gap-5 flex-wrap">
-              <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
-                <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
-                <span>{summary.count} Trades{quarantinedCount > 0 ? ` (+${quarantinedCount} quarantined)` : ''}</span>
-              </div>
-              <div className="text-slate-600 dark:text-slate-400">
-                <span>Win Rate: </span>
-                <strong className="text-cyan-600 dark:text-cyan-400 font-mono font-bold">
-                  {filteredWinRate}% Win Rate
-                </strong>
-              </div>
-              <div className="text-slate-600 dark:text-slate-400">
-                <span>Gross P&L: </span>
-                <strong className={`font-mono font-bold ${filteredGross >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                  {formatCurrency(filteredGross, true)}
-                </strong>
-              </div>
-              <div className="text-slate-600 dark:text-slate-400">
-                <span>Net P&L: </span>
-                <strong className={`font-mono font-bold ${filteredNet >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                  {formatCurrency(filteredNet, true)}
-                </strong>
-              </div>
-              <div className="text-slate-600 dark:text-slate-400">
-                <span>Slippage Drag: </span>
-                <strong className="text-amber-600 dark:text-amber-400 font-mono font-bold">
-                  {filteredSlippage > 0 ? `-₹${filteredSlippage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₹0.00'}
-                </strong>
-              </div>
-            </div>
-          </div>
+        <div className="desk-day text-sm">
+          <span>{summary.count} trades</span>
+          <span className="desk-muted">{summary.winRate}% Win Rate</span>
+          <span>Gross <b className={`desk-num ${pnlClass(summary.gross)}`}>{formatCurrency(summary.gross, true)}</b></span>
+          <span>Net <b className={`desk-num ${pnlClass(summary.net)}`}>{formatCurrency(summary.net, true)}</b></span>
+          <span>Slippage drag <b className="desk-num" style={{ color: 'var(--warn)' }}>
+            {summary.slippage > 0 ? `-₹${summary.slippage.toLocaleString('en-IN', INR)}` : '₹0.00'}
+          </b></span>
         </div>
 
         {filteredTrades.length === 0 ? (
-          <div className="p-6 text-center text-xs text-slate-500">
+          <div className="p-6 text-center text-xs desk-muted">
             {closedTrades.length === 0
               ? 'No closed trades yet. Trades will record here when targets or stop-losses are triggered.'
               : 'No closed trades matching the selected setup filter.'}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-100 dark:bg-dark-950/70 border-b border-slate-200 dark:border-dark-700 text-slate-600 dark:text-slate-400 uppercase font-semibold">
-                <tr>
-                  <th className="py-2.5 px-4">Strike Symbol</th>
-                  <th className="py-2.5 px-4">Setup</th>
-                  <th className="py-2.5 px-4">Exit Reason</th>
-                  <th className="py-2.5 px-4">Entry ₹</th>
-                  <th className="py-2.5 px-4">Exit ₹</th>
-                  <th className="py-2.5 px-4">Gross vs Net P&L</th>
-                  <th className="py-2.5 px-4">Outcome</th>
-                  <th className="py-2.5 px-4 text-center">Receipt</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-dark-700/60">
-                {filteredTrades.slice().reverse().map((trade) => {
-                  const grossVal = trade.gross_pnl ?? trade.pnl_rupees ?? 0;
-                  const netVal = trade.net_pnl ?? trade.pnl_rupees ?? 0;
-                  const isWin = netVal > 0;
-
-                  return (
-                    <tr key={trade.id} className="hover:bg-slate-50 dark:hover:bg-dark-700/30 transition">
-                      <td className="py-2.5 px-4 font-mono font-bold text-slate-900 dark:text-white">
-                        {trade.strike_symbol}
-                        <span className="block text-[10px] text-slate-500 font-normal">
-                          {formatTradeSpan(trade)}
-                          {trade.quarantine_reason && (
-                            <span className="ml-1 px-1 rounded bg-slate-200 dark:bg-dark-700 text-[9px] uppercase" title="Excluded from totals">
-                              {trade.quarantine_reason}
-                            </span>
-                          )}
-                        </span>
-                      </td>
-
-                      <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300">
-                        {trade.setup_type}
-                      </td>
-
-                      <td className="py-2.5 px-4 text-slate-700 dark:text-slate-300 font-medium">
-                        {trade.exit_reason || trade.status}
-                      </td>
-
-                      <td className="py-2.5 px-4 font-mono text-slate-700 dark:text-slate-300">
-                        <div>
-                          ₹{trade.option_entry.toFixed(1)}
-                          {trade.entry_estimated && (
-                            <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400" title="Entry price was modelled, not a real quote">est.</span>
-                          )}
-                        </div>
-                        {trade.entry_slippage !== undefined && trade.entry_slippage !== null && (
-                          <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
-                            (Slip: {trade.entry_slippage >= 0 ? `+${trade.entry_slippage.toFixed(1)}` : `${trade.entry_slippage.toFixed(1)}`} pts)
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="py-2.5 px-4 font-mono text-slate-900 dark:text-white font-bold">
-                        <div>₹{trade.current_option_price.toFixed(1)}</div>
-                        {trade.exit_slippage !== undefined && trade.exit_slippage !== null && (
-                          <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
-                            {trade.exit_slippage && trade.exit_slippage > 0 ? `(Slip: -${trade.exit_slippage.toFixed(1)} pts)` : '(Slip: 0.0 pts)'}
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="py-2.5 px-4 font-mono">
-                        <div className={`font-semibold text-xs ${grossVal >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                          {formatCurrency(grossVal, true)} Gross
-                        </div>
-                        <div className={`font-black text-xs ${netVal >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                          {formatCurrency(netVal, true)} Net
-                        </div>
-                      </td>
-
-                      <td className="py-2.5 px-4">
-                        {isWin ? (
-                          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold">
-                            <CheckCircle2 className="h-4 w-4" /> WIN
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-rose-600 dark:text-rose-400 font-bold">
-                            <XCircle className="h-4 w-4" /> LOSS
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="py-2.5 px-4 text-center">
-                        {trade.charges_breakdown ? (
-                          <button
-                            onClick={() => setSelectedTradeForReceipt(trade)}
-                            title="View Charges Breakdown"
-                            className="inline-flex items-center justify-center p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 transition shadow-sm"
-                          >
-                            <Receipt className="h-3.5 w-3.5" />
-                          </button>
-                        ) : (
-                          <span className="text-slate-300 dark:text-slate-600 text-xs">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* 5. Itemized Tax Popover / Modal */}
-      {selectedTradeForReceipt && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
-          onClick={() => setSelectedTradeForReceipt(null)}
-        >
-          <div 
-            className="bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 rounded-2xl max-w-md w-full shadow-2xl p-5 overflow-hidden text-slate-800 dark:text-slate-100 relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-dark-700">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
-                  <Receipt className="h-4 w-4" />
+          <>
+            {visibleDays.map(([day, trades]) => {
+              const s = summarizeTrades(trades);
+              return (
+                <div key={day}>
+                  <div className="desk-day">
+                    <span>{dayLabel(day)}</span>
+                    <span className={`desk-num ${pnlClass(s.net)}`}>{formatCurrency(s.net, true)}</span>
+                    <span className="desk-muted desk-num font-normal">
+                      {s.count} {s.count === 1 ? 'trade' : 'trades'} · {Math.round(Number(s.winRate))}% win
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="desk-table">
+                      <thead>
+                        <tr>
+                          <th>In → Out</th><th>Instrument</th><th>Setup</th><th className="r">Entry → Exit</th>
+                          <th className="r">Gross</th><th className="r">Net</th><th>Why it closed</th><th className="r">Receipt</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trades.map((trade) => {
+                          const grossVal = trade.gross_pnl ?? trade.pnl_rupees ?? 0;
+                          const netVal = trade.net_pnl ?? trade.pnl_rupees ?? 0;
+                          const slipTitle = [
+                            trade.entry_slippage != null ? `Entry slippage ${trade.entry_slippage.toFixed(1)} pts` : '',
+                            trade.exit_slippage != null ? `Exit slippage ${trade.exit_slippage.toFixed(1)} pts` : '',
+                          ].filter(Boolean).join(' · ');
+                          return (
+                            <tr key={trade.id}>
+                              <td className="desk-num">{formatTradeSpan(trade)}</td>
+                              <td>
+                                <span className="desk-sym">{trade.strike_symbol}</span>{' '}
+                                <span className={`desk-side ${trade.option_type === 'CE' ? 'ce' : 'pe'}`}>{trade.option_type}</span>
+                              </td>
+                              <td><span className="desk-code" title={trade.setup_type}>{setupCode(trade.setup_type)}</span></td>
+                              <td className="r desk-num" title={slipTitle || undefined}>
+                                {trade.option_entry.toFixed(1)}
+                                {trade.entry_estimated && (
+                                  <span className="desk-muted" title="Entry price was modelled, not a real quote"> est.</span>
+                                )}
+                                {' → '}
+                                {trade.current_option_price.toFixed(1)}
+                              </td>
+                              <td className={`r desk-num ${pnlClass(grossVal)}`}>{formatCurrency(grossVal, true)}</td>
+                              <td className={`r desk-num font-semibold ${pnlClass(netVal)}`}>{formatCurrency(netVal, true)}</td>
+                              <td>{trade.exit_reason || trade.status}</td>
+                              <td className="r">
+                                {trade.charges_breakdown ? (
+                                  <button
+                                    type="button"
+                                    className="desk-btn"
+                                    onClick={() => setSelectedTradeForReceipt(trade)}
+                                    title="View Charges Breakdown"
+                                    aria-label="View charges breakdown"
+                                  >
+                                    <Receipt className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : (
+                                  <span className="desk-muted">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                    Dhan & Statutory Taxes Receipt
-                  </h4>
-                  <p className="text-[11px] text-slate-500 font-mono">
-                    {selectedTradeForReceipt.strike_symbol} • {selectedTradeForReceipt.setup_type}
-                  </p>
-                </div>
-              </div>
+              );
+            })}
+            {days.length > DAYS_SHOWN && (
               <button
-                onClick={() => setSelectedTradeForReceipt(null)}
-                aria-label="Close"
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-dark-700 transition"
+                type="button"
+                className="w-full py-2.5 text-sm font-medium"
+                style={{ color: 'var(--accent)' }}
+                onClick={() => setShowAllDays((v) => !v)}
               >
+                {showAllDays ? 'Show fewer days' : `Show ${days.length - DAYS_SHOWN} more days`}
+              </button>
+            )}
+          </>
+        )}
+      </section>
+
+      {/* Itemized tax receipt */}
+      {selectedTradeForReceipt && (
+        <div className="desk-overlay" onClick={() => setSelectedTradeForReceipt(null)}>
+          <div className="desk-modal p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-3" style={{ borderBottom: '1px solid var(--line)' }}>
+              <div>
+                <h4 className="text-sm font-semibold">Dhan & Statutory Taxes Receipt</h4>
+                <p className="text-[11px] desk-muted font-mono">
+                  {selectedTradeForReceipt.strike_symbol} • {selectedTradeForReceipt.setup_type}
+                </p>
+              </div>
+              <button type="button" onClick={() => setSelectedTradeForReceipt(null)} aria-label="Close" className="desk-btn">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -631,62 +514,62 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
               return (
                 <>
                   {/* Turnover Summary */}
-                  <div className="grid grid-cols-2 gap-2 my-3 p-3 bg-slate-50 dark:bg-dark-900/60 rounded-xl border border-slate-100 dark:border-dark-700 text-xs font-mono">
+                  <div className="grid grid-cols-2 gap-2 my-3 p-3 rounded-md text-xs font-mono" style={{ background: 'var(--alt)', border: '1px solid var(--line)' }}>
                     <div>
-                      <span className="text-[10px] text-slate-500 uppercase block font-sans">Buy Turnover</span>
+                      <span className="text-[10px] desk-muted uppercase block font-sans">Buy Turnover</span>
                       <span className="font-bold">₹{cb.buy_turnover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 uppercase block font-sans">Sell Turnover</span>
+                      <span className="text-[10px] desk-muted uppercase block font-sans">Sell Turnover</span>
                       <span className="font-bold">₹{cb.sell_turnover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 uppercase block font-sans">Total Turnover</span>
+                      <span className="text-[10px] desk-muted uppercase block font-sans">Total Turnover</span>
                       <span className="font-bold">₹{cb.total_turnover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 uppercase block font-sans">Orders Executed</span>
+                      <span className="text-[10px] desk-muted uppercase block font-sans">Orders Executed</span>
                       <span className="font-bold">{cb.orders_count} orders</span>
                     </div>
                   </div>
 
                   {/* Itemized Fees & Taxes */}
-                  <div className="space-y-2 text-xs divide-y divide-slate-100 dark:divide-dark-700">
+                  <div className="space-y-2 text-xs">
                     <div className="flex justify-between items-center pt-1.5">
-                      <span className="text-slate-600 dark:text-slate-400">Brokerage (Dhan ₹20/order)</span>
+                      <span className="desk-muted">Brokerage (Dhan ₹20/order)</span>
                       <span className="font-mono font-bold">₹{cb.brokerage.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center pt-1.5">
-                      <span className="text-slate-600 dark:text-slate-400">STT (0.1% on Sell)</span>
+                      <span className="desk-muted">STT (0.1% on Sell)</span>
                       <span className="font-mono font-bold">₹{cb.stt.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center pt-1.5">
-                      <span className="text-slate-600 dark:text-slate-400">NSE Exchange Fee (0.05%)</span>
+                      <span className="desk-muted">NSE Exchange Fee (0.05%)</span>
                       <span className="font-mono font-bold">₹{cb.exchange_fee.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center pt-1.5">
-                      <span className="text-slate-600 dark:text-slate-400">GST (18%)</span>
+                      <span className="desk-muted">GST (18%)</span>
                       <span className="font-mono font-bold">₹{cb.gst.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center pt-1.5">
-                      <span className="text-slate-600 dark:text-slate-400">Stamp Duty (0.003% on Buy)</span>
+                      <span className="desk-muted">Stamp Duty (0.003% on Buy)</span>
                       <span className="font-mono font-bold">₹{cb.stamp_duty.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center pt-1.5">
-                      <span className="text-slate-600 dark:text-slate-400">SEBI Turnover Fee</span>
+                      <span className="desk-muted">SEBI Turnover Fee</span>
                       <span className="font-mono font-bold">₹{cb.sebi_fee.toFixed(2)}</span>
                     </div>
                   </div>
 
                   {/* Total Deductions */}
-                  <div className="mt-4 pt-3 border-t border-slate-200 dark:border-dark-700 flex justify-between items-center">
+                  <div className="mt-4 pt-3 flex justify-between items-center" style={{ borderTop: '1px solid var(--line)' }}>
                     <div>
-                      <span className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+                      <span className="font-bold text-xs uppercase tracking-wider block">
                         Total Deductions
                       </span>
-                      <span className="text-[10px] text-slate-500 font-sans">Dhan F&O Rate Card</span>
+                      <span className="text-[10px] desk-muted font-sans">Dhan F&O Rate Card</span>
                     </div>
-                    <span className="text-sm font-black font-mono text-rose-600 dark:text-rose-400">
+                    <span className="text-sm font-semibold font-mono desk-down">
                       -₹{cb.total_charges.toFixed(2)}
                     </span>
                   </div>

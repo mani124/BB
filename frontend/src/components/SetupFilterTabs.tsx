@@ -1,6 +1,4 @@
 import React from 'react';
-import { SetupType, OptionType } from '../types';
-import { Filter, Flame, Compass, RefreshCw, Clock, LayoutGrid, Table, Zap, Target, ShieldAlert, Activity } from 'lucide-react';
 
 interface SetupFilterTabsProps {
   selectedSetup: string;
@@ -12,9 +10,40 @@ interface SetupFilterTabsProps {
   selectedTimeframe: string;
   onSelectTimeframe: (tf: string) => void;
   totalSignals: number;
+  // Kept for compatibility with older callers; the desk layout only has the table view.
   viewMode?: 'grid' | 'table';
   onSelectViewMode?: (mode: 'grid' | 'table') => void;
 }
+
+export const SETUP_FILTERS: { key: string; label: string; title: string }[] = [
+  { key: 'ALL', label: 'All setups', title: 'All setups' },
+  { key: 'Setup 1: BB Squeeze Breakout', label: 'S1 Squeeze', title: 'Setup 1: Squeeze Breakout' },
+  { key: 'Setup 2: Walking the Bands (9 EMA)', label: 'S2 Walking Bands', title: 'Setup 2: Walking Bands (9 EMA)' },
+  { key: 'Setup 3: W/M Reversal', label: 'S3 W/M Reversal', title: 'Setup 3: W/M Reversal' },
+  { key: 'Setup 4: 9:30 AM Opening Range Breakout', label: 'S4 9:30 ORB', title: 'Setup 4: 9:30 AM ORB' },
+  { key: 'Setup 5: Option Chart BB Scalp', label: 'S5 Option BB Scalp', title: 'Setup 5: Option BB Scalp' },
+  { key: 'Setup 6: Pin Bar Exhaustion Snapback', label: 'S6 Pin Bar', title: 'Setup 6: Pin Bar Snapback' },
+  { key: 'Setup 7: 2.5σ Puncture & Inside Bar', label: 'S7 Inside Bar', title: 'Setup 7: 2.5σ Inside Bar' },
+  { key: 'Setup 8: Climax Swing Divergence Fade', label: 'S8 Divergence Fade', title: 'Setup 8: Divergence Fade' },
+];
+
+const Seg: React.FC<{
+  label: string;
+  options: { key: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+}> = ({ label, options, value, onChange }) => (
+  <div className="flex items-center gap-2">
+    <span className="desk-label">{label}</span>
+    <div className="desk-seg" role="group" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.key} type="button" aria-pressed={value === o.key} onClick={() => onChange(o.key)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  </div>
+);
 
 export const SetupFilterTabs: React.FC<SetupFilterTabsProps> = ({
   selectedSetup,
@@ -26,146 +55,56 @@ export const SetupFilterTabs: React.FC<SetupFilterTabsProps> = ({
   selectedTimeframe,
   onSelectTimeframe,
   totalSignals,
-  viewMode = 'grid',
-  onSelectViewMode,
-}) => {
-  const setups: { key: string; label: string; icon: any }[] = [
-    { key: 'ALL', label: 'All Setups', icon: Filter },
-    { key: 'Setup 1: BB Squeeze Breakout', label: 'Setup 1: Squeeze Breakout', icon: Flame },
-    { key: 'Setup 2: Walking the Bands (9 EMA)', label: 'Setup 2: Walking Bands (9 EMA)', icon: RefreshCw },
-    { key: 'Setup 3: W/M Reversal', label: 'Setup 3: W/M Reversal', icon: Compass },
-    { key: 'Setup 4: 9:30 AM Opening Range Breakout', label: 'Setup 4: 9:30 AM ORB', icon: Clock },
-    { key: 'Setup 5: Option Chart BB Scalp', label: 'Setup 5: Option BB Scalp', icon: Zap },
-    { key: 'Setup 6: Pin Bar Exhaustion Snapback', label: 'Setup 6: Pin Bar Snapback', icon: Target },
-    { key: 'Setup 7: 2.5σ Puncture & Inside Bar', label: 'Setup 7: 2.5σ Inside Bar', icon: ShieldAlert },
-    { key: 'Setup 8: Climax Swing Divergence Fade', label: 'Setup 8: Divergence Fade', icon: Activity },
-  ];
-
-  return (
-    <div className="bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 rounded-2xl p-4 mb-6 space-y-4 shadow-sm">
-      {/* Top Row: Setups */}
-      <div className="flex flex-wrap items-center gap-2">
-        {setups.map(({ key, label, icon: Icon }) => {
-          const active = selectedSetup === key;
-          return (
-            <button
-              key={key}
-              onClick={() => onSelectSetup(key)}
-              className={`flex items-center gap-2 text-xs font-bold px-3.5 py-2 rounded-xl transition ${
-                active
-                  ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
-                  : 'bg-slate-100 dark:bg-dark-900/90 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-slate-200 dark:border-dark-700 hover:border-slate-300 dark:hover:border-dark-600'
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="h-[1px] bg-slate-200 dark:bg-dark-700/60" />
-
-      {/* Bottom Row: Option Type (CE/PE), Instruments & Timeframes */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        {/* CE vs PE */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Direction:</span>
-          <div className="flex bg-slate-100 dark:bg-dark-900 border border-slate-200 dark:border-dark-700 rounded-xl p-1">
-            {['ALL', 'CE', 'PE'].map((opt) => (
-              <button
-                key={opt}
-                onClick={() => onSelectOptionType(opt)}
-                className={`text-xs font-bold px-3 py-1 rounded-lg transition ${
-                  selectedOptionType === opt
-                    ? opt === 'CE'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : opt === 'PE'
-                      ? 'bg-rose-600 text-white shadow-sm'
-                      : 'bg-cyan-600 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-              >
-                {opt === 'ALL' ? 'Both (CE+PE)' : opt === 'CE' ? 'Calls (CE)' : 'Puts (PE)'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Instruments: Indices vs Stocks */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Universe:</span>
-          <div className="flex bg-slate-100 dark:bg-dark-900 border border-slate-200 dark:border-dark-700 rounded-xl p-1">
-            {[
-              { key: 'ALL', label: 'All' },
-              { key: 'INDEX', label: 'Indices (4)' },
-              { key: 'STOCK', label: 'Stocks (~30)' },
-            ].map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => onSelectInstrumentType(key)}
-                className={`text-xs font-bold px-3 py-1 rounded-lg transition ${
-                  selectedInstrumentType === key
-                    ? 'bg-cyan-600 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Timeframes */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Timeframe:</span>
-          <div className="flex bg-slate-100 dark:bg-dark-900 border border-slate-200 dark:border-dark-700 rounded-xl p-1">
-            {['ALL', '5m', '15m'].map((tf) => (
-              <button
-                key={tf}
-                onClick={() => onSelectTimeframe(tf)}
-                className={`text-xs font-bold px-3 py-1 rounded-lg transition ${
-                  selectedTimeframe === tf
-                    ? 'bg-cyan-600 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-              >
-                {tf}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Signal counter */}
-        <div className="flex items-center gap-3">
-          <div className="text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-dark-900/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-dark-700">
-            Filtered Signals: <span className="text-cyan-600 dark:text-cyan-400 font-mono text-sm">{totalSignals}</span>
-          </div>
-
-          {onSelectViewMode && (
-            <div className="flex items-center gap-1 bg-dark-900 border border-dark-700 rounded-xl p-1">
-              <button
-                onClick={() => onSelectViewMode('grid')}
-                className={`p-1.5 rounded-lg transition ${
-                  viewMode === 'grid' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="Card Grid View"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => onSelectViewMode('table')}
-                className={`p-1.5 rounded-lg transition ${
-                  viewMode === 'table' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="Table View"
-              >
-                <Table className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+}) => (
+  <div className="desk-panel px-3.5 py-3 flex flex-col gap-3">
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Setups">
+      {SETUP_FILTERS.map(({ key, label, title }) => (
+        <button
+          key={key}
+          type="button"
+          className="desk-chip"
+          title={title}
+          aria-pressed={selectedSetup === key}
+          onClick={() => onSelectSetup(key)}
+        >
+          {label}
+        </button>
+      ))}
     </div>
-  );
-};
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+      <Seg
+        label="Direction"
+        value={selectedOptionType}
+        onChange={onSelectOptionType}
+        options={[
+          { key: 'ALL', label: 'Both' },
+          { key: 'CE', label: 'CE' },
+          { key: 'PE', label: 'PE' },
+        ]}
+      />
+      <Seg
+        label="Universe"
+        value={selectedInstrumentType}
+        onChange={onSelectInstrumentType}
+        options={[
+          { key: 'ALL', label: 'All' },
+          { key: 'INDEX', label: 'Indices' },
+          { key: 'STOCK', label: 'Stocks' },
+        ]}
+      />
+      <Seg
+        label="Timeframe"
+        value={selectedTimeframe}
+        onChange={onSelectTimeframe}
+        options={[
+          { key: 'ALL', label: 'All' },
+          { key: '5m', label: '5m' },
+          { key: '15m', label: '15m' },
+        ]}
+      />
+      <span className="ml-auto text-xs desk-muted">
+        Filtered signals: <b className="desk-num" style={{ color: 'var(--accent)' }}>{totalSignals}</b>
+      </span>
+    </div>
+  </div>
+);
