@@ -104,7 +104,11 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     cum_tp_vol = tp_vol.groupby(res["session_date"]).cumsum()
     cum_vol = vol_clean.groupby(res["session_date"]).cumsum()
 
-    res["vwap"] = (cum_tp_vol / cum_vol.replace(0, np.nan)).fillna(typical_price)
+    # Volume-less series (e.g. Dhan index candles) have no VWAP: fall back to the session's
+    # running mean of typical price (TWAP) instead of the current bar's own typical price,
+    # which would make "price vs VWAP" a meaningless comparison against the same bar.
+    session_twap = typical_price.groupby(res["session_date"]).expanding().mean().reset_index(level=0, drop=True)
+    res["vwap"] = (cum_tp_vol / cum_vol.replace(0, np.nan)).fillna(session_twap)
     res.drop(columns=["session_date"], inplace=True)
 
     # 3. 14-period Wilder's RSI

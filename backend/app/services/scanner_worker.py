@@ -1064,7 +1064,7 @@ class ScannerWorker:
                 if pd.isna(bw_min) or bw_min <= 0:
                     bw_min = bw_val
 
-                is_sq = (bw_val <= bw_min * 1.25) or (bw_val <= 5.0)
+                is_sq = bw_val <= bw_min * 1.25
                 vwap_b = "ABOVE_VWAP" if radar_close >= float(last_row["vwap"]) else "BELOW_VWAP"
 
                 percent_b_val = float(last_row["percent_b"])

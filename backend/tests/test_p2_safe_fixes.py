@@ -1,3 +1,4 @@
+import pytest
 from datetime import timedelta
 from app.services import market_hours
 from app.services.momentum_ranker import MomentumRanker
@@ -61,3 +62,30 @@ def test_strike_step_is_derived_from_the_chain():
     assert rec.recommended_strike == 2500
     rec = resolve_live_strike_from_chain("RELIANCE", 2514.0, "CE", oc, strike_preference="ATM")
     assert rec.recommended_strike == 2525
+
+
+def _index_bars(n=30):
+    import pandas as pd
+    from datetime import datetime, timedelta
+    rows = []
+    for i in range(n):
+        p = 22000.0 + 10.0 * i                      # steady drift, no volume (Dhan index candles)
+        rows.append({"timestamp": datetime(2026, 10, 14, 9, 15) + timedelta(minutes=5 * i),
+                     "open": p - 2, "high": p + 3, "low": p - 3, "close": p, "volume": 0})
+    return pd.DataFrame(rows)
+
+
+def test_volumeless_index_vwap_is_session_running_mean_not_current_bar():
+    from app.services.indicators import calculate_indicators
+    df = calculate_indicators(_index_bars())
+    tp = (df["high"] + df["low"] + df["close"]) / 3.0
+    assert df["vwap"].iloc[-1] == pytest.approx(tp.mean())
+    assert df["vwap"].iloc[-1] < tp.iloc[-1]        # lags a rising market (old value == tp.iloc[-1])
+
+
+def test_squeeze_is_relative_not_a_fixed_5_percent():
+    from app.services.strategy_engine import _in_squeeze
+    # 5m index bandwidth is typically ~0.5%: old rule called 0.9% (vs a 0.3% minimum) a squeeze
+    assert not _in_squeeze(0.9, 0.3)
+    assert _in_squeeze(0.35, 0.3)
+    assert _in_squeeze(0.0, 0.0)

@@ -25,10 +25,9 @@ def create_series_df(n: int = 30, base_p: float = 100.0, start_time: datetime = 
 
 def test_setup1_squeeze_breakout_ce():
     df = create_series_df(25, 100.0)
-    # Consecutive strong up candles to trigger breakout & high RSI
-    df.loc[22, "close"] = 102.0
-    df.loc[23, "close"] = 104.0
-    df.loc[24, "open"] = 104.0
+    # Flat (squeezed) bars, then a single expansion bar breaking the upper band. Bars before
+    # the breakout must stay in the squeeze: pre-widened bands are not a squeeze breakout.
+    df.loc[24, "open"] = 100.0
     df.loc[24, "close"] = 108.0
     df.loc[24, "high"] = 108.5
     df.loc[24, "volume"] = 10000
@@ -48,9 +47,7 @@ def test_setup1_squeeze_breakout_ce():
 
 def test_setup1_squeeze_breakout_pe():
     df = create_series_df(25, 100.0)
-    df.loc[22, "close"] = 98.0
-    df.loc[23, "close"] = 96.0
-    df.loc[24, "open"] = 96.0
+    df.loc[24, "open"] = 100.0
     df.loc[24, "close"] = 90.0
     df.loc[24, "low"] = 89.5
     df.loc[24, "volume"] = 10000

@@ -33,6 +33,17 @@ class Signal(BaseModel):
 
 INDEX_SYMBOLS = {"NIFTY 50", "NIFTY", "NIFTY BANK", "BANKNIFTY", "FINNIFTY", "NIFTY FINANCIAL SERVICES", "SENSEX", "MIDCPNIFTY"}
 
+SQUEEZE_BW_REL = 1.3
+
+
+def _in_squeeze(bandwidth: float, bw_min: float) -> bool:
+    """True when BandWidth is within 30% of its trailing 20-bar minimum.
+
+    Relative on purpose: a fixed 5% BandWidth cap is almost always true on 5m index bars
+    (typical BandWidth is well under 1%), which made every bar a "squeeze"."""
+    return float(bandwidth) <= max(float(bw_min), 0.0) * SQUEEZE_BW_REL + 1e-4
+
+
 def evaluate_signals(
     symbol: str,
     df: pd.DataFrame,
@@ -91,16 +102,8 @@ def evaluate_signals(
     # =========================================================================
     # SETUP 1: Volatility Squeeze & Expansion Breakout
     # =========================================================================
-    # Squeeze condition: BandWidth was recently at or near 20-period minimum, or in absolute squeeze (<= 5.0%)
-    if bw_min <= 0.0001:
-        is_squeeze = bw <= 5.0 or prev["bandwidth"] <= 5.0
-    else:
-        is_squeeze = (
-            prev["bandwidth"] <= bw_min * 1.3
-            or bw <= bw_min * 1.3
-            or bw <= 5.0
-            or prev["bandwidth"] <= 5.0
-        )
+    # Squeeze condition: BandWidth at or near its 20-bar minimum (relative, instrument-agnostic)
+    is_squeeze = _in_squeeze(bw, bw_min) or _in_squeeze(prev["bandwidth"], bw_min)
 
     if is_squeeze:
         # CE Squeeze Breakout: Close > Upper Band, Close > VWAP, RSI >= 58
@@ -336,7 +339,7 @@ def evaluate_signals(
     curr_close = float(close)
     bar_range = curr_high - curr_low
 
-    if bw > 5.0 and adx <= 25.0 and bar_range > 0.0001:
+    if not _in_squeeze(bw, bw_min) and adx <= 25.0 and bar_range > 0.0001:
         # Bearish PE Pin Bar: High > Upper Band, Upper Wick >= 50% range, Close < Upper Band, RSI >= 68
         upper_wick = curr_high - max(curr_open, curr_close)
         is_pe_pinbar = (
@@ -406,7 +409,7 @@ def evaluate_signals(
     # =========================================================================
     # SETUP 7: 2.5σ Puncture & Inside Bar Breakdown
     # =========================================================================
-    if bw > 5.0 and len(df) >= 22:
+    if not _in_squeeze(bw, bw_min) and len(df) >= 22:
         prev2 = df.iloc[last_idx - 2]
         prev2_high = float(prev2.get("high", prev2["close"]))
         prev2_low = float(prev2.get("low", prev2["close"]))
@@ -487,7 +490,7 @@ def evaluate_signals(
     # =========================================================================
     # SETUP 8: Climax Swing RSI Divergence Fade
     # =========================================================================
-    if bw > 5.0 and len(df) >= 20:
+    if not _in_squeeze(bw, bw_min) and len(df) >= 20:
         window_size = min(15, len(df))
         lookback_window = df.iloc[-window_size:]
         recent_3 = lookback_window.iloc[-3:]
