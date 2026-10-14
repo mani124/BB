@@ -36,6 +36,27 @@ export function formatTradeSpan(trade: {
 }
 
 
+type SummaryTrade = {
+  quarantine_reason?: string | null;
+  net_pnl?: number;
+  gross_pnl?: number;
+  pnl_rupees?: number;
+  total_slippage_cost?: number;
+};
+
+export function summarizeTrades(trades: SummaryTrade[]) {
+  const counted = trades.filter((t) => !t.quarantine_reason);
+  const wins = counted.filter((t) => (t.net_pnl ?? t.gross_pnl ?? t.pnl_rupees ?? 0) > 0).length;
+  return {
+    count: counted.length,
+    winRate: counted.length > 0 ? ((wins / counted.length) * 100).toFixed(1) : '0.0',
+    gross: counted.reduce((a, t) => a + (t.gross_pnl ?? t.pnl_rupees ?? 0), 0),
+    net: counted.reduce((a, t) => a + (t.net_pnl ?? t.pnl_rupees ?? 0), 0),
+    slippage: counted.reduce((a, t) => a + (t.total_slippage_cost ?? 0), 0),
+  };
+}
+
+
 interface PaperPortfolioViewProps {
   portfolio?: PaperPortfolio;
   onClosePosition: (id: string) => void;
@@ -137,18 +158,14 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
   const closedTrades = portfolio.closed_trades ?? [];
   const filteredTrades = closedTrades.filter((t) => matchSetup(t.setup_type, selectedSetupFilter));
   
-  const winningFilteredTrades = filteredTrades.filter((t) => {
-    const pnl = t.net_pnl !== undefined ? t.net_pnl : (t.gross_pnl !== undefined ? t.gross_pnl : t.pnl_rupees);
-    return pnl > 0;
-  }).length;
-
-  const filteredWinRate = filteredTrades.length > 0 
-    ? ((winningFilteredTrades / filteredTrades.length) * 100).toFixed(1) 
-    : '0.0';
-
-  const filteredGross = filteredTrades.reduce((acc, t) => acc + (t.gross_pnl ?? t.pnl_rupees ?? 0), 0);
-  const filteredNet = filteredTrades.reduce((acc, t) => acc + (t.net_pnl ?? t.pnl_rupees ?? 0), 0);
-  const filteredSlippage = filteredTrades.reduce((acc, t) => acc + (t.total_slippage_cost ?? 0), 0);
+  // Quarantined rows stay visible in the table but never count toward the summary
+  // (same rule the portfolio cards use on the backend).
+  const summary = summarizeTrades(filteredTrades);
+  const quarantinedCount = filteredTrades.length - summary.count;
+  const filteredWinRate = summary.winRate;
+  const filteredGross = summary.gross;
+  const filteredNet = summary.net;
+  const filteredSlippage = summary.slippage;
 
   return (
     <div className="space-y-6">
@@ -417,7 +434,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
             <div className="flex items-center gap-5 flex-wrap">
               <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
                 <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
-                <span>{filteredTrades.length} Trades</span>
+                <span>{summary.count} Trades{quarantinedCount > 0 ? ` (+${quarantinedCount} quarantined)` : ''}</span>
               </div>
               <div className="text-slate-600 dark:text-slate-400">
                 <span>Win Rate: </span>
