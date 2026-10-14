@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 import logging
 from datetime import datetime, timedelta
@@ -25,6 +26,10 @@ class PaperGuardsMixin:
             return "lot size unknown (guessed default); refusing to size a position"
         max_age = float(getattr(settings, "MAX_QUOTE_AGE_SECONDS", 0) or 0)
         age = getattr(rec, "quote_age_s", None)
+        as_of = getattr(rec, "quote_as_of", None)
+        if as_of is not None:
+            # The stored age was frozen when the signal was built; recompute so a stalled scan cannot reuse an old ask.
+            age = max(float(age or 0.0), time.time() - float(as_of))
         if max_age > 0 and age is not None and float(age) > max_age:
             return f"quote is {float(age):.0f}s old (limit {max_age:.0f}s)"
         ask = float(getattr(rec, "real_ask_price", 0.0) or 0.0)

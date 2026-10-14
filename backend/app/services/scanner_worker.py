@@ -688,6 +688,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                                     strike_preference=pref,
                                  )
                                 live_rec.quote_age_s = round(max(0.0, time.monotonic() - chain_fetch_ts), 1)
+                                live_rec.quote_as_of = time.time() - live_rec.quote_age_s
                                 sig.strike_recommendation = live_rec
 
                         # Also evaluate Setup 5 (Option Chart BB Scalp) directly on live option candles

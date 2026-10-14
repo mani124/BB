@@ -113,6 +113,7 @@ class OptionStrikeRecommendation(BaseModel):
     is_live_quote: bool = False
     # Age (seconds) of the chain/tick quote these live fields came from; None = unknown.
     quote_age_s: Optional[float] = None
+    quote_as_of: Optional[float] = None  # wall-clock epoch the quote was taken; lets entry re-check age later
 
 # Backwards-compatible alias
 OptionStrike = OptionStrikeRecommendation
