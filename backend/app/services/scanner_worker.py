@@ -406,6 +406,13 @@ class ScannerWorker:
             self._instrument_last_quote_time.clear()
             self._last_session_date = today
 
+    def _chain_age_s(self, symbol: str) -> Optional[float]:
+        """Seconds since the cached option chain for ``symbol`` was fetched (None if unknown)."""
+        cached = self._option_chain_cache.get(symbol)
+        if not cached:
+            return None
+        return round(max(0.0, time.monotonic() - cached[0]), 1)
+
     def _can_retry_contract_candle(self, sec_id: str, current_time: float) -> bool:
         failed_ts = self._failed_candle_sec_ids.get(sec_id)
         if failed_ts is None:
@@ -520,7 +527,7 @@ class ScannerWorker:
             "INFY": 1920.0,
         }
         base_p = float(base_price) if (base_price and base_price > 0) else base_map.get(inst.symbol, 1500.0)
-        start_time = datetime.now().replace(hour=9, minute=15, second=0, microsecond=0)
+        start_time = market_hours.now_ist_naive().replace(hour=9, minute=15, second=0, microsecond=0)
         minutes_step = 5 if inst.default_timeframe == "5m" else 15
 
         records = []
@@ -590,7 +597,7 @@ class ScannerWorker:
                     return False
 
                 # F4: Separate completed bars from any current unfinished bar
-                now = datetime.now()
+                now = market_hours.now_ist_naive()
                 completed_records = []
                 unfinished_bar = None
 
@@ -634,7 +641,7 @@ class ScannerWorker:
         Build and maintain 100% real intraday OHLCV bars populated and updated continuously
         by live Dhan market ticks. Strictly zero random/synthetic data in live mode.
         """
-        now = datetime.now()
+        now = market_hours.now_ist_naive()
         step_min = 5 if inst.default_timeframe == "5m" else 15
         sym = inst.symbol
 
@@ -741,7 +748,7 @@ class ScannerWorker:
         now_mono = time.monotonic()
         sym = inst.symbol
 
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = market_hours.now_ist_naive().strftime("%Y-%m-%d")
         expiry = self._expiry_cache.get(sym)
         if expiry and expiry < today_str:
             self._expiry_cache.pop(sym, None)
@@ -883,13 +890,13 @@ class ScannerWorker:
                 mode = "live"
                 self._state.active_mode = "live"
                 self._state.feed_status = "WS_LIVE"
-                self._state.last_quote_time = datetime.now().strftime("%H:%M:%S")
+                self._state.last_quote_time = market_hours.now_ist_naive().strftime("%H:%M:%S")
             elif live_quotes and len(live_quotes) > 0:
                 self._last_successful_quote_time = loop_time
                 mode = "live"
                 self._state.active_mode = "live"
                 self._state.feed_status = "LIVE"
-                self._state.last_quote_time = datetime.now().strftime("%H:%M:%S")
+                self._state.last_quote_time = market_hours.now_ist_naive().strftime("%H:%M:%S")
             elif self._last_successful_quote_time and (loop_time - self._last_successful_quote_time) <= 30.0:
                 mode = "live"
                 self._state.active_mode = "live"
@@ -1101,7 +1108,7 @@ class ScannerWorker:
                     stock_bias=stock_bias,
                     market_bias=market_bias
                 )
-                today_date = datetime.now().date()
+                today_date = market_hours.now_ist_naive().date()
                 for s in signals_on_closed:
                     # Finding 1: Only bars completed in today's active session can generate confirmed signals
                     try:
@@ -1210,6 +1217,7 @@ class ScannerWorker:
                                     target_2=sig.target_2,
                                     strike_preference=pref,
                                  )
+                                live_rec.quote_age_s = round(max(0.0, time.monotonic() - chain_fetch_ts), 1)
                                 sig.strike_recommendation = live_rec
 
                         # Also evaluate Setup 5 (Option Chart BB Scalp) directly on live option candles
@@ -1266,7 +1274,7 @@ class ScannerWorker:
         self._state.top_bearish = rankings.top_bearish
         self._state.market_bias = market_bias
         self._state.paper_portfolio = paper_trader.get_portfolio(mode=mode)
-        self._state.last_scan_time = datetime.now().strftime("%H:%M:%S")
+        self._state.last_scan_time = market_hours.now_ist_naive().strftime("%H:%M:%S")
         self._state.scan_cycle_count += 1
         self._state.is_scanning = False
         self._state.scan_progress = 100.0
@@ -1466,6 +1474,7 @@ class ScannerWorker:
                     option_security_id=sec_id_str,
                     timeframe="5m",
                     current_quote={
+                        "quote_age_s": self._chain_age_s(inst.symbol),
                         "last_price": opt_ltp,
                         "volume": opt_vol,
                         "ask_price": float(opt_info.get("top_ask_price", 0.0) or opt_info.get("ask_price", 0.0) or 0.0),

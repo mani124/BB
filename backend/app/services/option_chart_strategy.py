@@ -108,7 +108,10 @@ def evaluate_option_chart_signal(
 
     ts_str = str(ts_raw)
     ts_clean = ts_str.replace(":", "").replace("-", "").replace(" ", "_").replace(".", "")
-    sig_id = f"{symbol}_{timeframe}_S5_{option_type}_{ts_clean}"
+    # Identity = stock + side + contract + bar open time, so a re-evaluation of the same bar
+    # on the same contract always yields the same id (and a different contract never collides).
+    contract_part = f"{option_security_id}_" if option_security_id else ""
+    sig_id = f"{symbol}_{timeframe}_S5_{option_type}_{contract_part}{ts_clean}"
 
     # Finding 2: Require authentic current live quote before labelling as live quote
     is_live = False
@@ -150,7 +153,8 @@ def evaluate_option_chart_signal(
         real_ltp=real_ltp,
         real_ask_price=real_ask,
         real_bid_price=real_bid,
-        is_live_quote=is_live
+        is_live_quote=is_live,
+        quote_age_s=(float(current_quote["quote_age_s"]) if (current_quote and current_quote.get("quote_age_s") is not None) else None),
     )
 
     indicators_snap = {

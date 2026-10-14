@@ -1,6 +1,7 @@
 import asyncio
 import time
 from datetime import datetime, timedelta
+from app.services import market_hours
 from unittest.mock import AsyncMock, patch, MagicMock
 import numpy as np
 import pandas as pd
@@ -614,7 +615,7 @@ async def test_finding_4_unfinished_historical_bar_routed_to_forming_candle():
     inst = worker.universe_mgr.get_indices()[0]
     interval = 5 if inst.default_timeframe == "5m" else 15
 
-    now = datetime.now()
+    now = market_hours.now_ist_naive()
     # 20 completed bars ending in past, and 1 unfinished bar ending in future
     unfinished_bar_ts = now - timedelta(minutes=2)
     completed_start = unfinished_bar_ts - timedelta(minutes=interval * 20)

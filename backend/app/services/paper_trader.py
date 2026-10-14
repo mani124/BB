@@ -62,6 +62,18 @@ class PaperPosition(BaseModel):
     exit_datetime: Optional[str] = None
     # Non-destructive quarantine: rows with a reason stay visible but are excluded from totals.
     quarantine_reason: Optional[str] = None
+    # True when the entry price was modelled (no real ask/last from the exchange feed).
+    entry_estimated: bool = False
+
+class DailyPnl(BaseModel):
+    date: str
+    trades: int = 0
+    wins: int = 0
+    losses: int = 0
+    gross_pnl: float = 0.0
+    total_charges: float = 0.0
+    net_pnl: float = 0.0
+    quarantined_excluded: int = 0
 
 STALE_CARRYOVER = "STALE_CARRYOVER"
 EOD_SQUARE_OFF = "EOD_SQUARE_OFF"
@@ -70,6 +82,18 @@ def _now_stamp() -> tuple[str, str]:
     """(HH:MM:SS display, ISO datetime with date) for the current IST instant."""
     n = market_hours.now_ist().replace(microsecond=0)
     return n.strftime("%H:%M:%S"), n.isoformat()
+
+def _signed_slip(level: float, fill: float) -> float:
+    """Slippage in points for a sell: positive = filled worse than the intended level,
+    negative = price improvement (e.g. a gap through a target)."""
+    return round(float(level) - float(fill), 2)
+
+def _view_mode(mode: Optional[str]) -> Optional[str]:
+    """Portfolio views are either demo or live. Every non-demo scan state (live, stale,
+    error, closed) shows the live book, so positions never vanish when the market closes."""
+    if not mode:
+        return None
+    return "demo" if mode == "demo" else "live"
 
 def _parse_iso(value: Optional[str]) -> Optional[datetime]:
     if not value:
@@ -285,6 +309,7 @@ class PaperTradingEngine:
 
     def get_portfolio(self, mode: Optional[str] = None) -> PaperPortfolio:
         self._recalculate_metrics()
+        mode = _view_mode(mode)
         if not mode:
             return self._portfolio
 
@@ -329,6 +354,30 @@ class PaperTradingEngine:
             total_charges=round(total_charges, 2),
             total_net_pnl=round(total_net, 2)
         )
+
+    def get_daily_pnl(self, mode: Optional[str] = None) -> list[DailyPnl]:
+        """P1-7: realized P&L per IST exit date (newest first). Quarantined rows are
+        excluded from the figures and only counted in ``quarantined_excluded``."""
+        mode = _view_mode(mode)
+        days: dict[str, DailyPnl] = {}
+        for p in self._portfolio.closed_trades:
+            if mode is not None and getattr(p, "feed_mode", "demo") != mode:
+                continue
+            stamp = _parse_iso(p.exit_datetime) or _parse_iso(p.entry_datetime)
+            key = stamp.date().isoformat() if stamp else "unknown"
+            day = days.setdefault(key, DailyPnl(date=key))
+            if p.quarantine_reason:
+                day.quarantined_excluded += 1
+                continue
+            day.trades += 1
+            if p.pnl_rupees > 0:
+                day.wins += 1
+            elif p.pnl_rupees < 0:
+                day.losses += 1
+            day.gross_pnl = round(day.gross_pnl + (p.gross_pnl or p.pnl_rupees), 2)
+            day.total_charges = round(day.total_charges + p.total_charges, 2)
+            day.net_pnl = round(day.net_pnl + p.net_pnl, 2)
+        return sorted(days.values(), key=lambda d: d.date, reverse=True)
 
     def set_auto_trade(self, enabled: bool):
         self._portfolio.auto_trade_enabled = enabled
@@ -447,6 +496,13 @@ class PaperTradingEngine:
                 self._processed_signal_ids.add(signal.id)
                 return None
 
+            # P1-3: reject stale or untradeable quotes (frozen last trade, wide/one-sided market).
+            quote_block = self._quote_block_reason(rec)
+            if quote_block:
+                logger.info("Live position entry skipped for %s: %s", signal.symbol, quote_block)
+                self._processed_signal_ids.add(signal.id)
+                return None
+
         lot_size = rec.lot_size
 
         risk_per_unit = max(0.1, abs(rec.estimated_option_entry - rec.option_sl_price))
@@ -468,7 +524,7 @@ class PaperTradingEngine:
         self._processed_signal_ids.add(signal.id)
         qty = lot_size * lots_to_trade
 
-        pos_id = f"POS_{signal.symbol}_{signal.option_type}_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:6]}"
+        pos_id = f"POS_{signal.symbol}_{signal.option_type}_{int(market_hours.now_ist().timestamp())}_{uuid.uuid4().hex[:6]}"
         rec = signal.strike_recommendation
 
         p_signal = float(rec.estimated_option_entry)
@@ -476,12 +532,14 @@ class PaperTradingEngine:
             signal.setup_type in ("Setup 5: Option Chart BB Scalp", "BB_EXPANSION_SCALP", "SETUP_5_OPTION_BB")
             or "Setup 5" in str(signal.setup_type)
         )
+        entry_estimated = False
         if getattr(rec, "real_ask_price", 0.0) is not None and float(rec.real_ask_price or 0.0) > 0:
             p_fill_entry = float(rec.real_ask_price)
         elif not is_s5 and getattr(rec, "real_ltp", 0.0) is not None and float(rec.real_ltp or 0.0) > 0:
             p_fill_entry = round(float(rec.real_ltp) * 1.001, 2)
         else:
             p_fill_entry = float(p_signal)
+            entry_estimated = True
 
         entry_slippage = max(0.0, round(p_fill_entry - p_signal, 2))
         init_slip_cost = round(entry_slippage * qty, 2)
@@ -527,12 +585,12 @@ class PaperTradingEngine:
             total_charges=0.0,
             net_pnl=0.0,
             charges_breakdown=None,
+            entry_estimated=entry_estimated,
         )
 
         self._portfolio.active_positions.append(pos)
         self._recalculate_metrics()
-        self._enqueue_write("upsert", pos)
-        self._enqueue_write("add_signal", (signal.id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        self._persist_entry(pos, signal.id)
         if self.on_position_opened:
             try:
                 res = self.on_position_opened(pos)
@@ -545,6 +603,37 @@ class PaperTradingEngine:
             except Exception as e:
                 logger.warning(f"Error executing on_position_opened callback: {e}")
         return pos
+
+    def _persist_entry(self, pos: PaperPosition, signal_id: str) -> None:
+        """P1-4: write the new position and its processed-signal id in ONE synchronous
+        transaction, so a crash or --reload between the two can never let the same signal
+        open a second position after restart. Later updates still go through the queue."""
+        if not self.storage:
+            return
+        created = market_hours.now_ist().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            self.storage.record_entry(pos, signal_id, created)
+        except Exception as exc:
+            logger.error("Atomic entry persistence failed for %s: %s", pos.id, exc)
+            self._pending_errors.append(exc)
+
+    @staticmethod
+    def _quote_block_reason(rec) -> Optional[str]:
+        """P1-3: None if the live quote behind a recommendation is fresh and tradeable."""
+        max_age = float(getattr(settings, "MAX_QUOTE_AGE_SECONDS", 0) or 0)
+        age = getattr(rec, "quote_age_s", None)
+        if max_age > 0 and age is not None and float(age) > max_age:
+            return f"quote is {float(age):.0f}s old (limit {max_age:.0f}s)"
+        ask = float(getattr(rec, "real_ask_price", 0.0) or 0.0)
+        bid = float(getattr(rec, "real_bid_price", 0.0) or 0.0)
+        max_spread = float(getattr(settings, "MAX_ENTRY_SPREAD_PCT", 0) or 0)
+        if max_spread > 0 and ask > 0 and bid > 0:
+            if ask < bid:
+                return f"crossed market (bid {bid} > ask {ask})"
+            spread_pct = (ask - bid) / ask * 100.0
+            if spread_pct > max_spread:
+                return f"spread {spread_pct:.1f}% exceeds {max_spread:.0f}% (bid {bid}, ask {ask})"
+        return None
 
     @staticmethod
     def _contract_key(security_id: Optional[str], strike_symbol: Optional[str]) -> Optional[str]:
@@ -563,6 +652,32 @@ class PaperTradingEngine:
                 return f"contract {key} already has an open position"
             if p.symbol == signal.symbol and p.option_type == signal.option_type:
                 return f"{p.symbol} {p.option_type} already has an open position"
+
+        # P1-7: portfolio-level caps (0 disables a cap)
+        max_open = int(getattr(settings, "MAX_OPEN_POSITIONS", 0) or 0)
+        if max_open > 0 and len(self._portfolio.active_positions) >= max_open:
+            return f"max open positions reached ({max_open})"
+
+        max_notional = float(getattr(settings, "MAX_OPEN_NOTIONAL", 0) or 0)
+        if max_notional > 0:
+            open_notional = sum(p.option_entry * p.quantity for p in self._portfolio.active_positions)
+            lots = self._portfolio.default_lots
+            new_notional = float(getattr(rec, "estimated_option_entry", 0.0) or 0.0) * int(getattr(rec, "lot_size", 0) or 0) * max(1, lots)
+            if open_notional + new_notional > max_notional:
+                return f"open premium notional would exceed {max_notional:,.0f}"
+
+        max_per_day = int(getattr(settings, "MAX_ENTRIES_PER_SYMBOL_PER_DAY", 0) or 0)
+        if max_per_day > 0:
+            today = market_hours.now_ist().date()
+            entered = 0
+            for p in self._portfolio.active_positions + self._portfolio.closed_trades:
+                if p.symbol != signal.symbol or p.quarantine_reason:
+                    continue
+                ed = _parse_iso(p.entry_datetime)
+                if ed is not None and ed.date() == today:
+                    entered += 1
+            if entered >= max_per_day:
+                return f"{signal.symbol} already had {entered} entries today (limit {max_per_day})"
 
         cooldown = int(getattr(settings, "REENTRY_COOLDOWN_SECONDS", 0) or 0)
         if cooldown > 0:
@@ -653,8 +768,16 @@ class PaperTradingEngine:
         else:
             p_fill_exit = float(theoretical_exit)
 
-        # 2. Exit slippage
-        exit_slippage = max(0.0, round(float(theoretical_exit) - p_fill_exit, 2))
+        # 2. Exit slippage: signed. Positive = worse than the intended level; negative =
+        # price improvement (e.g. a gap through a target). A fill far beyond the level is
+        # labelled as a gap so it is not mistaken for a clean level hit.
+        exit_slippage = _signed_slip(theoretical_exit, p_fill_exit)
+        gap_pct = float(getattr(settings, "GAP_EXIT_PCT", 0) or 0)
+        level = float(theoretical_exit)
+        if gap_pct > 0 and level > 0 and "(Gap" not in reason and status in ("STOPPED_OUT", "TARGET_2"):
+            move_pct = abs(p_fill_exit - level) / level * 100.0
+            if move_pct >= gap_pct:
+                reason = f"{reason} (Gap Exit: filled {p_fill_exit:.2f} vs level {level:.2f})"
 
         # 3. Update position state and P&L
         pos.status = status
@@ -825,7 +948,7 @@ class PaperTradingEngine:
                         book_lots = pos.lots // 2
                         book_qty = book_lots * pos.lot_size
                         tp1_fill = real_bid_price if (real_bid_price and real_bid_price > 0) else pos.current_option_price
-                        tp1_slippage = max(0.0, round(pos.option_target_1 - tp1_fill, 2))
+                        tp1_slippage = _signed_slip(pos.option_target_1, tp1_fill)
                         tp1_slip_cost = round(tp1_slippage * book_qty, 2)
                         pos.booked_slippage_cost = round(getattr(pos, "booked_slippage_cost", 0.0) + tp1_slip_cost, 2)
                         book_pnl = round((tp1_fill - pos.option_entry) * book_qty, 2)
@@ -898,7 +1021,7 @@ class PaperTradingEngine:
                         book_lots = pos.lots // 2
                         book_qty = book_lots * pos.lot_size
                         tp1_fill = real_bid_price if (real_bid_price and real_bid_price > 0) else (real_opt_price if (real_opt_price and real_opt_price > 0) else pos.current_option_price)
-                        tp1_slippage = max(0.0, round(pos.option_target_1 - tp1_fill, 2))
+                        tp1_slippage = _signed_slip(pos.option_target_1, tp1_fill)
                         tp1_slip_cost = round(tp1_slippage * book_qty, 2)
                         pos.booked_slippage_cost = round(getattr(pos, "booked_slippage_cost", 0.0) + tp1_slip_cost, 2)
                         book_pnl = round((tp1_fill - pos.option_entry) * book_qty, 2)
@@ -967,7 +1090,7 @@ class PaperTradingEngine:
                         book_lots = pos.lots // 2
                         book_qty = book_lots * pos.lot_size
                         tp1_fill = real_bid_price if (real_bid_price and real_bid_price > 0) else (real_opt_price if (real_opt_price and real_opt_price > 0) else pos.current_option_price)
-                        tp1_slippage = max(0.0, round(pos.option_target_1 - tp1_fill, 2))
+                        tp1_slippage = _signed_slip(pos.option_target_1, tp1_fill)
                         tp1_slip_cost = round(tp1_slippage * book_qty, 2)
                         pos.booked_slippage_cost = round(getattr(pos, "booked_slippage_cost", 0.0) + tp1_slip_cost, 2)
                         book_pnl = round((tp1_fill - pos.option_entry) * book_qty, 2)

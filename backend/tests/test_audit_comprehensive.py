@@ -2,6 +2,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from app.services import market_hours
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
@@ -154,7 +155,9 @@ def test_h3_target_1_pending_without_fresh_quote():
     assert pos.pending_spot_tp1 is False
     assert pos.lots == 1  # 1 lot booked at fresh bid!
     assert pos.booked_lots == 1
-    assert pos.booked_slippage_cost >= 0.0
+    # P1-5: slippage is signed; a bid above the T1 level (177.5 vs 175.0) is price
+    # improvement on 50 units, i.e. a negative cost rather than a clamped zero.
+    assert pos.booked_slippage_cost == -125.0
 
 @pytest.mark.asyncio
 async def test_h4_seed_historical_candles_if_needed():
@@ -170,7 +173,7 @@ async def test_h4_seed_historical_candles_if_needed():
     )
     mock_df = pd.DataFrame([
         {
-            "timestamp": datetime.now() - timedelta(minutes=5 * (i + 1)),
+            "timestamp": market_hours.now_ist_naive() - timedelta(minutes=5 * (i + 1)),
             "open": 3500.0,
             "high": 3510.0,
             "low": 3495.0,

@@ -22,6 +22,15 @@ class Settings(BaseModel):
     ENTRY_CUTOFF_TIME: str = os.getenv("ENTRY_CUTOFF_TIME", "15:15")
     EOD_SQUARE_OFF_TIME: str = os.getenv("EOD_SQUARE_OFF_TIME", "15:20")
     REENTRY_COOLDOWN_SECONDS: int = int(os.getenv("REENTRY_COOLDOWN_SECONDS", "300"))
+    # Entry quality guards (live mode)
+    MAX_QUOTE_AGE_SECONDS: float = float(os.getenv("MAX_QUOTE_AGE_SECONDS", "30"))
+    MAX_ENTRY_SPREAD_PCT: float = float(os.getenv("MAX_ENTRY_SPREAD_PCT", "25"))
+    # Gap-exit labelling: fill this far (in %) beyond the intended exit level counts as a gap
+    GAP_EXIT_PCT: float = float(os.getenv("GAP_EXIT_PCT", "5"))
+    # Exposure caps (0 disables a cap)
+    MAX_OPEN_POSITIONS: int = int(os.getenv("MAX_OPEN_POSITIONS", "8"))
+    MAX_ENTRIES_PER_SYMBOL_PER_DAY: int = int(os.getenv("MAX_ENTRIES_PER_SYMBOL_PER_DAY", "3"))
+    MAX_OPEN_NOTIONAL: float = float(os.getenv("MAX_OPEN_NOTIONAL", "1000000"))
     DASHBOARD_CAPABILITY: str = os.getenv("DASHBOARD_CAPABILITY", "bb-options-local-capability")
 
 settings = Settings()

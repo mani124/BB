@@ -14,6 +14,28 @@ import {
   X
 } from 'lucide-react';
 
+// Show the date whenever a trade crosses midnight/sessions so an overnight exit never
+// looks like it happened before its entry (times alone are HH:MM:SS).
+export function formatTradeSpan(trade: {
+  entry_time: string;
+  exit_time?: string;
+  entry_datetime?: string | null;
+  exit_datetime?: string | null;
+}): string {
+  const entryDate = trade.entry_datetime?.slice(0, 10);
+  const exitDate = trade.exit_datetime?.slice(0, 10);
+  const fmt = (iso: string, time: string) => {
+    const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
+    const label = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    return `${label} ${time}`;
+  };
+  if (entryDate && exitDate && entryDate !== exitDate) {
+    return `${fmt(entryDate, trade.entry_time)} → ${fmt(exitDate, trade.exit_time ?? '')}`;
+  }
+  return `${trade.entry_time} → ${trade.exit_time ?? ''}`;
+}
+
+
 interface PaperPortfolioViewProps {
   portfolio?: PaperPortfolio;
   onClosePosition: (id: string) => void;
@@ -457,7 +479,12 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                       <td className="py-2.5 px-4 font-mono font-bold text-slate-900 dark:text-white">
                         {trade.strike_symbol}
                         <span className="block text-[10px] text-slate-500 font-normal">
-                          {trade.entry_time} → {trade.exit_time}
+                          {formatTradeSpan(trade)}
+                          {trade.quarantine_reason && (
+                            <span className="ml-1 px-1 rounded bg-slate-200 dark:bg-dark-700 text-[9px] uppercase" title="Excluded from totals">
+                              {trade.quarantine_reason}
+                            </span>
+                          )}
                         </span>
                       </td>
 
@@ -470,7 +497,12 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                       </td>
 
                       <td className="py-2.5 px-4 font-mono text-slate-700 dark:text-slate-300">
-                        <div>₹{trade.option_entry.toFixed(1)}</div>
+                        <div>
+                          ₹{trade.option_entry.toFixed(1)}
+                          {trade.entry_estimated && (
+                            <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400" title="Entry price was modelled, not a real quote">est.</span>
+                          )}
+                        </div>
                         {trade.entry_slippage !== undefined && trade.entry_slippage !== null && (
                           <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
                             (Slip: {trade.entry_slippage >= 0 ? `+${trade.entry_slippage.toFixed(1)}` : `${trade.entry_slippage.toFixed(1)}`} pts)

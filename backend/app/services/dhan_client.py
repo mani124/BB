@@ -5,6 +5,7 @@ from typing import Optional
 import httpx
 import pandas as pd
 from app.core.config import settings
+from app.services import market_hours
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +262,7 @@ class DhanClient:
         POST /charts/intraday
         Body: {"securityId": str, "exchangeSegment": str, "instrument": str, "interval": int, "fromDate": str, "toDate": str}
         """
-        now = datetime.now()
+        now = market_hours.now_ist_naive()
         # Dhan v2 /charts/intraday requires datetime format: 'YYYY-MM-DD HH:MM:SS'
         if not to_date:
             to_date = now.strftime("%Y-%m-%d %H:%M:%S")
