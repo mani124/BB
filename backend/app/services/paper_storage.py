@@ -178,10 +178,11 @@ class PaperStorage:
         "entry_datetime", "exit_datetime", "quarantine_reason", "entry_estimated",
     )
     # Columns that never change after the row is first inserted.
+    # (underlying_sl / option_sl are deliberately absent: they move to entry at Target 1 and must persist.)
     _IMMUTABLE = frozenset({
         "id", "signal_id", "symbol", "option_type", "strike_symbol", "timeframe", "setup_type",
-        "entry_time", "underlying_entry", "underlying_sl", "underlying_target_1", "underlying_target_2",
-        "option_entry", "option_sl", "option_target_1", "option_target_2", "lot_size",
+        "entry_time", "underlying_entry", "underlying_target_1", "underlying_target_2",
+        "option_entry", "option_target_1", "option_target_2", "lot_size",
         "initial_lots", "initial_quantity",
     })
 

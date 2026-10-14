@@ -133,6 +133,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         self._historical_seed_fail_count.clear()
         self._option_last_quote_time.clear()
         self._latest_option_quotes.clear()
+        self._last_successful_quote_time = None
 
         if client_id and access_token:
             self._session_credentials = (client_id, access_token)

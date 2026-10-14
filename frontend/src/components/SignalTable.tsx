@@ -137,8 +137,10 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, a
                         </span>
                       ) : (
                         <button
-                          onClick={() => onPaperBuy(sig)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold transition active:scale-95 whitespace-nowrap shadow-sm shadow-cyan-600/20"
+                          onClick={() => sig.is_confirmed !== false && onPaperBuy(sig)}
+                          disabled={sig.is_confirmed === false}
+                          title={sig.is_confirmed === false ? 'Awaiting candle close confirmation' : undefined}
+                          className="flex items-center gap-1.5 px-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold transition active:scale-95 whitespace-nowrap shadow-sm shadow-cyan-600/20"
                         >
                           <ShoppingCart className="h-3.5 w-3.5" />
                           Paper Buy

@@ -55,6 +55,7 @@ export interface Signal {
   setup_type: SetupType;
   option_type: OptionType;
   timestamp: string;
+  is_confirmed?: boolean;
   entry_price: number;
   stop_loss: number;
   target_1: number;
