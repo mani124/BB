@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,14 +22,16 @@ worker = ScannerWorker(universe_mgr=universe_mgr)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.DASHBOARD_CAPABILITY.strip() == settings.DEFAULT_DASHBOARD_CAPABILITY:
-        logging.getLogger(__name__).warning(
-            "SECURITY: DASHBOARD_CAPABILITY is the built-in default; set a private value "
-            "(and COOKIE_SECURE=1 over HTTPS) before exposing this beyond localhost."
+    cap = settings.DASHBOARD_CAPABILITY.strip()
+    if not cap or cap == settings.DEFAULT_DASHBOARD_CAPABILITY:
+        # resolve_dashboard_capability() never returns these; guard against a future regression.
+        raise RuntimeError("Refusing to start without a private DASHBOARD_CAPABILITY.")
+    from app.services import market_hours
+    if market_hours.holiday_list_missing_soon():
+        logging.getLogger(__name__).error(
+            "DATA_QUALITY next year's NSE holiday list is missing; from 1 January every day is "
+            "treated as closed until app/services/market_hours.py is updated."
         )
-    if settings.COOKIE_SECURE and settings.DASHBOARD_CAPABILITY.strip() == settings.DEFAULT_DASHBOARD_CAPABILITY:
-        # COOKIE_SECURE=1 signals a non-localhost deployment; the default capability is public (bundled in the UI).
-        raise RuntimeError("Refusing to start: set a private DASHBOARD_CAPABILITY when COOKIE_SECURE=1.")
     await paper_trader.start_persistence_worker()
     worker.start()
     yield
@@ -44,7 +47,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
 
-    import os
     from urllib.parse import urlparse
     from fastapi import Request
     from fastapi.responses import JSONResponse
@@ -88,10 +90,12 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def verify_dashboard_authorization(request: Request, call_next):
         path = request.url.path
+        # CORS preflight carries no credentials; let CORSMiddleware answer it.
+        if request.method == "OPTIONS":
+            return await call_next(request)
         is_public = (
-            path in ("/api/health", "/api/auth/session", "/api/auth/oauth/login-url", "/api/auth/status")
-            or path.startswith(("/docs", "/openapi.json", "/redoc"))
-            or not path.startswith("/api/")
+            path in ("/api/health", "/api/auth/session")
+            or not path.startswith(("/api/", "/docs", "/openapi.json", "/redoc"))
         )
 
         if request.method in ("POST", "PUT", "DELETE", "PATCH"):

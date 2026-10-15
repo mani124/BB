@@ -1,8 +1,10 @@
 export const CAPABILITY_STORAGE_KEY = 'dashboard_capability';
-export const DEFAULT_CAPABILITY = 'bb-options-local-capability';
+// The old public default key; it is never sent and is dropped if found in storage.
+const LEGACY_PUBLIC_KEY = 'bb-options-local-capability';
 
 export function getDashboardCapability(): string {
-  return localStorage.getItem(CAPABILITY_STORAGE_KEY) || DEFAULT_CAPABILITY;
+  const stored = localStorage.getItem(CAPABILITY_STORAGE_KEY) || '';
+  return stored === LEGACY_PUBLIC_KEY ? '' : stored;
 }
 
 export function setDashboardCapability(token: string): void {
@@ -11,6 +13,7 @@ export function setDashboardCapability(token: string): void {
 
 export async function bootstrapDashboardSession(customToken?: string): Promise<boolean> {
   const secret = (customToken !== undefined ? customToken : getDashboardCapability()).trim();
+  if (!secret) return false; // no key yet: the sign-in dialog asks for it
   try {
     const res = await fetch('/api/auth/session', {
       method: 'POST',

@@ -6,7 +6,7 @@ from datetime import datetime
 import pandas as pd
 from app.services import market_hours
 from app.services.strategy_engine import Signal, SetupType
-from app.services.strike_selector import OptionStrikeRecommendation
+from app.services.strike_selector import OptionStrikeRecommendation, is_lot_size_known
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +142,7 @@ def evaluate_option_chart_signal(
         recommended_strike=int(strike_price),
         strike_symbol=strike_symbol,
         lot_size=lot_size,
+        lot_size_known=is_lot_size_known(symbol),
         risk=actual_risk,
         stop_loss=opt_sl,
         target_1=opt_t1,

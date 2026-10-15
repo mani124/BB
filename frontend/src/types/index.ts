@@ -9,6 +9,7 @@ export type SetupType =
   | 'Setup 6: Pin Bar Exhaustion Snapback'
   | 'Setup 7: 2.5σ Puncture & Inside Bar'
   | 'Setup 8: Climax Swing Divergence Fade'
+  | 'Setup 9: Relative Strength vs NIFTY (9 EMA Pullback)'
   | 'SETUP_1_SQUEEZE_EXPANSION'
   | 'SETUP_2_WALKING_BANDS'
   | 'SETUP_3_WM_REVERSAL'
@@ -16,7 +17,8 @@ export type SetupType =
   | 'SETUP_5_OPTION_BB_SCALP'
   | 'SETUP_6_PINBAR_SNAPBACK'
   | 'SETUP_7_INSIDE_BAR_SNAPBACK'
-  | 'SETUP_8_DIVERGENCE_SNAPBACK';
+  | 'SETUP_8_DIVERGENCE_SNAPBACK'
+  | 'SETUP_9_RELATIVE_STRENGTH';
 
 export interface OptionStrikeRecommendation {
   symbol: string;
@@ -151,7 +153,9 @@ export interface PaperPosition {
 
 export interface PaperPortfolio {
   active_positions: PaperPosition[];
+  // Empty in the live stream; filled by GET /api/paper/portfolio.
   closed_trades: PaperPosition[];
+  closed_trades_count?: number;
   auto_trade_enabled: boolean;
   default_lots: number;
   max_risk_per_trade?: number;

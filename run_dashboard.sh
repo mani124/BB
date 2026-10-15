@@ -19,7 +19,7 @@ NC='\033[0m' # No Color
 
 echo -e "${CYAN}================================================================${NC}"
 echo -e "${CYAN}   🚀 Bollinger Bands Options Trading Dashboard PRO (NSE)       ${NC}"
-echo -e "${CYAN}   Setups 1, 2, 3, 4 (CE & PE) • Zero-Token Persistence         ${NC}"
+echo -e "${CYAN}   Setups 1-8 (CE & PE) • Zero-Token Persistence               ${NC}"
 echo -e "${CYAN}================================================================${NC}"
 
 # 1. Kill stale processes on ports 8001 and 5174

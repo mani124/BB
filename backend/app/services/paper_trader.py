@@ -58,7 +58,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         total = round(realized + unrealized, 2)
         total_trades = len(closed)
         winning = sum(1 for p in closed if _outcome_pnl(p) > 0)
-        losing = sum(1 for p in closed if _outcome_pnl(p) <= 0)
+        losing = sum(1 for p in closed if _outcome_pnl(p) < 0)
         win_rate = round((winning / total_trades) * 100, 1) if total_trades > 0 else 0.0
 
         total_gross = sum(getattr(p, "gross_pnl", 0.0) or p.pnl_rupees for p in closed)
@@ -87,8 +87,15 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             total_slippage_cost=round(total_slip_cost, 2),
             avg_slippage_points=round(avg_slip_pts, 2),
             total_charges=round(total_charges, 2),
-            total_net_pnl=round(total_net, 2)
+            total_net_pnl=round(total_net, 2),
+            closed_trades_count=len(all_closed),
         )
+
+    def get_portfolio_summary(self, mode: Optional[str] = None) -> PaperPortfolio:
+        """Totals and open positions without the closed-trade list. Used for the state that is
+        broadcast every scan, whose size must not grow with the journal."""
+        full = self.get_portfolio(mode)
+        return full.model_copy(update={"closed_trades": [], "closed_trades_count": len(full.closed_trades)})
 
     def get_daily_pnl(self, mode: Optional[str] = None) -> list[DailyPnl]:
         """P1-7: realized P&L per IST exit date (newest first). Quarantined rows are
@@ -185,7 +192,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             return None
 
         # P0-2: exposure guards (one position per contract, per stock+side, plus cooldown)
-        block = self._exposure_block_reason(signal, lots)
+        block = self._exposure_block_reason(signal, lots, feed_mode)
         if block:
             logger.info("Entry blocked for %s %s: %s", signal.symbol, signal.option_type, block)
             self._processed_signal_ids.add(signal.id)

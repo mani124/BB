@@ -6,7 +6,7 @@ import { IndexHeroRadar } from './components/IndexHeroRadar';
 import { SetupFilterTabs } from './components/SetupFilterTabs';
 import { SignalTable } from './components/SignalTable';
 import { PaperPortfolioView, PortfolioStrip, OpenPositionsPanel, liveTrades } from './components/PaperPortfolioView';
-import { ScannerState, Signal } from './types';
+import { PaperPortfolio, PaperPosition, ScannerState, Signal } from './types';
 import { AlertCircle, X, KeyRound, Lock, CheckCircle2 } from 'lucide-react';
 import { apiFetch, bootstrapDashboardSession, getDashboardCapability, setDashboardCapability } from './api/client';
 
@@ -37,6 +37,28 @@ const DashboardContent: React.FC = () => {
   const [capabilityError, setCapabilityError] = useState<string | null>(null);
   const [capabilitySuccess, setCapabilitySuccess] = useState(false);
   const [sessionNonce, setSessionNonce] = useState(0);
+  // The live stream carries totals and open positions only; the closed-trade journal is
+  // fetched separately whenever the server's closed-trade count changes.
+  const [closedTrades, setClosedTrades] = useState<PaperPosition[]>([]);
+
+  const applyPortfolio = (portData: PaperPortfolio) => {
+    setState((prev) => ({ ...prev, paper_portfolio: portData }));
+    setClosedTrades(portData.closed_trades ?? []);
+  };
+
+  const closedCount = state.paper_portfolio?.closed_trades_count;
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/api/paper/portfolio')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: PaperPortfolio | null) => {
+        if (!cancelled && data) setClosedTrades(data.closed_trades ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [closedCount, state.active_mode, sessionNonce]);
 
   useEffect(() => {
     if (actionError) {
@@ -222,7 +244,7 @@ const DashboardContent: React.FC = () => {
         const portRes = await apiFetch('/api/paper/portfolio');
         if (portRes.ok) {
           const portData = await portRes.json();
-          setState((prev) => ({ ...prev, paper_portfolio: portData }));
+          applyPortfolio(portData);
         }
       } else {
         const errData = await res.json().catch(() => null);
@@ -248,7 +270,7 @@ const DashboardContent: React.FC = () => {
         const portRes = await apiFetch('/api/paper/portfolio');
         if (portRes.ok) {
           const portData = await portRes.json();
-          setState((prev) => ({ ...prev, paper_portfolio: portData }));
+          applyPortfolio(portData);
         }
       } else {
         const errData = await res.json().catch(() => null);
@@ -275,7 +297,7 @@ const DashboardContent: React.FC = () => {
       }
       if (res.ok) {
         const portData = await res.json();
-        setState((prev) => ({ ...prev, paper_portfolio: portData }));
+        applyPortfolio(portData);
       }
     } catch (e) {
       console.error('Toggle auto trade failed', e);
@@ -296,7 +318,7 @@ const DashboardContent: React.FC = () => {
       }
       if (res.ok) {
         const portData = await res.json();
-        setState((prev) => ({ ...prev, paper_portfolio: portData }));
+        applyPortfolio(portData);
       }
     } catch (e) {
       console.error('Change lots failed', e);
@@ -319,7 +341,7 @@ const DashboardContent: React.FC = () => {
       const portRes = await apiFetch('/api/paper/portfolio');
       if (portRes.ok) {
         const portData = await portRes.json();
-        setState((prev) => ({ ...prev, paper_portfolio: portData }));
+        applyPortfolio(portData);
       }
     } catch (e) {
       console.error('Reset portfolio failed', e);
@@ -468,7 +490,7 @@ const DashboardContent: React.FC = () => {
           </>
         ) : (
           <PaperPortfolioView
-            portfolio={state.paper_portfolio && { ...state.paper_portfolio, closed_trades: liveTrades(state.paper_portfolio.closed_trades) }}
+            portfolio={state.paper_portfolio && { ...state.paper_portfolio, closed_trades: liveTrades(closedTrades) }}
             onClosePosition={handleClosePosition}
             onToggleAutoTrade={handleToggleAutoTrade}
             onChangeLots={handleChangeLots}
