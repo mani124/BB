@@ -73,6 +73,8 @@ class Notifier:
                 return False
             if self._pending >= MAX_QUEUED:
                 return False
+            if len(self._last_sent) > 500:  # per-trade keys would otherwise accumulate forever
+                self._last_sent = {k: t for k, t in self._last_sent.items() if now - t < 86400}
             self._last_sent[key] = now
             self._pending += 1
         try:
