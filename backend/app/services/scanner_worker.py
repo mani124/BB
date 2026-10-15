@@ -23,7 +23,7 @@ from app.services.dhan_packet_codec import segment_to_int
 from app.services.indicators import calculate_indicators
 from app.services.strategy_engine import evaluate_signals, Signal, SetupType
 from app.services.relative_strength import evaluate_relative_strength, NIFTY_SYMBOL
-from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size
+from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size, option_exchange_segment
 from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
 from app.services.momentum_ranker import MomentumRanker, MomentumRankings
@@ -92,7 +92,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         if pos.feed_mode == "live" and pos.option_security_id:
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(self.subscribe_option_instrument(pos.option_security_id))
+                loop.create_task(self.subscribe_option_instrument(pos.option_security_id, pos.symbol))
             except RuntimeError:
                 pass
 
@@ -358,7 +358,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 for p in active_pos:
                     if p.option_security_id:
                         try:
-                            req_securities.setdefault("NSE_FNO", []).append(int(p.option_security_id))
+                            req_securities.setdefault(option_exchange_segment(p.symbol), []).append(int(p.option_security_id))
                         except ValueError:
                             pass
 
@@ -425,7 +425,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         option_bid_map: dict[str, float] = {}
         if live_quotes:
             quotes_dict = live_quotes.get("data", live_quotes) if isinstance(live_quotes.get("data"), dict) else live_quotes
-            fno_quotes = quotes_dict.get("NSE_FNO", {})
+            fno_quotes = {**quotes_dict.get("NSE_FNO", {}), **quotes_dict.get("BSE_FNO", {})}
             for sec_k, q in fno_quotes.items():
                 if isinstance(q, dict):
                     if "last_price" in q:
@@ -873,7 +873,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                         client_id=cid,
                         access_token=tok,
                         security_id=sec_id_str,
-                        exchange_segment="NSE_FNO",
+                        exchange_segment=option_exchange_segment(inst.symbol),
                         instrument_type=inst_type_dhan,
                         interval=5
                     )

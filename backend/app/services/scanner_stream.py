@@ -18,7 +18,7 @@ from app.services.dhan_websocket import DhanWebSocketManager
 from app.services.dhan_packet_codec import segment_to_int
 from app.services.indicators import calculate_indicators
 from app.services.strategy_engine import evaluate_signals, Signal, SetupType
-from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size
+from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size, option_exchange_segment
 from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
 from app.services.momentum_ranker import MomentumRanker, MomentumRankings
@@ -85,12 +85,12 @@ class ScannerStreamMixin:
                 )
         return None
 
-    async def subscribe_option_instrument(self, option_security_id: str | int) -> None:
+    async def subscribe_option_instrument(self, option_security_id: str | int, symbol: str = "") -> None:
         """Dynamically subscribe a single option instrument to live WebSocket feed."""
         try:
             sec_id_int = int(option_security_id)
             if self.ws_manager:
-                await self.ws_manager.subscribe([(2, sec_id_int)])
+                await self.ws_manager.subscribe([(segment_to_int(option_exchange_segment(symbol)), sec_id_int)])
         except (ValueError, TypeError) as exc:
             logger.warning("Invalid option security ID %s: %s", option_security_id, exc)
 
@@ -122,7 +122,7 @@ class ScannerStreamMixin:
         for p in active_pos:
             if p.option_security_id:
                 try:
-                    opt_instruments.append((2, int(p.option_security_id)))
+                    opt_instruments.append((segment_to_int(option_exchange_segment(p.symbol)), int(p.option_security_id)))
                 except (ValueError, TypeError):
                     pass
         if opt_instruments:
@@ -200,7 +200,7 @@ class ScannerStreamMixin:
         matching_opt_positions = [
             p for p in active_live if p.option_security_id == sec_id_str
         ]
-        is_option = bool(matching_opt_positions) or (seg == 2) or (seg == "NSE_FNO")
+        is_option = bool(matching_opt_positions) or seg in (2, 8, "NSE_FNO", "BSE_FNO")
 
         if is_option:
             # Extract real bid price from tick for live exit slippage measurement
