@@ -4,8 +4,9 @@ Separate from ``positions`` on purpose: the table is created additively (IF NOT 
 paper-trading engine and its migrations are untouched and a reset never loses what was written.
 """
 import sqlite3
-from datetime import datetime, timezone
 from typing import Optional
+
+from app.services import market_hours
 
 MAX_NOTE_LEN = 1000
 MAX_TAG_LEN = 40
@@ -47,7 +48,7 @@ class JournalStore:
                     "INSERT INTO trade_journal (position_id, note, tag, updated_at) VALUES (?, ?, ?, ?) "
                     "ON CONFLICT(position_id) DO UPDATE SET note = excluded.note, tag = excluded.tag, "
                     "updated_at = excluded.updated_at;",
-                    (position_id, note, tag, datetime.now(timezone.utc).isoformat()),
+                    (position_id, note, tag, market_hours.now_ist().isoformat()),
                 )
             conn.commit()
         return {"position_id": position_id, "note": note, "tag": tag}
