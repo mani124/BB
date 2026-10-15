@@ -18,7 +18,9 @@ from app.api.journal import router as journal_router
 setup_security_logging()
 
 from app.services.paper_trader import paper_trader
-from app.services.notifier import notify
+from app.services.notifier import notify, risk_event_alert
+
+paper_trader.on_risk_event = risk_event_alert  # loss cap / kill switch -> phone alert
 
 universe_mgr = UniverseManager()
 worker = ScannerWorker(universe_mgr=universe_mgr)

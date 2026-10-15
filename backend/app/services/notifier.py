@@ -127,3 +127,21 @@ def report_feed_mode(mode: str) -> None:
         notify("feed_up", "Dhan feed recovered: back to live.", min_interval=600)
     elif mode != "live" and old == "live":
         notify("feed_down", f"Dhan feed lost: dashboard is now in {mode} mode.", min_interval=600)
+
+
+def risk_event_alert(kind: str, details: dict) -> None:
+    """Handler for ``paper_trader.on_risk_event``: phone alerts for the loss cap and kill switch."""
+    if kind == "loss_cap_tripped":
+        book = details.get("book", "?")
+        notify(
+            "loss_cap_hit",
+            f"Daily loss cap hit ({book} book): day P&L {details.get('day_pnl', 0):+,.0f} reached "
+            f"-{details.get('limit', 0):,.0f}. New entries are paused until the next IST day.",
+            dedupe_key=f"loss_cap:{book}:{details.get('date', '')}",
+            min_interval=3600,
+        )
+    elif kind == "kill_switch_engaged":
+        notify("kill_switch_on", "Kill switch ENGAGED: open positions squared off, new entries paused.",
+               min_interval=60)
+    elif kind == "kill_switch_released":
+        notify("kill_switch_off", "Kill switch released: new entries may resume.", min_interval=60)
