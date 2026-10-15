@@ -10,11 +10,14 @@ from app.services.paper_trader import paper_trader, PaperPosition
 
 router = APIRouter(prefix="/paper", tags=["paper"])
 
+OPTION_BAR_MINUTES = 5  # option bars are built on 5m IST slots (scanner_candles._get_or_update_option_candles)
+
 _BAND_COLS = ["bb_upper", "bb_middle", "bb_lower", "bb_upper_25", "bb_lower_25", "ema_9", "vwap"]
 
 
 def _find_position(position_id: str) -> Optional[PaperPosition]:
-    pf = paper_trader.get_portfolio(mode=None)
+    # Read the portfolio directly: get_portfolio() recalculates every metric over all closed trades.
+    pf = paper_trader._portfolio
     for p in list(pf.active_positions) + list(pf.closed_trades):
         if p.id == position_id:
             return p
@@ -51,10 +54,16 @@ def _num(v) -> Optional[float]:
     return None if math.isnan(f) or math.isinf(f) else round(f, 2)
 
 
-def _series_payload(df: pd.DataFrame) -> dict:
+def _series_payload(df: pd.DataFrame, day: Optional[str] = None) -> dict:
+    """Indicators are computed on the full held history (as the scanner does), then cut to `day`
+    for display, so the bands match the ones the setup was evaluated on. VWAP already resets per session."""
     if df.empty:
         return {"candles": [], "indicators": {}, "opening_range": None}
     ind = calculate_indicators(df)
+    if day:
+        ind = ind[ind["timestamp"].dt.strftime("%Y-%m-%d") == day].reset_index(drop=True)
+        if ind.empty:
+            return {"candles": [], "indicators": {}, "opening_range": None}
     # lightweight-charts wants UTC-based epoch seconds; encode IST wall-clock as if UTC so the axis reads IST.
     ts = pd.to_datetime(ind["timestamp"])
     if ts.dt.tz is not None:
@@ -69,9 +78,13 @@ def _series_payload(df: pd.DataFrame) -> dict:
         if col in ind.columns:
             pts = [{"time": t, "value": _num(v)} for t, v in zip(epoch, ind[col])]
             indicators[col] = [p for p in pts if p["value"] is not None]
+    # Opening range of the shown session (calculate_indicators only knows the latest held session's).
     orng = None
-    if "or_high" in ind.columns and "or_low" in ind.columns and len(ind):
-        hi, lo = _num(ind["or_high"].iloc[-1]), _num(ind["or_low"].iloc[-1])
+    session = ind[ind["timestamp"].dt.date == ind["timestamp"].dt.date.iloc[-1]]
+    hhmm = session["timestamp"].dt.strftime("%H:%M")
+    or_bars = session[(hhmm >= "09:15") & (hhmm < "09:30")]
+    if not or_bars.empty:
+        hi, lo = _num(or_bars["high"].max()), _num(or_bars["low"].min())
         if hi is not None and lo is not None:
             orng = {"high": hi, "low": lo}
     return {"candles": candles, "indicators": indicators, "opening_range": orng}
@@ -114,11 +127,8 @@ def get_position_chart(position_id: str):
         worker._candle_history.get(pos.symbol, []),
         [und_forming] if und_forming else None,
     )
-    # Only the entry's trading day, so the session VWAP and bands are not diluted by older sessions.
-    day = (pos.entry_datetime or "")[:10]
-    if day:
-        opt_df = opt_df[opt_df["timestamp"].dt.strftime("%Y-%m-%d") == day] if not opt_df.empty else opt_df
-        und_df = und_df[und_df["timestamp"].dt.strftime("%Y-%m-%d") == day] if not und_df.empty else und_df
+    # Show only the entry's trading day (indicators still warm up on the earlier bars).
+    day = (pos.entry_datetime or "")[:10] or None
 
     return {
         "id": pos.id,
@@ -131,15 +141,15 @@ def get_position_chart(position_id: str):
         "entry_time": _epoch_ist(pos.entry_datetime),
         "exit_time": _epoch_ist(pos.exit_datetime),
         "option": {
-            **_series_payload(opt_df),
-            "interval": "5m",
+            **_series_payload(opt_df, day),
+            "interval": f"{OPTION_BAR_MINUTES}m",
             "levels": {
                 "entry": pos.option_entry, "stop": pos.option_sl,
                 "target_1": pos.option_target_1, "target_2": pos.option_target_2,
             },
         },
         "underlying": {
-            **_series_payload(und_df),
+            **_series_payload(und_df, day),
             "interval": pos.timeframe,
             "levels": {
                 "entry": pos.underlying_entry, "stop": pos.underlying_sl,

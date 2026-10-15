@@ -175,8 +175,8 @@ export const OpenPositionsPanel: React.FC<{
   positions: PaperPosition[];
   onClosePosition: (id: string) => void;
 }> = ({ positions, onClosePosition }) => {
-  const [chartPositionId, setChartPositionId] = useState<string | null>(null);
-  const chartPosition = positions.find((p) => p.id === chartPositionId) ?? null;
+  // Keep the position itself, so the popup stays open (and shows the exit) if the trade closes meanwhile.
+  const [chartPosition, setChartPosition] = useState<PaperPosition | null>(null);
   return (
   <section className="desk-panel" aria-labelledby="open-positions-title">
     <div className="desk-ph">
@@ -198,7 +198,7 @@ export const OpenPositionsPanel: React.FC<{
             key={pos.id}
             className="px-3.5 py-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 cursor-pointer"
             style={{ borderBottom: '1px solid var(--line)' }}
-            onClick={() => setChartPositionId(pos.id)}
+            onClick={() => setChartPosition(pos)}
             title="Click to open chart"
           >
             <div>
@@ -230,7 +230,7 @@ export const OpenPositionsPanel: React.FC<{
               </div>
             )}
             <div className="col-span-2 text-right mt-1">
-              <button type="button" className="desk-btn accent mr-2" onClick={(e) => { e.stopPropagation(); setChartPositionId(pos.id); }}>
+              <button type="button" className="desk-btn accent mr-2" onClick={(e) => { e.stopPropagation(); setChartPosition(pos); }}>
                 Chart
               </button>
               <button type="button" className="desk-btn danger" onClick={(e) => { e.stopPropagation(); onClosePosition(pos.id); }}>
@@ -241,7 +241,7 @@ export const OpenPositionsPanel: React.FC<{
         );
       })
     )}
-    {chartPosition && <PositionChartModal position={chartPosition} onClose={() => setChartPositionId(null)} />}
+    {chartPosition && <PositionChartModal position={chartPosition} onClose={() => setChartPosition(null)} />}
   </section>
   );
 };

@@ -58,3 +58,21 @@ def test_chart_empty_when_no_candles_and_404_for_unknown():
     finally:
         paper_trader._portfolio.active_positions.remove(pos)
     assert client.get("/api/paper/positions/nope/chart").status_code == 404
+
+
+def test_bands_warm_up_on_prior_session_but_only_entry_day_is_shown():
+    prev_day = [dict(b, timestamp=b["timestamp"] - timedelta(days=1)) for b in _bars(30, base=24900)]
+    pos = _pos(id="chart-pos-3", option_security_id=None)
+    paper_trader._portfolio.closed_trades.append(pos)
+    worker._candle_history["NIFTY 50"] = prev_day + _bars(10, base=25000)
+    try:
+        body = client.get("/api/paper/positions/chart-pos-3/chart").json()
+        und = body["underlying"]
+        assert len(und["candles"]) == 10  # entry day only
+        first_bar = und["candles"][0]["time"]
+        # the 09:15 bar already has a 20-period band because history before it was used
+        assert und["indicators"]["bb_upper"][0]["time"] == first_bar
+        assert und["opening_range"] == {"high": 25004.0, "low": 24998.0}  # 09:15-09:25 bars of the entry day
+    finally:
+        paper_trader._portfolio.closed_trades.remove(pos)
+        worker._candle_history.pop("NIFTY 50", None)
