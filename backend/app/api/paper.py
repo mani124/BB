@@ -8,7 +8,7 @@ router = APIRouter(prefix="/paper", tags=["paper"])
 
 class ManualTradeRequest(BaseModel):
     signal: Signal
-    lots: Optional[int] = Field(default=1, ge=1)
+    lots: Optional[int] = Field(default=None, ge=1)  # None -> portfolio default (2 lots)
     feed_mode: Optional[str] = None
 
 class SettingsRequest(BaseModel):

@@ -363,3 +363,37 @@ def test_portfolio_separates_demo_and_live_trades():
 
 
 
+
+
+def _t1_engine(lots):
+    engine = PaperTradingEngine()
+    sig = create_mock_signal(symbol="NIFTY 50", opt="CE", entry=22500.0, sl=22450.0)
+    rec = sig.strike_recommendation
+    rec.option_security_id = "44608"
+    rec.estimated_option_entry = 160.0
+    rec.option_sl_price = 135.0
+    rec.option_target_1_price = 195.0
+    rec.option_target_2_price = 230.0
+    engine.open_position_from_signal(sig, lots=lots)
+    engine.update_market_prices(price_map={"NIFTY 50": 22560.0}, option_price_map={"44608": 196.0})
+    return engine.get_portfolio().active_positions[0]
+
+
+def test_two_lots_book_one_lot_at_target_1():
+    p = _t1_engine(2)
+    assert p.status == "TARGET_1"
+    assert (p.booked_lots, p.lots) == (1, 1)
+
+
+def test_single_lot_skips_partial_and_moves_stop_to_breakeven():
+    p = _t1_engine(1)
+    assert p.status == "TARGET_1"
+    assert (p.booked_lots, p.lots) == (0, 1)
+    assert p.booked_pnl_rupees == 0
+    assert p.option_sl == p.option_entry
+
+
+def test_default_lots_floor_is_two():
+    engine = PaperTradingEngine()
+    engine.set_default_lots(1)
+    assert engine.get_portfolio().default_lots == 2

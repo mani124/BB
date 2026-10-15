@@ -128,7 +128,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         self._enqueue_write("save_setting", ("auto_trade_enabled", str(enabled)))
 
     def set_default_lots(self, lots: int):
-        self._portfolio.default_lots = max(1, lots)
+        self._portfolio.default_lots = max(2, lots)  # 2 lots minimum so Target 1 can book 50%
         self._enqueue_write("save_setting", ("default_lots", str(self._portfolio.default_lots)))
 
     def set_max_risk_per_trade(self, amount: float):
@@ -279,6 +279,9 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                 self._processed_signal_ids.add(signal.id)
                 return None
             lots_to_trade = min(target_lots, allowed_lots)
+            if lots_to_trade < target_lots:
+                logger.warning("Risk cap reduced %s from %d to %d lot(s)%s", signal.symbol, target_lots, lots_to_trade,
+                               "; Target 1 will not book a partial" if lots_to_trade < 2 else "")
 
         self._processed_signal_ids.add(signal.id)
         qty = lot_size * lots_to_trade

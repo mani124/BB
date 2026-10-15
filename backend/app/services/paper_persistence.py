@@ -168,7 +168,7 @@ class PaperPersistenceMixin:
         saved_lots = self.storage.load_setting("default_lots")
         if saved_lots is not None:
             try:
-                self._portfolio.default_lots = int(saved_lots)
+                self._portfolio.default_lots = max(2, int(saved_lots))
             except ValueError:
                 pass
 
