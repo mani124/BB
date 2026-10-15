@@ -57,6 +57,22 @@ Your Dhan Client ID and 24-hour Access Token are **never stored anywhere permane
 - **Process-Wide Security Log Redaction**: Dedicated `RedactingFilter` and custom `LogRecordFactory` hook mask all JWT tokens (`eyJ...`) and raw credentials from server logs and console outputs.
 - **One-Click Disconnect**: Instantly clears `sessionStorage` and returns the application to Simulated Demo Mode.
 
+### Dashboard key (required)
+
+Every API call except `/api/health` needs the private dashboard key. There is no built-in key.
+- Set `DASHBOARD_CAPABILITY` in the service environment, **or** leave it unset: on first start the server
+  generates a random key and stores it in `backend/data/dashboard_key` (mode 600). Read it with
+  `cat backend/data/dashboard_key` and paste it into the sign-in dialog the dashboard shows.
+- The old public default (`bb-options-local-capability`) is never accepted.
+- The browser gets a random per-session cookie; the key itself is never put in a cookie or returned by the API.
+- Set `COOKIE_SECURE=1` when the dashboard is served over HTTPS.
+
+### Journal safety
+- **Reset never deletes trades.** It writes a backup to `backend/data/backups/` and archives the rows (hidden, not removed).
+- **Tests never touch the real journal.** `backend/tests/conftest.py` points `BB_DATA_DIR`/`BB_DB_PATH` at a temp directory.
+- **Holiday calendar fails closed.** A year missing from `NSE_HOLIDAY_YEARS` in `app/services/market_hours.py`
+  is treated as closed (no live trading); add each new year from the NSE circular.
+
 ---
 
 ## 🚀 The 4 Core Strategy Setups (CE & PE)

@@ -4,7 +4,33 @@ from typing import Optional
 from fastapi import Request, HTTPException, status
 
 import hmac
+import secrets
+import time
 from app.core.config import settings
+
+SESSION_TTL_SECONDS = 86400
+# Browser sessions: random per-login tokens (the master key itself is never put in a cookie).
+_sessions: dict[str, float] = {}
+
+
+def issue_session_token() -> str:
+    now = time.time()
+    for tok, exp in list(_sessions.items()):
+        if exp <= now:
+            _sessions.pop(tok, None)
+    token = secrets.token_urlsafe(32)
+    _sessions[token] = now + SESSION_TTL_SECONDS
+    return token
+
+
+def is_valid_session_token(token: str) -> bool:
+    exp = _sessions.get(token)
+    if exp is None:
+        return False
+    if exp <= time.time():
+        _sessions.pop(token, None)
+        return False
+    return True
 
 JWT_PATTERN = re.compile(r"eyJ[a-zA-Z0-9_\-\.]{15,}")
 
@@ -14,7 +40,7 @@ def is_valid_dashboard_capability(request: Request) -> bool:
     Checked sources:
       1. 'X-Dashboard-Capability' or 'x-dashboard-capability' header
       2. 'Authorization: Bearer <token>' header
-      3. 'dashboard_session' cookie
+      3. 'dashboard_session' cookie holding a session token issued by POST /api/auth/session
     """
     expected = settings.DASHBOARD_CAPABILITY.strip()
     if not expected:
@@ -31,7 +57,7 @@ def is_valid_dashboard_capability(request: Request) -> bool:
             return True
 
     cookie_token = (request.cookies.get("dashboard_session") or "").strip()
-    if cookie_token and hmac.compare_digest(cookie_token, expected):
+    if cookie_token and is_valid_session_token(cookie_token):
         return True
 
     return False
