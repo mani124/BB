@@ -163,11 +163,23 @@ export interface PaperPosition {
 
 export type SetupMode = 'off' | 'index' | 'stocks' | 'all';
 
+export interface RiskStatus {
+  daily_loss_limit: number; // 0 = cap disabled
+  day_pnl: number;
+  loss_cap_tripped: boolean;
+  loss_cap_reason?: string | null;
+  kill_switch_active: boolean;
+  kill_switch_since?: string | null;
+  entries_blocked: boolean;
+  block_reason?: string | null;
+}
+
 export interface PaperPortfolio {
   active_positions: PaperPosition[];
   // Empty in the live stream; filled by GET /api/paper/portfolio.
   closed_trades: PaperPosition[];
   closed_trades_count?: number;
+  risk?: RiskStatus | null;
   auto_trade_enabled: boolean;
   // Setup number ('1'..'9') -> off | index | stocks | all
   setup_modes?: Record<string, SetupMode>;

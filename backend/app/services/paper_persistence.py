@@ -190,6 +190,7 @@ class PaperPersistenceMixin:
                 raw_modes = None
         self._portfolio.setup_modes = setup_switches.normalize_modes(raw_modes)
 
+        self._load_risk()
         self.flag_stale_carryover()
         self._recalculate_metrics()
 

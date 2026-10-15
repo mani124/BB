@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { ShieldCheck, Key, RefreshCw, LogOut, Sun, Moon, KeyRound } from 'lucide-react';
 import { useDhanAuth } from '../context/DhanAuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { RiskControls } from './RiskControls';
+import type { RiskStatus } from '../types';
 
 export interface HeaderProps {
   activeMode: 'live' | 'demo' | 'stale' | 'error' | string;
@@ -17,6 +19,8 @@ export interface HeaderProps {
   onTabChange?: (tab: 'scanner' | 'paper') => void;
   openPositionsCount?: number;
   onOpenAccessKey?: () => void;
+  risk?: RiskStatus | null;
+  onKillSwitch?: (engage: boolean) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -33,6 +37,8 @@ export const Header: React.FC<HeaderProps> = ({
   onTabChange,
   openPositionsCount = 0,
   onOpenAccessKey,
+  risk,
+  onKillSwitch,
 }) => {
   const {
     isLoggedIn,
@@ -121,6 +127,7 @@ export const Header: React.FC<HeaderProps> = ({
         )}
 
         <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2 text-[12.5px] desk-muted">
+          <RiskControls risk={risk ?? undefined} onKillSwitch={onKillSwitch} />
           {/* Feed status */}
           {isWsLive ? (
             <span className="desk-pill up"><span className="desk-dot" />WS LIVE (sub-second)</span>

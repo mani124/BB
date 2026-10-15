@@ -21,6 +21,7 @@ class SettingsRequest(BaseModel):
     default_lots: Optional[int] = None
     max_risk_per_trade: Optional[float] = None
     setup_modes: Optional[dict[str, str]] = None
+    daily_loss_limit: Optional[float] = Field(default=None, ge=0)  # INR; 0 disables the cap
 
 def _resolve_view(mode: Optional[str]) -> Optional[str]:
     """Which book to show: "live" or "demo" follow the request; "all" is the raw
@@ -189,6 +190,8 @@ async def update_settings(body: SettingsRequest):
         paper_trader.set_default_lots(body.default_lots)
     if body.max_risk_per_trade is not None:
         paper_trader.set_max_risk_per_trade(body.max_risk_per_trade)
+    if body.daily_loss_limit is not None:
+        paper_trader.set_daily_loss_limit(body.daily_loss_limit)
     if body.setup_modes is not None:
         bad = [f"{k}={v}" for k, v in body.setup_modes.items()
                if k not in setup_switches.DEFAULT_MODES or v not in setup_switches.MODES]
@@ -201,3 +204,33 @@ async def update_settings(body: SettingsRequest):
 async def reset_portfolio():
     await paper_trader.reset()
     return {"status": "portfolio_reset"}
+
+
+class KillSwitchRequest(BaseModel):
+    confirm: bool = False
+
+
+@router.post("/kill-switch")
+async def engage_kill_switch(body: KillSwitchRequest):
+    """Pause all new entries and square off every open position (both books). Needs confirm=true."""
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="Kill switch needs confirm=true.")
+    # Engage first so no new entry can slip in while positions are being closed.
+    paper_trader.set_kill_switch(True)
+    closed, failed = 0, []
+    for pos in list(paper_trader.get_portfolio().active_positions):
+        try:
+            _close_position_with_freshness(pos.id, "KILL_SWITCH")
+            closed += 1
+        except HTTPException:
+            failed.append(pos.id)
+    return {"status": "engaged", "closed": closed, "failed": failed, "risk": paper_trader.risk_status(None)}
+
+
+@router.post("/kill-switch/release")
+async def release_kill_switch(body: KillSwitchRequest):
+    """Allow new entries again. Needs confirm=true."""
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="Releasing the kill switch needs confirm=true.")
+    paper_trader.set_kill_switch(False)
+    return {"status": "released", "risk": paper_trader.risk_status(None)}

@@ -15,6 +15,7 @@ from app.services.paper_models import _now_stamp, _parse_iso, _signed_slip, _vie
 from app.services.paper_persistence import PaperPersistenceMixin
 from app.services.paper_guards import PaperGuardsMixin
 from app.services.paper_exits import PaperExitsMixin
+from app.services.paper_risk import PaperRiskMixin
 from app.services import setup_switches
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ def _outcome_pnl(p) -> float:
     return p.pnl_rupees
 
 
-class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixin):
+class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixin, PaperRiskMixin):
     """Manages paper trading execution, position monitoring, and analytics."""
 
     def __init__(self, db_path: Optional[str] = None):
@@ -39,6 +40,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._portfolio_generation: int = 0
         self._pending_errors: list[Exception] = []
+        self._init_risk()
         if db_path is not None:
             from app.services.paper_storage import PaperStorage
             self.storage = PaperStorage(db_path)
@@ -52,6 +54,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         self._recalculate_metrics()
         mode = _view_mode(mode)
         if not mode:
+            self._portfolio.risk = self.risk_status(None).model_dump()
             return self._portfolio
 
         active = [p for p in self._portfolio.active_positions if getattr(p, "feed_mode", "demo") == mode]
@@ -99,6 +102,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             total_charges=round(total_charges, 2),
             total_net_pnl=round(total_net, 2),
             closed_trades_count=len(all_closed),
+            risk=self.risk_status(mode).model_dump(),
         )
 
     def get_portfolio_summary(self, mode: Optional[str] = None) -> PaperPortfolio:
@@ -163,6 +167,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         saved_modes = self._portfolio.setup_modes
         self._portfolio = PaperPortfolio(setup_modes=saved_modes)
         self._processed_signal_ids.clear()
+        self._loss_cap_trips = {}  # a reset empties the day's P&L, so a stored trip no longer applies
         if self._write_queue is not None:
             try:
                 loop = asyncio.get_running_loop()
@@ -207,6 +212,13 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         # (demo mode runs on synthetic offline data and is not tied to exchange hours)
         if feed_mode == "live" and not market_hours.is_entry_allowed():
             logger.info("Entry skipped for %s: outside entry window (session closed or past cutoff)", signal.symbol)
+            return None
+
+        # Kill switch and daily loss cap stop every new entry, auto or manual.
+        risk_block = self.risk_block_reason(feed_mode)
+        if risk_block:
+            logger.info("Entry blocked for %s %s: %s", signal.symbol, signal.option_type, risk_block)
+            self._processed_signal_ids.add(signal.id)
             return None
 
         # P0-2: exposure guards (one position per contract, per stock+side, plus cooldown)
