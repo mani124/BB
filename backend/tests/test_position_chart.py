@@ -76,3 +76,41 @@ def test_bands_warm_up_on_prior_session_but_only_entry_day_is_shown():
     finally:
         paper_trader._portfolio.closed_trades.remove(pos)
         worker._candle_history.pop("NIFTY 50", None)
+
+
+def test_candles_are_saved_and_chart_survives_restart_and_close(tmp_path):
+    from app.services.paper_storage import PaperStorage
+    storage = PaperStorage(str(tmp_path / "t.db"))
+    old = paper_trader.storage
+    paper_trader.storage = storage
+    pos = _pos(id="chart-pos-4")
+    paper_trader._portfolio.active_positions.append(pos)
+    worker._option_candle_history["99001"] = _bars()
+    worker._candle_history["NIFTY 50"] = _bars(base=25000)
+    worker._trade_candle_saved_at.clear()
+    try:
+        worker.persist_trade_candles()
+        assert len(storage.load_trade_candles("chart-pos-4", "option")) == 30
+        # trade closes, scanner memory is gone (restart / new day)
+        paper_trader._portfolio.active_positions.remove(pos)
+        pos.status = "CLOSED"
+        paper_trader._portfolio.closed_trades.append(pos)
+        worker._option_candle_history.pop("99001")
+        worker._candle_history.pop("NIFTY 50")
+        body = client.get("/api/paper/positions/chart-pos-4/chart").json()
+        assert len(body["option"]["candles"]) == 30
+        assert len(body["underlying"]["candles"]) == 30
+        assert "bb_upper" in body["option"]["indicators"]
+    finally:
+        paper_trader._portfolio.closed_trades.remove(pos)
+        paper_trader.storage = old
+        worker._trade_candle_saved_at.clear()
+
+
+def test_trade_candles_cap_and_prune(tmp_path):
+    from app.services.paper_storage import PaperStorage
+    s = PaperStorage(str(tmp_path / "t.db"))
+    s.save_trade_candles("orphan", "option", _bars(400))
+    assert len(s.load_trade_candles("orphan", "option")) == s.TRADE_CANDLE_CAP
+    assert s.prune_trade_candles() == 1  # no matching trade
+    assert s.load_trade_candles("orphan", "option") == []

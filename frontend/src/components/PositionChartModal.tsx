@@ -234,7 +234,7 @@ export const PositionChartModal: React.FC<{ position: PaperPosition; onClose: ()
                   ? 'Loading chart…'
                   : isOpen
                     ? 'No candles held for this chart yet. The scanner builds them from live ticks, so they appear after a few minutes of market data.'
-                    : 'Candles for this trade are no longer held. The scanner keeps them in memory only, so older trades and trades from before a restart have no chart.'}
+                    : 'No candles were saved for this trade. Trades taken before candle saving was added cannot be charted.'}
             </div>
           )}
         </div>
