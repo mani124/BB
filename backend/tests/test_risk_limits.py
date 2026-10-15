@@ -75,6 +75,16 @@ def test_cap_resets_next_ist_day_and_survives_restart(tmp_path):
         assert e2.day_pnl() == 0.0
 
 
+def test_reset_clears_stored_trip_so_restart_does_not_resurrect_it(tmp_path):
+    e = _engine(tmp_path, limit=500)
+    _lose(e, "S1")
+    assert e.risk_block_reason("demo")
+    e.reset_sync()
+    assert e.risk_block_reason("demo") is None
+    e2 = PaperTradingEngine(db_path=str(tmp_path / "t.db"))  # restart, same day
+    assert e2.risk_block_reason("demo") is None
+
+
 def test_cap_is_per_book(tmp_path):
     e = _engine(tmp_path, limit=500)
     _lose(e, "S1")  # demo book

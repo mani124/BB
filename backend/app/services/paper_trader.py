@@ -168,6 +168,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         self._portfolio = PaperPortfolio(setup_modes=saved_modes)
         self._processed_signal_ids.clear()
         self._loss_cap_trips = {}  # a reset empties the day's P&L, so a stored trip no longer applies
+        self._enqueue_write("save_setting", ("loss_cap_trips", "{}"))  # ...and must not come back on restart
         if self._write_queue is not None:
             try:
                 loop = asyncio.get_running_loop()
@@ -188,8 +189,10 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             saved_modes = self._portfolio.setup_modes
             self._portfolio = PaperPortfolio(setup_modes=saved_modes)
             self._processed_signal_ids.clear()
+            self._loss_cap_trips = {}
             if self.storage:
                 self.storage.clear_all()
+                self.storage.save_setting("loss_cap_trips", "{}")
 
     def reset_portfolio(self) -> None:
         self.reset_sync()
