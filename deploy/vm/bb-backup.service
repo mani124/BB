@@ -1,0 +1,10 @@
+[Unit]
+Description=BB dashboard nightly trades.db backup to Google Cloud Storage
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bb-backup
+Nice=15
+IOSchedulingClass=idle

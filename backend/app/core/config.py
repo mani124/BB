@@ -35,6 +35,13 @@ class Settings(BaseModel):
     # Entry quality guards (live mode)
     MAX_QUOTE_AGE_SECONDS: float = float(os.getenv("MAX_QUOTE_AGE_SECONDS", "30"))
     MAX_ENTRY_SPREAD_PCT: float = float(os.getenv("MAX_ENTRY_SPREAD_PCT", "25"))
+    # Liquidity filter (app/services/liquidity_filter.py). OFF by default: it only logs "would_skip".
+    # Thresholds are provisional; 0 disables a check. Tune with scripts/liquidity_analysis.py.
+    LIQ_FILTER_ENABLED: bool = os.getenv("LIQ_FILTER_ENABLED", "0") == "1"
+    LIQ_MAX_SPREAD_PCT: float = float(os.getenv("LIQ_MAX_SPREAD_PCT", "10"))
+    LIQ_MIN_VOLUME: float = float(os.getenv("LIQ_MIN_VOLUME", "100"))
+    LIQ_MIN_OI: float = float(os.getenv("LIQ_MIN_OI", "1000"))
+    LIQ_MIN_PREMIUM: float = float(os.getenv("LIQ_MIN_PREMIUM", "0"))
     # Gap-exit labelling: fill this far (in %) beyond the intended exit level counts as a gap
     GAP_EXIT_PCT: float = float(os.getenv("GAP_EXIT_PCT", "5"))
     # Exposure caps (0 disables a cap)

@@ -4,6 +4,7 @@ from typing import Optional
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition, DailyPnl
 from app.services.strategy_engine import Signal
 from app.services import setup_switches
+from app.services.setup_stats import SetupDayStats, compute_setup_stats
 
 router = APIRouter(prefix="/paper", tags=["paper"])
 
@@ -45,6 +46,10 @@ async def get_portfolio(mode: Optional[str] = None) -> PaperPortfolio:
 @router.get("/daily")
 async def get_daily_pnl(mode: Optional[str] = None) -> list[DailyPnl]:
     return paper_trader.get_daily_pnl(_resolve_view(mode))
+
+@router.get("/setup-stats")
+async def get_setup_stats(mode: Optional[str] = None) -> list[SetupDayStats]:
+    return compute_setup_stats(paper_trader.get_portfolio(_resolve_view(mode)).closed_trades)
 
 @router.post("/trade")
 async def open_manual_trade(body: ManualTradeRequest) -> PaperPosition:
