@@ -5,6 +5,7 @@ import { Header } from './components/Header';
 import { IndexHeroRadar } from './components/IndexHeroRadar';
 import { SetupFilterTabs } from './components/SetupFilterTabs';
 import { SignalTable } from './components/SignalTable';
+import { JournalPanel } from './components/JournalPanel';
 import { PaperPortfolioView, PortfolioStrip, OpenPositionsPanel, liveTrades } from './components/PaperPortfolioView';
 import { PaperPortfolio, PaperPosition, ScannerState, SetupMode, Signal } from './types';
 import { AlertCircle, X, KeyRound, Lock, CheckCircle2 } from 'lucide-react';
@@ -511,6 +512,7 @@ const DashboardContent: React.FC = () => {
             </div>
           </>
         ) : (
+          <>
           <PaperPortfolioView
             portfolio={state.paper_portfolio && { ...state.paper_portfolio, closed_trades: liveTrades(closedTrades) }}
             onClosePosition={handleClosePosition}
@@ -520,6 +522,8 @@ const DashboardContent: React.FC = () => {
             onResetPortfolio={handleResetPortfolio}
             hideStrip
           />
+          <JournalPanel />
+          </>
         )}
 
         {capabilityModalOpen && (
