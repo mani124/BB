@@ -74,6 +74,12 @@ def is_lot_size_known(symbol: str) -> bool:
     return clean_symbol_key(symbol) in DEFAULT_LOT_SIZES
 
 
+BSE_OPTION_UNDERLYINGS = {"SENSEX", "BANKEX"}
+
+def option_exchange_segment(symbol: str) -> str:
+    """Dhan segment the option contracts trade on: SENSEX/BANKEX options are BSE_FNO, everything else NSE_FNO."""
+    return "BSE_FNO" if clean_symbol_key(symbol) in BSE_OPTION_UNDERLYINGS else "NSE_FNO"
+
 def get_lot_size(symbol: str) -> int:
     clean = clean_symbol_key(symbol)
     return DEFAULT_LOT_SIZES.get(clean, 100)
