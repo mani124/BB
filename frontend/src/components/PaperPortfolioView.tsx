@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PaperPortfolio, PaperPosition } from '../types';
-import { RefreshCcw, Power, Receipt, X } from 'lucide-react';
+import { RefreshCcw, Power, Receipt, X, LineChart } from 'lucide-react';
+import { PositionChartModal } from './PositionChartModal';
 import { setupCode } from './setupCode';
 
 // Show the date whenever a trade crosses midnight/sessions so an overnight exit never
@@ -177,7 +178,10 @@ export const PortfolioStrip: React.FC<{ portfolio?: PaperPortfolio }> = ({ portf
 export const OpenPositionsPanel: React.FC<{
   positions: PaperPosition[];
   onClosePosition: (id: string) => void;
-}> = ({ positions, onClosePosition }) => (
+}> = ({ positions, onClosePosition }) => {
+  // Keep the position itself, so the popup stays open (and shows the exit) if the trade closes meanwhile.
+  const [chartPosition, setChartPosition] = useState<PaperPosition | null>(null);
+  return (
   <section className="desk-panel" aria-labelledby="open-positions-title">
     <div className="desk-ph">
       <h2 id="open-positions-title">Active Open Paper Positions ({positions.length})</h2>
@@ -194,7 +198,13 @@ export const OpenPositionsPanel: React.FC<{
         const span = target - pos.option_sl;
         const frac = span > 0 ? Math.max(0, Math.min(1, (pos.current_option_price - pos.option_sl) / span)) : 0.5;
         return (
-          <div key={pos.id} className="px-3.5 py-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1" style={{ borderBottom: '1px solid var(--line)' }}>
+          <div
+            key={pos.id}
+            className="px-3.5 py-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 cursor-pointer"
+            style={{ borderBottom: '1px solid var(--line)' }}
+            onClick={() => setChartPosition(pos)}
+            title="Click to open chart"
+          >
             <div>
               <span className="desk-sym">{pos.strike_symbol}</span>{' '}
               <span className={`desk-side ${pos.option_type === 'CE' ? 'ce' : 'pe'}`}>BUY {pos.option_type}</span>
@@ -224,7 +234,10 @@ export const OpenPositionsPanel: React.FC<{
               </div>
             )}
             <div className="col-span-2 text-right mt-1">
-              <button type="button" className="desk-btn danger" onClick={() => onClosePosition(pos.id)}>
+              <button type="button" className="desk-btn accent mr-2" onClick={(e) => { e.stopPropagation(); setChartPosition(pos); }}>
+                Chart
+              </button>
+              <button type="button" className="desk-btn danger" onClick={(e) => { e.stopPropagation(); onClosePosition(pos.id); }}>
                 Close
               </button>
             </div>
@@ -232,8 +245,10 @@ export const OpenPositionsPanel: React.FC<{
         );
       })
     )}
+    {chartPosition && <PositionChartModal position={chartPosition} onClose={() => setChartPosition(null)} />}
   </section>
-);
+  );
+};
 
 /* ---------- Journal helpers ---------- */
 const tradeDay = (t: PaperPosition): string =>
@@ -258,6 +273,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
   const [selectedSetupFilter, setSelectedSetupFilter] = useState<string>('ALL');
   const [selectedTradeForReceipt, setSelectedTradeForReceipt] = useState<PaperPosition | null>(null);
   const [showAllDays, setShowAllDays] = useState(false);
+  const [chartTrade, setChartTrade] = useState<PaperPosition | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -446,7 +462,16 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                               <td className={`r desk-num ${pnlClass(grossVal)}`}>{formatCurrency(grossVal, true)}</td>
                               <td className={`r desk-num font-semibold ${pnlClass(netVal)}`}>{formatCurrency(netVal, true)}</td>
                               <td>{trade.exit_reason || trade.status}</td>
-                              <td className="r">
+                              <td className="r whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  className="desk-btn mr-1"
+                                  onClick={() => setChartTrade(trade)}
+                                  title="Open chart"
+                                  aria-label="Open trade chart"
+                                >
+                                  <LineChart className="h-3.5 w-3.5" />
+                                </button>
                                 {trade.charges_breakdown ? (
                                   <button
                                     type="button"
@@ -485,6 +510,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
       </section>
 
       {/* Itemized tax receipt */}
+      {chartTrade && <PositionChartModal position={chartTrade} onClose={() => setChartTrade(null)} />}
       {selectedTradeForReceipt && (
         <div className="desk-overlay" onClick={() => setSelectedTradeForReceipt(null)}>
           <div className="desk-modal p-5" onClick={(e) => e.stopPropagation()}>
