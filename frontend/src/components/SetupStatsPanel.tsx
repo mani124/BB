@@ -9,6 +9,7 @@ export interface SetupDayStats {
   wins: number;
   win_rate: number;
   avg_r: number | null;
+  r_trades?: number;
   gross_pnl: number;
   total_slippage_cost: number;
   total_charges: number;
@@ -45,7 +46,7 @@ export function SetupStatsTable({ rows }: { rows: SetupDayStats[] }) {
               </td>
               <td className="px-2 text-right">{r.trades}</td>
               <td className="px-2 text-right">{r.win_rate.toFixed(1)}%</td>
-              <td className={`px-2 text-right ${tone(r.avg_r ?? 0)}`}>{r.avg_r === null ? '—' : r.avg_r.toFixed(2)}</td>
+              <td className={`px-2 text-right ${tone(r.avg_r ?? 0)}`} title={`Average R over ${r.r_trades ?? '?'} of ${r.trades} trades; trades whose stop moved to entry after Target 1 have no measurable risk and are left out.`}>{r.avg_r === null ? '—' : r.avg_r.toFixed(2)}</td>
               <td className={`px-2 text-right ${tone(r.gross_pnl)}`}>{inr(r.gross_pnl)}</td>
               <td className="px-2 text-right">{inr(r.total_slippage_cost)}</td>
               <td className="px-2 text-right">{inr(r.total_charges)}</td>

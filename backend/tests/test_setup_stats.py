@@ -25,7 +25,7 @@ def test_groups_by_setup_and_day_with_totals_and_r():
     assert d14.net_pnl == 50.0 and d14.gross_pnl == 70.0
     assert d14.total_charges == 20.0 and d14.total_slippage_cost == 10.0
     total = by[("S1", "ALL")]
-    assert total.trades == 3 and total.avg_r == 0.83 and total.net_pnl == 250.0
+    assert total.trades == 3 and total.r_trades == 3 and total.avg_r == 0.83 and total.net_pnl == 250.0
     assert [r.date for r in rows] == ["ALL", "2026-10-15", "2026-10-14"]
 
 
@@ -35,7 +35,7 @@ def test_quarantined_excluded_and_unmeasurable_r_is_none():
         pos("b", "S2", 10.0, "2026-10-14T10:00:00+05:30", sl=100.0),  # no stop distance
     ])
     tot = [r for r in rows if r.date == "ALL"][0]
-    assert tot.trades == 1 and tot.avg_r is None
+    assert tot.trades == 1 and tot.avg_r is None and tot.r_trades == 0
 
 
 def test_endpoint():

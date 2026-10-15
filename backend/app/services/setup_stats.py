@@ -14,6 +14,9 @@ class SetupDayStats(BaseModel):
     wins: int = 0
     win_rate: float = 0.0
     avg_r: Optional[float] = None  # None when no trade had a measurable stop distance
+    # Trades that went into avg_r. After Target 1 the stop moves to entry, so those trades have no
+    # measurable initial risk and are left out: avg_r only covers trades stopped or exited before that.
+    r_trades: int = 0
     gross_pnl: float = 0.0
     total_slippage_cost: float = 0.0
     total_charges: float = 0.0
@@ -48,7 +51,7 @@ def compute_setup_stats(closed_trades: Iterable) -> list[SetupDayStats]:
         SetupDayStats(
             setup_type=s, date=d, trades=a["trades"], wins=a["wins"],
             win_rate=round(a["wins"] / a["trades"] * 100, 1),
-            avg_r=round(sum(a["rs"]) / len(a["rs"]), 2) if a["rs"] else None,
+            avg_r=round(sum(a["rs"]) / len(a["rs"]), 2) if a["rs"] else None, r_trades=len(a["rs"]),
             gross_pnl=round(a["gross"], 2), total_slippage_cost=round(a["slip"], 2),
             total_charges=round(a["chg"], 2), net_pnl=round(a["net"], 2),
         )
