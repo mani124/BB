@@ -11,6 +11,9 @@ from app.services import market_hours
 from app.core.config import settings
 from app.services.paper_models import *  # noqa: F401,F403
 from app.services.paper_models import _now_stamp, _parse_iso, _signed_slip, _view_mode  # noqa: F401
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PaperExitsMixin:
@@ -229,6 +232,10 @@ class PaperExitsMixin:
                         pos.booked_pnl_rupees = round(pos.booked_pnl_rupees + book_pnl, 2)
                         pos.lots -= book_lots
                         pos.quantity -= book_qty
+                    else:
+                        # Single lot cannot be split: no partial at Target 1, the whole lot
+                        # runs with its stop moved to entry (breakeven) below.
+                        logger.info("T1 %s: %d lot cannot book 50%%; no partial, stop to breakeven", pos.symbol, pos.lots)
                     pos.option_sl = pos.option_entry
                     self._enqueue_write("upsert", pos)
 
@@ -302,6 +309,10 @@ class PaperExitsMixin:
                         pos.booked_pnl_rupees = round(pos.booked_pnl_rupees + book_pnl, 2)
                         pos.lots -= book_lots
                         pos.quantity -= book_qty
+                    else:
+                        # Single lot cannot be split: no partial at Target 1, the whole lot
+                        # runs with its stop moved to entry (breakeven) below.
+                        logger.info("T1 %s: %d lot cannot book 50%%; no partial, stop to breakeven", pos.symbol, pos.lots)
                     pos.underlying_sl = pos.underlying_entry
                     pos.option_sl = pos.option_entry
 
@@ -371,6 +382,10 @@ class PaperExitsMixin:
                         pos.booked_pnl_rupees = round(pos.booked_pnl_rupees + book_pnl, 2)
                         pos.lots -= book_lots
                         pos.quantity -= book_qty
+                    else:
+                        # Single lot cannot be split: no partial at Target 1, the whole lot
+                        # runs with its stop moved to entry (breakeven) below.
+                        logger.info("T1 %s: %d lot cannot book 50%%; no partial, stop to breakeven", pos.symbol, pos.lots)
                     pos.underlying_sl = pos.underlying_entry
                     pos.option_sl = pos.option_entry
 

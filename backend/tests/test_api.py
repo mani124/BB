@@ -192,7 +192,7 @@ def test_api_paper_settings():
     assert data["default_lots"] == 3
 
     # Reset back to false / 1
-    client.post("/api/paper/settings", json={"auto_trade_enabled": False, "default_lots": 1})
+    client.post("/api/paper/settings", json={"auto_trade_enabled": False, "default_lots": 2})
 
 def test_api_paper_reset():
     sig = create_test_signal(symbol="NIFTY 50", opt="CE")
@@ -282,3 +282,11 @@ async def test_api_signals_stream_disconnect_breaks_loop():
         await anext(gen)
 
     assert len(worker._listeners) == listeners_start
+
+
+def test_api_manual_trade_defaults_to_two_lots():
+    client.post("/api/paper/reset")
+    sig = create_test_signal(symbol="NIFTY 50", opt="CE")
+    res = client.post("/api/paper/trade", json={"signal": sig.model_dump()})
+    assert res.status_code == 200
+    assert res.json()["initial_lots"] == 2
