@@ -114,3 +114,33 @@ def test_trade_candles_cap_and_prune(tmp_path):
     assert len(s.load_trade_candles("orphan", "option")) == s.TRADE_CANDLE_CAP
     assert s.prune_trade_candles() == 1  # no matching trade
     assert s.load_trade_candles("orphan", "option") == []
+
+
+def test_quick_open_close_gets_final_snapshot_and_failed_save_retries(tmp_path):
+    from app.services.paper_storage import PaperStorage
+    storage = PaperStorage(str(tmp_path / "t.db"))
+    old = paper_trader.storage
+    paper_trader.storage = storage
+    pos = _pos(id="chart-pos-5", status="CLOSED")
+    paper_trader._portfolio.closed_trades.append(pos)  # opened and closed between two calls
+    worker._option_candle_history["99001"] = _bars()
+    worker._candle_history["NIFTY 50"] = _bars(base=25000)
+    worker._trade_candle_saved_at.clear()
+    real = storage.save_trade_candles
+    try:
+        def boom(*a, **k):
+            raise RuntimeError("db busy")
+        storage.save_trade_candles = boom
+        worker.persist_trade_candles()
+        assert worker._trade_candle_saved_at.get("chart-pos-5", 0) >= 0  # not marked done
+        storage.save_trade_candles = real
+        worker.persist_trade_candles()
+        assert len(storage.load_trade_candles("chart-pos-5", "option")) == 30
+        assert worker._trade_candle_saved_at["chart-pos-5"] == -1.0
+    finally:
+        storage.save_trade_candles = real
+        paper_trader._portfolio.closed_trades.remove(pos)
+        paper_trader.storage = old
+        worker._option_candle_history.pop("99001", None)
+        worker._candle_history.pop("NIFTY 50", None)
+        worker._trade_candle_saved_at.clear()

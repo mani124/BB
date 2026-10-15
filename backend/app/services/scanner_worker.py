@@ -111,19 +111,28 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             now = time.time()
             last = self._trade_candle_saved_at
             targets = [p for p in pf.active_positions if now - last.get(p.id, 0.0) >= throttle_s]
-            closed_ids = {p.id for p in pf.closed_trades}
-            targets += [p for p in pf.closed_trades if p.id in last and not last[p.id] < 0]
-            for p in targets:
-                from app.api.position_chart import position_bars
-                opt, und = position_bars(self, p)
-                if p.id in closed_ids:
-                    last[p.id] = -1.0  # final snapshot taken
+            # Closed trades still owed a final snapshot: ones seen open earlier, and ones that opened and
+            # closed between two calls (never in `last`) unless a snapshot is already stored.
+            for p in pf.closed_trades:
+                if last.get(p.id, 0.0) < 0:
+                    continue
+                if p.id in last or not storage.load_trade_candles(p.id, "option"):
+                    targets.append(p)
                 else:
-                    last[p.id] = now
-                if opt is not None and not opt.empty:
-                    storage.save_trade_candles(p.id, "option", opt.to_dict("records"))
-                if und is not None and not und.empty:
-                    storage.save_trade_candles(p.id, "underlying", und.to_dict("records"))
+                    last[p.id] = -1.0
+            closed_ids = {p.id for p in pf.closed_trades}
+            from app.api.position_chart import position_bars
+            for p in targets:
+                try:
+                    opt, und = position_bars(self, p)
+                    if opt is not None and not opt.empty:
+                        storage.save_trade_candles(p.id, "option", opt.to_dict("records"))
+                    if und is not None and not und.empty:
+                        storage.save_trade_candles(p.id, "underlying", und.to_dict("records"))
+                except Exception as e:
+                    logger.warning(f"Could not persist candles for {p.id}: {e}")  # retried next call
+                    continue
+                last[p.id] = -1.0 if p.id in closed_ids else now  # -1: final snapshot taken
         except Exception as e:
             logger.warning(f"Could not persist trade candles: {e}")
 

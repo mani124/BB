@@ -16,7 +16,9 @@ mkdir -p "$BIN_DIR" "$UNIT_DIR" "$CONF_DIR"
 install -m 0755 "$SRC_DIR/bb-backup.sh" "$BIN_DIR/bb-backup"
 install -m 0644 "$SRC_DIR/bb-backup.service" "$UNIT_DIR/bb-backup.service"
 install -m 0644 "$SRC_DIR/bb-backup.timer" "$UNIT_DIR/bb-backup.timer"
-printf 'BUCKET=%s\nAPP_DIR=%s\n' "$BUCKET" "$APP_DIR" > "$CONF_DIR/config"
+[[ "$BUCKET" =~ ^[a-z0-9._-]+$ ]] || { echo "Invalid BUCKET name (use the bare bucket name, no gs://)."; exit 1; }
+[[ "$APP_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "Invalid APP_DIR path."; exit 1; }
+printf 'BUCKET=%q\nAPP_DIR=%q\n' "$BUCKET" "$APP_DIR" > "$CONF_DIR/config"
 "$SYSTEMCTL" daemon-reload
 "$SYSTEMCTL" enable --now bb-backup.timer
 echo "Installed. Test now with: sudo bb-backup ; then: bb-backup --status"

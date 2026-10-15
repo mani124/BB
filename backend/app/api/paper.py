@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -6,6 +7,7 @@ from app.services.strategy_engine import Signal
 from app.services import setup_switches
 from app.services.setup_stats import SetupDayStats, compute_setup_stats
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/paper", tags=["paper"])
 
 # Every endpoint here is async on purpose: the scanner mutates the paper portfolio on the event
@@ -228,6 +230,9 @@ async def engage_kill_switch(body: KillSwitchRequest):
             _close_position_with_freshness(pos.id, "KILL_SWITCH")
             closed += 1
         except HTTPException:
+            failed.append(pos.id)
+        except Exception:
+            logger.exception("Kill switch could not close %s", pos.id)
             failed.append(pos.id)
     return {"status": "engaged", "closed": closed, "failed": failed, "risk": paper_trader.risk_status(None)}
 

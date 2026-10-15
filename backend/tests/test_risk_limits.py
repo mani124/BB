@@ -138,6 +138,33 @@ def test_api_kill_switch_needs_confirm_and_squares_off():
         paper_trader.set_kill_switch(False)
 
 
+def test_api_kill_switch_survives_unexpected_close_error(monkeypatch):
+    from app.main import app
+    from app.api import paper as paper_api
+    from app.services.paper_trader import paper_trader
+    client = TestClient(app)
+    paper_trader.set_kill_switch(False)
+    pos = paper_trader.open_position_from_signal(make_test_signal("API_S2", symbol="BANKNIFTY"))
+    if not pos:
+        return
+    real = paper_api._close_position_with_freshness
+    calls = []
+    def flaky(pid, reason):
+        calls.append(pid)
+        if len(calls) == 1:
+            raise RuntimeError("storage down")
+        return real(pid, reason)
+    monkeypatch.setattr(paper_api, "_close_position_with_freshness", flaky)
+    try:
+        r = client.post("/api/paper/kill-switch", json={"confirm": True})
+        assert r.status_code == 200 and calls[0] in r.json()["failed"]
+    finally:
+        monkeypatch.undo()
+        paper_trader.set_kill_switch(False)
+        if pos.id in [p.id for p in paper_trader.get_portfolio().active_positions]:
+            real(pos.id, "TEST_CLEANUP")
+
+
 def test_api_settings_updates_limit():
     from app.main import app
     from app.services.paper_trader import paper_trader
