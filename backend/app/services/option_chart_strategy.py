@@ -6,9 +6,13 @@ from datetime import datetime
 import pandas as pd
 from app.services import market_hours
 from app.services.strategy_engine import Signal, SetupType
-from app.services.strike_selector import OptionStrikeRecommendation, is_lot_size_known
+from app.services.strike_selector import OptionStrikeRecommendation, is_lot_size_known, _opt_float
 
 logger = logging.getLogger(__name__)
+
+def _quote_num(quote, key):
+    return _opt_float(quote.get(key)) if isinstance(quote, dict) else None
+
 
 def evaluate_option_chart_signal(
     symbol: str,
@@ -159,6 +163,10 @@ def evaluate_option_chart_signal(
         real_ltp=real_ltp,
         real_ask_price=real_ask,
         real_bid_price=real_bid,
+        real_volume=_quote_num(current_quote, "day_volume"),
+        real_oi=_quote_num(current_quote, "oi"),
+        real_bid_qty=_quote_num(current_quote, "top_bid_quantity"),
+        real_ask_qty=_quote_num(current_quote, "top_ask_quantity"),
         is_live_quote=is_live,
         quote_age_s=(float(current_quote["quote_age_s"]) if (current_quote and current_quote.get("quote_age_s") is not None) else None),
         quote_as_of=(time.time() - float(current_quote["quote_age_s"]) if (current_quote and current_quote.get("quote_age_s") is not None) else None),

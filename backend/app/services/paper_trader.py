@@ -1,4 +1,5 @@
 import asyncio
+import json
 import uuid
 import logging
 from datetime import datetime, timedelta
@@ -14,6 +15,7 @@ from app.services.paper_models import _now_stamp, _parse_iso, _signed_slip, _vie
 from app.services.paper_persistence import PaperPersistenceMixin
 from app.services.paper_guards import PaperGuardsMixin
 from app.services.paper_exits import PaperExitsMixin
+from app.services import setup_switches
 logger = logging.getLogger(__name__)
 
 
@@ -79,6 +81,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             active_positions=active,
             closed_trades=all_closed,
             auto_trade_enabled=self._portfolio.auto_trade_enabled,
+            setup_modes=setup_switches.normalize_modes(self._portfolio.setup_modes),
             default_lots=self._portfolio.default_lots,
             max_risk_per_trade=self._portfolio.max_risk_per_trade,
             total_realized_pnl=realized,
@@ -141,6 +144,12 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         self._portfolio.auto_trade_enabled = enabled
         self._enqueue_write("save_setting", ("auto_trade_enabled", str(enabled)))
 
+    def set_setup_modes(self, modes: dict) -> None:
+        """Merge `modes` (setup number -> off/index/stocks/all) into the saved switches."""
+        merged = setup_switches.normalize_modes({**self._portfolio.setup_modes, **(modes or {})})
+        self._portfolio.setup_modes = merged
+        self._enqueue_write("save_setting", ("setup_modes", json.dumps(merged)))
+
     def set_default_lots(self, lots: int):
         self._portfolio.default_lots = max(2, lots)  # 2 lots minimum so Target 1 can book 50%
         self._enqueue_write("save_setting", ("default_lots", str(self._portfolio.default_lots)))
@@ -151,7 +160,8 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
 
     async def reset(self) -> None:
         self._portfolio_generation += 1
-        self._portfolio = PaperPortfolio()
+        saved_modes = self._portfolio.setup_modes
+        self._portfolio = PaperPortfolio(setup_modes=saved_modes)
         self._processed_signal_ids.clear()
         if self._write_queue is not None:
             try:
@@ -170,7 +180,8 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             fut.result(timeout=10.0)
         else:
             self._portfolio_generation += 1
-            self._portfolio = PaperPortfolio()
+            saved_modes = self._portfolio.setup_modes
+            self._portfolio = PaperPortfolio(setup_modes=saved_modes)
             self._processed_signal_ids.clear()
             if self.storage:
                 self.storage.clear_all()
@@ -303,6 +314,12 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         pos_id = f"POS_{signal.symbol}_{signal.option_type}_{int(market_hours.now_ist().timestamp())}_{uuid.uuid4().hex[:6]}"
         rec = signal.strike_recommendation
 
+        entry_bid = getattr(rec, "real_bid_price", None)
+        entry_bid = float(entry_bid) if entry_bid and float(entry_bid) > 0 else None
+        entry_spread_pct = (
+            round((p_fill_entry - entry_bid) / p_fill_entry * 100.0, 2)
+            if entry_bid is not None and p_fill_entry > 0 and entry_bid <= p_fill_entry else None
+        )
         entry_slippage = max(0.0, round(p_fill_entry - p_signal, 2))
         init_slip_cost = round(entry_slippage * qty, 2)
 
@@ -348,6 +365,12 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             net_pnl=0.0,
             charges_breakdown=None,
             entry_estimated=entry_estimated,
+            entry_bid=entry_bid,
+            entry_spread_pct=entry_spread_pct,
+            option_volume=getattr(rec, "real_volume", None),
+            option_oi=getattr(rec, "real_oi", None),
+            bid_qty=getattr(rec, "real_bid_qty", None),
+            ask_qty=getattr(rec, "real_ask_qty", None),
         )
 
         self._portfolio.active_positions.append(pos)
@@ -382,6 +405,14 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             if not getattr(sig, "is_confirmed", True):
                 continue
             if sig.id not in self._processed_signal_ids:
+                # Per-setup switch (off / indices only / stocks only / all) applies to auto-entry;
+                # a trade the user places by hand is never blocked by it.
+                modes = self._portfolio.setup_modes or setup_switches.DEFAULT_MODES
+                switched_off = setup_switches.block_reason(modes, sig.setup_type, sig.symbol)
+                if switched_off:
+                    logger.info("Auto-entry skipped for %s: %s", sig.symbol, switched_off)
+                    self._processed_signal_ids.add(sig.id)
+                    continue
                 # Open position for new signals
                 self.open_position_from_signal(sig, feed_mode=feed_mode)
 

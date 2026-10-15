@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition, DailyPnl
 from app.services.strategy_engine import Signal
+from app.services import setup_switches
 
 router = APIRouter(prefix="/paper", tags=["paper"])
 
@@ -19,6 +20,7 @@ class SettingsRequest(BaseModel):
     auto_trade_enabled: Optional[bool] = None
     default_lots: Optional[int] = None
     max_risk_per_trade: Optional[float] = None
+    setup_modes: Optional[dict[str, str]] = None
 
 def _resolve_view(mode: Optional[str]) -> Optional[str]:
     """Which book to show: "live" or "demo" follow the request; "all" is the raw
@@ -187,6 +189,12 @@ async def update_settings(body: SettingsRequest):
         paper_trader.set_default_lots(body.default_lots)
     if body.max_risk_per_trade is not None:
         paper_trader.set_max_risk_per_trade(body.max_risk_per_trade)
+    if body.setup_modes is not None:
+        bad = [f"{k}={v}" for k, v in body.setup_modes.items()
+               if k not in setup_switches.DEFAULT_MODES or v not in setup_switches.MODES]
+        if bad:
+            raise HTTPException(status_code=422, detail=f"Invalid setup mode(s): {', '.join(bad)}")
+        paper_trader.set_setup_modes(body.setup_modes)
     return paper_trader.get_portfolio(_resolve_view(None))
 
 @router.post("/reset")

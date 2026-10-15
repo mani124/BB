@@ -1,4 +1,5 @@
 import asyncio
+import json
 import uuid
 import logging
 from datetime import datetime, timedelta
@@ -8,6 +9,7 @@ from app.services.charges_calculator import calculate_option_trade_charges
 from app.services.strategy_engine import Signal, is_setup5
 from app.services.strike_selector import get_lot_size
 from app.services import market_hours
+from app.services import setup_switches
 from app.core.config import settings
 from app.services.paper_models import *  # noqa: F401,F403
 from app.services.paper_models import _now_stamp, _parse_iso, _signed_slip, _view_mode  # noqa: F401
@@ -178,6 +180,15 @@ class PaperPersistenceMixin:
                 self._portfolio.max_risk_per_trade = float(saved_risk)
             except ValueError:
                 pass
+
+        saved_modes = self.storage.load_setting("setup_modes")
+        raw_modes = None
+        if saved_modes:
+            try:
+                raw_modes = json.loads(saved_modes)
+            except ValueError:
+                raw_modes = None
+        self._portfolio.setup_modes = setup_switches.normalize_modes(raw_modes)
 
         self.flag_stale_carryover()
         self._recalculate_metrics()
