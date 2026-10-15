@@ -22,6 +22,7 @@ from app.services.dhan_websocket import DhanWebSocketManager
 from app.services.dhan_packet_codec import segment_to_int
 from app.services.indicators import calculate_indicators
 from app.services.strategy_engine import evaluate_signals, Signal, SetupType
+from app.services.relative_strength import evaluate_relative_strength, NIFTY_SYMBOL
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size
 from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
@@ -534,7 +535,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 if pd.isna(bw_min) or bw_min <= 0:
                     bw_min = bw_val
 
-                is_sq = (bw_val <= bw_min * 1.25) or (bw_val <= 5.0)
+                is_sq = (bw_val <= bw_min * 1.25) or (bw_val <= float(settings.SQUEEZE_ABS_BW_PCT))
                 vwap_b = "ABOVE_VWAP" if radar_close >= float(last_row["vwap"]) else "BELOW_VWAP"
 
                 percent_b_val = float(last_row["percent_b"])
@@ -588,6 +589,25 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                             confirmed_signals.append(s)
                     except Exception:
                         pass
+
+                # Setup 9 (relative strength vs NIFTY) only fires on completed bars
+                nifty_bars = self._candle_history.get(NIFTY_SYMBOL, [])
+                if stock_bias and inst.instrument_type == "EQUITY" and nifty_bars:
+                    # Isolated so a bad candle can never abort the cycle (and with it exits for open positions)
+                    try:
+                        rs_signals = evaluate_relative_strength(
+                            inst.symbol,
+                            completed_df,
+                            pd.DataFrame(nifty_bars),
+                            timeframe=inst.default_timeframe,
+                            stock_bias=stock_bias,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Setup 9 evaluation failed for {inst.symbol}: {e}")
+                        rs_signals = []
+                    for s in rs_signals:
+                        if pd.to_datetime(s.timestamp).date() == today_date:
+                            confirmed_signals.append(s)
 
             # 2. Forming bar: evaluate on ind_df (which includes active forming candle)
             provisional_signals = evaluate_signals(
@@ -725,10 +745,10 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             feed_mode=mode,
             option_bid_map=option_bid_map,
         )
-        if mode != "demo":
-            # P0-5: close stale carry-overs and square off at the EOD time (live positions only)
-            paper_trader.flag_stale_carryover()
-            paper_trader.square_off_if_due(feed_mode="live")
+        # P0-5: in every mode (a demo scan after a disconnect too) close positions carried over
+        # from an earlier date (both books) and square off live positions at the EOD time.
+        paper_trader.flag_stale_carryover()
+        paper_trader.square_off_if_due(feed_mode="live")
         if mode in ("live", "demo"):
             paper_trader.on_signals_cycle(new_signals, feed_mode=mode)
         if mode == "live" and ws_healthy:
@@ -747,7 +767,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         self._state.top_bearish = rankings.top_bearish
         # Market bias comes from NIFTY vs VWAP on stale candles outside the session: not meaningful.
         self._state.market_bias = "NEUTRAL" if mode == "closed" else market_bias
-        self._state.paper_portfolio = paper_trader.get_portfolio(mode=mode)
+        self._state.paper_portfolio = paper_trader.get_portfolio_summary(mode=mode)
         self._state.last_scan_time = market_hours.now_ist_naive().strftime("%H:%M:%S")
         self._state.scan_cycle_count += 1
         self._state.is_scanning = False

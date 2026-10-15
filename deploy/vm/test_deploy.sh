@@ -74,6 +74,13 @@ echo "== open position"
 make_world; make_bundle c 100
 python3 -c "import sqlite3;c=sqlite3.connect('$T/app/backend/data/trades.db');c.execute(\"insert into positions values (2,'TARGET_1')\");c.commit()"
 NOW=20:00 run >/dev/null 2>&1;  check "not deployed with open position" '[ "$(content)" = old ]'
+echo "== open demo position only"
+make_world; make_bundle 5 100
+python3 -c "import sqlite3;c=sqlite3.connect('$T/app/backend/data/trades.db');c.execute('alter table positions add column feed_mode text');c.execute(\"insert into positions values (3,'OPEN','demo')\");c.commit()"
+NOW=20:00 run >/dev/null 2>&1;  check "open demo position does not block" '[ "$(content)" = new-5 ]'
+make_world; make_bundle 6 100
+python3 -c "import sqlite3;c=sqlite3.connect('$T/app/backend/data/trades.db');c.execute('alter table positions add column feed_mode text');c.execute(\"insert into positions values (4,'OPEN','live')\");c.commit()"
+NOW=20:00 run >/dev/null 2>&1;  check "open live position blocks" '[ "$(content)" = old ]'
 echo "== unreadable db (fail safe)"
 echo garbage > "$T/app/backend/data/trades.db"; NOW=20:00 run >/dev/null 2>&1
 check "not deployed if db unreadable" '[ "$(content)" = old ]'

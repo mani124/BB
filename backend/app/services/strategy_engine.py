@@ -15,6 +15,7 @@ class SetupType(str, enum.Enum):
     SETUP_6_PINBAR_SNAPBACK = "Setup 6: Pin Bar Exhaustion Snapback"
     SETUP_7_INSIDE_BAR_SNAPBACK = "Setup 7: 2.5σ Puncture & Inside Bar"
     SETUP_8_DIVERGENCE_SNAPBACK = "Setup 8: Climax Swing Divergence Fade"
+    SETUP_9_RELATIVE_STRENGTH = "Setup 9: Relative Strength vs NIFTY (9 EMA Pullback)"
 
 class Signal(BaseModel):
     id: str

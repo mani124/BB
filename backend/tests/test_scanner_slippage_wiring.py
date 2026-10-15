@@ -111,7 +111,9 @@ async def test_scanner_worker_ws_tick_passes_bid_and_computes_slippage():
 
     # 4. Verify worker state paper_portfolio is synced
     worker_port = worker._state.paper_portfolio
-    assert len(worker_port.closed_trades) == 1
+    # The broadcast state carries totals and a count, not the closed-trade list (kept small).
+    assert worker_port.closed_trades == []
+    assert worker_port.closed_trades_count == 1
     assert worker_port.total_charges > 0
     assert worker_port.total_net_pnl == closed.net_pnl
 
