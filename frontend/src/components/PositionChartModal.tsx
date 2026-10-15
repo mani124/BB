@@ -14,6 +14,7 @@ import {
 import { apiFetch } from '../api/client';
 import type { PaperPosition } from '../types';
 import { setupCode } from './setupCode';
+import { ReplayControls, sliceSeries, startIndex, useReplay } from './ReplayControls';
 
 interface Point { time: number; value: number }
 interface Candle { time: number; open: number; high: number; low: number; close: number }
@@ -124,8 +125,17 @@ export const PositionChartModal: React.FC<{ position: PaperPosition; onClose: ()
     return () => obs.disconnect();
   }, []);
 
-  const series = data ? data[which] : null;
-  const hasCandles = !!series && series.candles.length > 0;
+  const fullSeries = data ? data[which] : null;
+  const hasCandles = !!fullSeries && fullSeries.candles.length > 0;
+  const [replaying, setReplaying] = useState(false);
+  const replay = useReplay(fullSeries?.candles.length ?? 0, startIndex(fullSeries?.candles ?? [], data?.entry_time ?? null));
+  const canReplay = hasCandles && !isOpen;
+  const replayOn = replaying && canReplay;
+  const series = useMemo(
+    () => (fullSeries && replayOn ? sliceSeries(fullSeries, replay.index) : fullSeries),
+    [fullSeries, replayOn, replay.index],
+  );
+  const shownTime = fullSeries?.candles[replay.index]?.time ?? null;
 
   // Build the chart once per source/theme; polling below only swaps data, so zoom and pan survive.
   useEffect(() => {
@@ -177,15 +187,20 @@ export const PositionChartModal: React.FC<{ position: PaperPosition; onClose: ()
     }
 
     const markers: SeriesMarker<Time>[] = [];
-    const et = snap(series.candles, data?.entry_time ?? null);
+    // During a replay a marker only appears once its candle has been reached.
+    const reached = (t: number | null) => {
+      const k = snap(fullSeries?.candles ?? series.candles, t);
+      return k != null && (!replayOn || k <= (series.candles[series.candles.length - 1]?.time ?? 0)) ? k : null;
+    };
+    const et = reached(data?.entry_time ?? null);
     if (et != null) markers.push({ time: et as UTCTimestamp, position: 'belowBar', shape: 'arrowUp', color: c.accent, text: 'Entry' });
-    const xt = snap(series.candles, data?.exit_time ?? null);
+    const xt = reached(data?.exit_time ?? null);
     if (xt != null && !isOpen) markers.push({ time: xt as UTCTimestamp, position: 'aboveBar', shape: 'arrowDown', color: c.down, text: 'Exit' });
     markers.sort((a, b) => (a.time as number) - (b.time as number));
     d.candles.setMarkers(markers);
 
     if (!d.fitted) { d.chart.timeScale().fitContent(); d.fitted = true; }
-  }, [series, indicators, data?.entry_time, data?.exit_time, isOpen, status, which, themeTick, hasCandles]);
+  }, [series, indicators, data?.entry_time, data?.exit_time, isOpen, status, which, themeTick, hasCandles, fullSeries, replayOn]);
 
   const entryOffChart = hasCandles && data?.entry_time != null && snap(series!.candles, data.entry_time) == null;
 
@@ -215,6 +230,9 @@ export const PositionChartModal: React.FC<{ position: PaperPosition; onClose: ()
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {canReplay && !replayOn && (
+              <button type="button" className="desk-btn text-xs" onClick={() => { replay.seek(startIndex(fullSeries!.candles, data?.entry_time ?? null)); setReplaying(true); }}>Replay</button>
+            )}
             <div className="desk-seg" role="group" aria-label="Chart source">
               <button type="button" aria-pressed={which === 'option'} onClick={() => setWhich('option')}>Option</button>
               <button type="button" aria-pressed={which === 'underlying'} onClick={() => setWhich('underlying')}>Spot</button>
@@ -238,6 +256,14 @@ export const PositionChartModal: React.FC<{ position: PaperPosition; onClose: ()
             </div>
           )}
         </div>
+        {replayOn && (
+          <ReplayControls
+            replay={replay}
+            total={fullSeries!.candles.length}
+            label={shownTime != null ? new Date(shownTime * 1000).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }) : ''}
+            onExit={() => setReplaying(false)}
+          />
+        )}
       </div>
     </div>
   );
