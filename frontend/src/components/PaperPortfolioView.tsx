@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PaperPortfolio, PaperPosition } from '../types';
-import { RefreshCcw, Power, Receipt, X } from 'lucide-react';
+import { RefreshCcw, Power, Receipt, X, LineChart } from 'lucide-react';
 import { PositionChartModal } from './PositionChartModal';
 import { setupCode } from './setupCode';
 
@@ -269,6 +269,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
   const [selectedSetupFilter, setSelectedSetupFilter] = useState<string>('ALL');
   const [selectedTradeForReceipt, setSelectedTradeForReceipt] = useState<PaperPosition | null>(null);
   const [showAllDays, setShowAllDays] = useState(false);
+  const [chartTrade, setChartTrade] = useState<PaperPosition | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -457,7 +458,16 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                               <td className={`r desk-num ${pnlClass(grossVal)}`}>{formatCurrency(grossVal, true)}</td>
                               <td className={`r desk-num font-semibold ${pnlClass(netVal)}`}>{formatCurrency(netVal, true)}</td>
                               <td>{trade.exit_reason || trade.status}</td>
-                              <td className="r">
+                              <td className="r whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  className="desk-btn mr-1"
+                                  onClick={() => setChartTrade(trade)}
+                                  title="Open chart"
+                                  aria-label="Open trade chart"
+                                >
+                                  <LineChart className="h-3.5 w-3.5" />
+                                </button>
                                 {trade.charges_breakdown ? (
                                   <button
                                     type="button"
@@ -496,6 +506,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
       </section>
 
       {/* Itemized tax receipt */}
+      {chartTrade && <PositionChartModal position={chartTrade} onClose={() => setChartTrade(null)} />}
       {selectedTradeForReceipt && (
         <div className="desk-overlay" onClick={() => setSelectedTradeForReceipt(null)}>
           <div className="desk-modal p-5" onClick={(e) => e.stopPropagation()}>
