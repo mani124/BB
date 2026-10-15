@@ -14,6 +14,7 @@ from app.services.paper_models import *  # noqa: F401,F403
 from app.services.paper_models import _now_stamp, _parse_iso, _signed_slip, _view_mode  # noqa: F401
 from app.services.paper_persistence import PaperPersistenceMixin
 from app.services.paper_guards import PaperGuardsMixin
+from app.services import liquidity_filter
 from app.services.paper_exits import PaperExitsMixin
 from app.services import setup_switches
 logger = logging.getLogger(__name__)
@@ -270,6 +271,11 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                 logger.warning("DATA_QUALITY entry_blocked symbol=%s side=%s reason=%s", signal.symbol, signal.option_type, quote_block)
                 self._processed_signal_ids.add(signal.id)
                 return None
+
+        liq_block = liquidity_filter.check_recommendation(rec, signal.symbol, signal.option_type)
+        if liq_block:
+            self._processed_signal_ids.add(signal.id)
+            return None
 
         lot_size = rec.lot_size
 
