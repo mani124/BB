@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PaperPortfolio, PaperPosition } from '../types';
 import { RefreshCcw, Power, Receipt, X } from 'lucide-react';
 import { setupCode } from './setupCode';
+import { isIndexSymbol } from './instruments';
 
 // Show the date whenever a trade crosses midnight/sessions so an overnight exit never
 // looks like it happened before its entry (times alone are HH:MM:SS).
@@ -55,19 +56,13 @@ interface PaperPortfolioViewProps {
   hideStrip?: boolean;
 }
 
-const INDEX_SYMBOLS = new Set([
-  'NIFTY 50', 'NIFTY', 'NIFTY BANK', 'BANKNIFTY', 'BANK NIFTY', 'FINNIFTY',
-  'NIFTY FINANCIAL SERVICES', 'SENSEX', 'MIDCPNIFTY',
-]);
-const isIndexTrade = (t: PaperPosition): boolean => INDEX_SYMBOLS.has((t.symbol ?? '').toUpperCase());
-
 const KIND_FILTER_OPTIONS = [
   { id: 'ALL', label: 'All' },
   { id: 'INDEX', label: 'Index' },
   { id: 'STOCK', label: 'Stock' },
 ];
 const matchKind = (t: PaperPosition, kind: string): boolean =>
-  kind === 'ALL' || (kind === 'INDEX') === isIndexTrade(t);
+  kind === 'ALL' || (kind === 'INDEX') === isIndexSymbol(t.symbol);
 
 const SETUP_FILTER_OPTIONS = [
   { id: 'ALL', label: 'All setups' },
@@ -382,32 +377,32 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
             Closed Trades Journal ({filteredTrades.length}{isFiltered ? ` of ${closedTrades.length}` : ''})
           </h2>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 ml-auto">
-          <div className="flex gap-1.5" role="group" aria-label="Journal instrument filter">
-            {KIND_FILTER_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                className="desk-chip"
-                aria-pressed={selectedKindFilter === opt.id}
-                onClick={() => setSelectedKindFilter(opt.id)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Journal setup filter">
-            {SETUP_FILTER_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                className="desk-chip"
-                aria-pressed={selectedSetupFilter === opt.id}
-                onClick={() => setSelectedSetupFilter(opt.id)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+            <div className="flex gap-1.5" role="group" aria-label="Journal instrument filter">
+              {KIND_FILTER_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className="desk-chip"
+                  aria-pressed={selectedKindFilter === opt.id}
+                  onClick={() => setSelectedKindFilter(opt.id)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Journal setup filter">
+              {SETUP_FILTER_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className="desk-chip"
+                  aria-pressed={selectedSetupFilter === opt.id}
+                  onClick={() => setSelectedSetupFilter(opt.id)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

@@ -389,9 +389,9 @@ describe('PaperPortfolioView journal', () => {
     expect(screen.getByText(/Journal \(2\)|Closed Trades Journal \(2\)/)).toBeInTheDocument();
   });
   it('combines the index/stock filter with the setup filter', () => {
-    const base = {
-      ...({} as any), option_type: 'CE' as const, option_entry: 100, current_option_price: 105,
-      pnl_points: 5, pnl_rupees: 500, gross_pnl: 500, net_pnl: 450, status: 'CLOSED' as const,
+    const base: Partial<PaperPosition> = {
+      option_type: 'CE', option_entry: 100, current_option_price: 105,
+      pnl_points: 5, pnl_rupees: 500, gross_pnl: 500, net_pnl: 450, status: 'CLOSED',
       exit_datetime: '2026-10-15T10:30:00',
     };
     const portfolio = {
