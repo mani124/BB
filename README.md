@@ -67,6 +67,16 @@ Every API call except `/api/health` needs the private dashboard key. There is no
 - The browser gets a random per-session cookie; the key itself is never put in a cookie or returned by the API.
 - Set `COOKIE_SECURE=1` when the dashboard is served over HTTPS.
 
+### Phone alerts (optional, Telegram)
+
+The server can message your phone when the Dhan feed drops or recovers, a position closes at its stop or target, and when the service starts. Nothing is sent unless both variables below are set.
+
+1. In Telegram, open **@BotFather**, send `/newbot`, pick a name, and copy the bot token it gives you.
+2. Open your new bot and send it any message (e.g. "hi"), then visit `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `message.chat.id` as your chat id.
+3. On the VM, add to the service environment (for the systemd unit: `sudo systemctl edit bb-options.service`, then under `[Service]` add `Environment=TELEGRAM_BOT_TOKEN=...` and `Environment=TELEGRAM_CHAT_ID=...`), then `sudo systemctl restart bb-options` outside market hours.
+
+Alerts are sent in the background with a 5 s timeout, repeats are rate-limited, and the token is never logged. Other code can call `app.services.notifier.notify(event, text, min_interval=...)` to send its own alert.
+
 ### Journal safety
 - **Reset never deletes trades.** It writes a backup to `backend/data/backups/` and archives the rows (hidden, not removed).
 - **Tests never touch the real journal.** `backend/tests/conftest.py` points `BB_DATA_DIR`/`BB_DB_PATH` at a temp directory.

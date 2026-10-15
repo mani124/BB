@@ -17,6 +17,7 @@ from app.api.position_chart import router as position_chart_router
 setup_security_logging()
 
 from app.services.paper_trader import paper_trader
+from app.services.notifier import notify
 
 universe_mgr = UniverseManager()
 worker = ScannerWorker(universe_mgr=universe_mgr)
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI):
             "treated as closed until app/services/market_hours.py is updated."
         )
     await paper_trader.start_persistence_worker()
+    notify("service_started", f"{settings.APP_NAME} started (v{settings.VERSION}).", min_interval=60)
     worker.start()
     yield
     await worker.stop()

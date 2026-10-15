@@ -30,6 +30,9 @@ from app.services.momentum_ranker import MomentumRanker, MomentumRankings
 logger = logging.getLogger(__name__)
 
 
+from app.services import notifier
+
+
 class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
     """Cyclic scanner worker cycling every ~8 seconds through the 4 indices and ~35 momentum stocks."""
 
@@ -419,6 +422,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             mode = "closed"
             self._state.active_mode = "closed"
             self._state.feed_status = "CLOSED"
+        notifier.report_feed_mode(mode)
 
         # Extract live option quotes and bid prices from NSE_FNO
         option_price_map: dict[str, float] = {}

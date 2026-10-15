@@ -8,6 +8,7 @@ from app.services.charges_calculator import calculate_option_trade_charges
 from app.services.strategy_engine import Signal, is_setup5
 from app.services.strike_selector import get_lot_size
 from app.services import market_hours
+from app.services.notifier import notify
 from app.core.config import settings
 from app.services.paper_models import *  # noqa: F401,F403
 from app.services.paper_models import _now_stamp, _parse_iso, _signed_slip, _view_mode  # noqa: F401
@@ -90,6 +91,16 @@ class PaperExitsMixin:
         pos.total_charges = breakdown.total_charges
         pos.net_pnl = round(pos.gross_pnl - pos.total_charges, 2)
         pos.charges_breakdown = breakdown.model_dump()
+
+        if status in ("STOPPED_OUT", "TARGET_1", "TARGET_2"):
+            label = "Stop hit" if status == "STOPPED_OUT" else "Target hit"
+            notify(
+                "position_closed",
+                f"{label}: {pos.symbol} {pos.option_type} ({pos.setup_type}) closed at {pos.current_option_price:.2f}, "
+                f"net P&L {pos.net_pnl:+,.0f}. {pos.exit_reason or ''}".strip(),
+                dedupe_key=f"closed:{pos.id}",
+                min_interval=3600,
+            )
 
     @staticmethod
     def _mark_open_estimates(pos: PaperPosition) -> None:
