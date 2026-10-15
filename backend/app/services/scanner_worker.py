@@ -22,6 +22,7 @@ from app.services.dhan_websocket import DhanWebSocketManager
 from app.services.dhan_packet_codec import segment_to_int
 from app.services.indicators import calculate_indicators
 from app.services.strategy_engine import evaluate_signals, Signal, SetupType
+from app.services.relative_strength import evaluate_relative_strength, NIFTY_SYMBOL
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size
 from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
@@ -588,6 +589,19 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                             confirmed_signals.append(s)
                     except Exception:
                         pass
+
+                # Setup 9 (relative strength vs NIFTY) only fires on completed bars
+                nifty_bars = self._candle_history.get(NIFTY_SYMBOL, [])
+                if stock_bias and inst.instrument_type == "EQUITY" and nifty_bars:
+                    for s in evaluate_relative_strength(
+                        inst.symbol,
+                        completed_df,
+                        pd.DataFrame(nifty_bars),
+                        timeframe=inst.default_timeframe,
+                        stock_bias=stock_bias,
+                    ):
+                        if pd.to_datetime(s.timestamp).date() == today_date:
+                            confirmed_signals.append(s)
 
             # 2. Forming bar: evaluate on ind_df (which includes active forming candle)
             provisional_signals = evaluate_signals(

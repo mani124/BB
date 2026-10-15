@@ -65,6 +65,7 @@ const SETUP_FILTER_OPTIONS = [
   { id: 'SETUP_6', label: 'S6 Pin Bar' },
   { id: 'SETUP_7', label: 'S7 Inside Bar' },
   { id: 'SETUP_8', label: 'S8 Climax Divergence' },
+  { id: 'SETUP_9', label: 'S9 Rel. Strength' },
 ];
 
 const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
@@ -94,6 +95,9 @@ const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
   }
   if (filterId === 'SETUP_8') {
     return s.includes('SETUP_8') || s.includes('SETUP 8') || s.includes('DIVERGENCE') || s.includes('CLIMAX');
+  }
+  if (filterId === 'SETUP_9') {
+    return s.includes('SETUP_9') || s.includes('SETUP 9') || s.includes('RELATIVE');
   }
   return false;
 };

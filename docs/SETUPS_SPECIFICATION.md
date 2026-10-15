@@ -448,6 +448,7 @@ $$\text{Risk per Lot (₹)} = (\text{Option Entry} - \text{Option SL}) \times \t
 | :--- | :--- | :--- |
 | **Indicators Engine** | [`backend/app/services/indicators.py`](file:///Users/manigopal/Documents/BB_OPTIONS_DASHBOARD/backend/app/services/indicators.py) | Vectorized Bollinger Bands, VWAP, RSI, EMA 9, ADX, ORB. |
 | **Strategy Engine** | [`backend/app/services/strategy_engine.py`](file:///Users/manigopal/Documents/BB_OPTIONS_DASHBOARD/backend/app/services/strategy_engine.py) | Evaluates Setups 1, 2, 3, and 4 with bias filters. |
+| **Relative Strength (Setup 9)** | [`backend/app/services/relative_strength.py`](file:///Users/manigopal/Documents/BB_OPTIONS_DASHBOARD/backend/app/services/relative_strength.py) | Setup 9: stock vs NIFTY relative strength, first 9 EMA pullback. |
 | **Option Scalper** | [`backend/app/services/option_chart_strategy.py`](file:///Users/manigopal/Documents/BB_OPTIONS_DASHBOARD/backend/app/services/option_chart_strategy.py) | Standalone Setup 5 option chart Bollinger Band scalper. |
 | **Strike Selector** | [`backend/app/services/strike_selector.py`](file:///Users/manigopal/Documents/BB_OPTIONS_DASHBOARD/backend/app/services/strike_selector.py) | 1-Strike ITM and ATM resolution, Dhan `/optionchain` matching. |
 | **Momentum Ranker**| [`backend/app/services/momentum_ranker.py`](file:///Users/manigopal/Documents/BB_OPTIONS_DASHBOARD/backend/app/services/momentum_ranker.py) | Real-time F&O stock momentum scoring and classification. |
@@ -494,3 +495,27 @@ Tightening the code to the spec would reduce Setup 3 signal frequency; loosening
 * Option exits scale spot risk by the contract's chain delta; when the chain has no Greek the default 0.50–0.55 is used and the recommendation carries `delta_assumed = true` (`REQUIRE_REAL_DELTA=1` refuses such entries).
 * Setup 5 stops entering after 14:30 IST on the contract's expiry day.
 * Size defaults scale with the 2-lot default: `max_risk_per_trade` 8,000 (was 4,000) and `MAX_OPEN_NOTIONAL` 20 lakh (was 10 lakh, env override `MAX_OPEN_NOTIONAL`). Position-count caps (8 open, 3 entries per stock per day) are unchanged.
+
+
+---
+
+## 12. Setup 9: Relative Strength vs NIFTY (First 9 EMA Pullback)
+
+Trades stocks that move on their own momentum: rising while NIFTY is flat or falling (BUY CE), or falling while NIFTY is flat or rising (BUY PE). Implemented in `relative_strength.py`; all rules below use completed 5m bars only.
+
+### Qualification (CE shown; PE is the mirror)
+1. **Funnel:** the stock is in the momentum ranker's `top_bullish` list (`top_bearish` for PE). Stocks only; indices are never traded by this setup.
+2. **Relative strength:** measured from today's first 5m open. Stock move `>= +0.75%`, NIFTY 50 move `<= +0.15%` (flat or falling), and stock move minus NIFTY move `>= 0.75` points. PE: stock `<= -0.75%`, NIFTY `>= -0.15%`, NIFTY minus stock `>= 0.75`.
+3. **Trend intact:** the pullback bar closes above session VWAP (below for PE) and the 9 EMA is higher than three bars earlier (lower for PE).
+4. **First pullback:** the previous bar did not touch the 9 EMA, and no bar since the relative-strength condition first held has touched it.
+5. **Trigger:** the bar's low reaches the 9 EMA (within 0.1%), and it closes above the EMA and above its own open (below both for PE). The signal fires at that bar's close, never on a forming bar.
+6. **Window:** at least 6 bars today, bar start between 09:45 and 15:15 IST (same fresh-entry cutoff as the other setups). The setup runs in live mode only.
+
+### Risk
+* Entry: the confirming bar's close. Stop: pullback low minus `max(0.5, 0.05%)` (pullback high plus the same buffer for PE), widened to the minimum risk by `recommend_strike`.
+* Target 1 = 1.5R, Target 2 = 2.5R (the default `recommend_strike` ladder). Default 1-strike ITM contract.
+* Existing sizing (2 lots), risk and notional caps, partial booking and the re-entry gate apply unchanged.
+
+### Notes
+* The NIFTY market-bias veto used by Setups 1–8 is deliberately **not** applied: this setup wants the stock to diverge from NIFTY.
+* The thresholds (0.75%, 0.15%) are starting values, not tuned on recorded candles.
