@@ -397,3 +397,9 @@ def test_default_lots_floor_is_two():
     engine = PaperTradingEngine()
     engine.set_default_lots(1)
     assert engine.get_portfolio().default_lots == 2
+
+
+def test_size_caps_scale_with_two_lot_default():
+    from app.core.config import Settings
+    assert PaperTradingEngine().get_portfolio().max_risk_per_trade == 8000.0
+    assert Settings().MAX_OPEN_NOTIONAL == 2_000_000
