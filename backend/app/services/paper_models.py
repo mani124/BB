@@ -122,4 +122,7 @@ class PaperPortfolio(BaseModel):
     avg_slippage_points: float = 0.0
     total_charges: float = 0.0
     total_net_pnl: float = 0.0
+    # Number of closed trades in this view. The SSE state stream sends closed_trades empty
+    # (see get_portfolio_summary) and the UI fetches the list when this count changes.
+    closed_trades_count: int = 0
 

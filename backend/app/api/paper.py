@@ -6,6 +6,10 @@ from app.services.strategy_engine import Signal
 
 router = APIRouter(prefix="/paper", tags=["paper"])
 
+# Every endpoint here is async on purpose: the scanner mutates the paper portfolio on the event
+# loop without awaiting in between, so handlers that also run on the loop can never interleave
+# with a price update. A plain `def` handler would run in a worker thread and race it.
+
 class ManualTradeRequest(BaseModel):
     signal: Signal
     lots: Optional[int] = Field(default=None, ge=1)  # None -> portfolio default (2 lots)
@@ -32,15 +36,15 @@ def _resolve_view(mode: Optional[str]) -> Optional[str]:
         return "demo"
 
 @router.get("/portfolio")
-def get_portfolio(mode: Optional[str] = None) -> PaperPortfolio:
+async def get_portfolio(mode: Optional[str] = None) -> PaperPortfolio:
     return paper_trader.get_portfolio(_resolve_view(mode))
 
 @router.get("/daily")
-def get_daily_pnl(mode: Optional[str] = None) -> list[DailyPnl]:
+async def get_daily_pnl(mode: Optional[str] = None) -> list[DailyPnl]:
     return paper_trader.get_daily_pnl(_resolve_view(mode))
 
 @router.post("/trade")
-def open_manual_trade(body: ManualTradeRequest) -> PaperPosition:
+async def open_manual_trade(body: ManualTradeRequest) -> PaperPosition:
     # Finding 3: Reject unconfirmed provisional setups immediately
     if not getattr(body.signal, "is_confirmed", True):
         raise HTTPException(
@@ -170,13 +174,13 @@ def _close_position_with_freshness(
 
 
 @router.post("/close/{position_id}")
-def close_trade(position_id: str, body: Optional[ClosePositionRequest] = None):
+async def close_trade(position_id: str, body: Optional[ClosePositionRequest] = None):
     reason = body.reason if (body and body.reason) else "Manual User Exit"
     return _close_position_with_freshness(position_id, reason)
 
 
 @router.post("/settings")
-def update_settings(body: SettingsRequest):
+async def update_settings(body: SettingsRequest):
     if body.auto_trade_enabled is not None:
         paper_trader.set_auto_trade(body.auto_trade_enabled)
     if body.default_lots is not None:

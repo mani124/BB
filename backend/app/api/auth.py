@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
-from app.core.security import get_dhan_credentials, sanitize_token
+from app.core.security import get_dhan_credentials, sanitize_token, issue_session_token, SESSION_TTL_SECONDS
 from app.services.dhan_client import DhanClient
 
 logger = logging.getLogger(__name__)
@@ -30,13 +30,13 @@ def create_dashboard_session(body: SessionAuthRequest, response: Response):
         )
     response.set_cookie(
         key="dashboard_session",
-        value=expected,
+        value=issue_session_token(),
         httponly=True,
         samesite="lax",
         secure=settings.COOKIE_SECURE,
-        max_age=86400,
+        max_age=SESSION_TTL_SECONDS,
     )
-    return {"status": "authenticated", "token": expected}
+    return {"status": "authenticated"}
 
 
 class OAuthTokenRequest(BaseModel):
@@ -143,7 +143,7 @@ async def get_oauth_login_url(
 @router.post("/oauth/token")
 async def exchange_oauth_token(payload: OAuthTokenRequest):
     # 1. Try official DhanHQ consumeApp-consent endpoint
-    consume_url = f"{settings.DHAN_CONSUME_CONSENT_URL}?tokenId={payload.consent_id.strip()}"
+    consume_url = f"{settings.DHAN_CONSUME_CONSENT_URL}?{urllib.parse.urlencode({'tokenId': payload.consent_id.strip()})}"
     consume_headers = {
         "app_id": payload.app_id.strip(),
         "app_secret": payload.app_secret.strip(),

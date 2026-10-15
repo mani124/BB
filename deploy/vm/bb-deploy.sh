@@ -76,12 +76,19 @@ if [ "$(to_min "$now_ist")" -ge "$(to_min "$MARKET_START")" ] && [ "$(to_min "$n
   exit 0
 fi
 
-# 4. No open paper position (fail safe: if we cannot tell, we do not deploy).
+# 4. No open live paper position (fail safe: if we cannot tell, we do not deploy).
+#    Demo rows are synthetic and archived rows are hidden, so neither blocks a deploy.
 if [ -f "$DB_FILE" ]; then
   open_count="$(python3 -I - "$DB_FILE" <<'PY' 2>/dev/null
 import sqlite3, sys
 con = sqlite3.connect("file:%s?mode=ro" % sys.argv[1], uri=True, timeout=10)
-print(con.execute("SELECT COUNT(*) FROM positions WHERE status IN ('OPEN','TARGET_1')").fetchone()[0])
+cols = {r[1] for r in con.execute("PRAGMA table_info(positions)")}
+sql = "SELECT COUNT(*) FROM positions WHERE status IN ('OPEN','TARGET_1')"
+if "feed_mode" in cols:
+    sql += " AND COALESCE(feed_mode, 'demo') = 'live'"
+if "archived_at" in cols:
+    sql += " AND archived_at IS NULL"
+print(con.execute(sql).fetchone()[0])
 PY
 )" || open_count=""
   case "$open_count" in

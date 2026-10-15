@@ -454,8 +454,10 @@ class PaperExitsMixin:
         realized = closed_pnl + active_booked_pnl
         unrealized = sum(round(p.pnl_points * p.quantity, 2) for p in self._portfolio.active_positions)
 
-        wins = sum(1 for p in counted if p.pnl_rupees > 0)
-        losses = sum(1 for p in counted if p.pnl_rupees < 0)
+        # Same rule as the per-book views and the daily table: net of charges, breakeven is neither.
+        from app.services.paper_trader import _outcome_pnl
+        wins = sum(1 for p in counted if _outcome_pnl(p) > 0)
+        losses = sum(1 for p in counted if _outcome_pnl(p) < 0)
         total_closed = len(counted)
 
         self._portfolio.total_realized_pnl = round(realized, 2)
@@ -464,6 +466,7 @@ class PaperExitsMixin:
         self._portfolio.winning_trades_count = wins
         self._portfolio.losing_trades_count = losses
         self._portfolio.total_trades_count = total_closed
+        self._portfolio.closed_trades_count = len(self._portfolio.closed_trades)
         self._portfolio.win_rate_pct = round((wins / total_closed * 100.0) if total_closed > 0 else 0.0, 1)
 
         total_gross = sum(getattr(p, "gross_pnl", 0.0) or p.pnl_rupees for p in counted)

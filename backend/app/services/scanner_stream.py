@@ -238,7 +238,7 @@ class ScannerStreamMixin:
                 option_bid_map=option_bid_map,
             )
             mode_to_query = "live" if matching_opt_positions else self._state.active_mode
-            self._state.paper_portfolio = paper_trader.get_portfolio(
+            self._state.paper_portfolio = paper_trader.get_portfolio_summary(
                 mode=mode_to_query
             )
 
@@ -268,7 +268,7 @@ class ScannerStreamMixin:
                     option_price_map=None,
                     feed_mode="live",
                 )
-                self._state.paper_portfolio = paper_trader.get_portfolio(
+                self._state.paper_portfolio = paper_trader.get_portfolio_summary(
                     mode=self._state.active_mode
                 )
 

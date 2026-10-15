@@ -96,6 +96,7 @@ class PaperStorage:
                 "ALTER TABLE positions ADD COLUMN exit_datetime TEXT DEFAULT NULL;",
                 "ALTER TABLE positions ADD COLUMN quarantine_reason TEXT DEFAULT NULL;",
                 "ALTER TABLE positions ADD COLUMN entry_estimated INTEGER DEFAULT 0;",
+                "ALTER TABLE positions ADD COLUMN archived_at TEXT DEFAULT NULL;",
             ]
             for stmt in migrations:
                 try:
@@ -281,10 +282,15 @@ class PaperStorage:
         closed: list[PaperPosition] = []
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM positions ORDER BY (entry_datetime IS NOT NULL), COALESCE(entry_datetime, entry_time) ASC;")
+            # Archived rows (from a portfolio reset) stay in the table but are not loaded.
+            cursor.execute(
+                "SELECT * FROM positions WHERE archived_at IS NULL "
+                "ORDER BY (entry_datetime IS NOT NULL), COALESCE(entry_datetime, entry_time) ASC;"
+            )
             rows = cursor.fetchall()
             for row in rows:
                 d = dict(row)
+                d.pop("archived_at", None)
                 charges_str = d.pop("charges_json", None)
                 if charges_str:
                     try:
@@ -349,9 +355,31 @@ class PaperStorage:
             rows = cursor.fetchall()
             return {r["signal_id"] for r in rows}
 
+    def backup_to(self, dest_path: str) -> None:
+        """Consistent copy of the whole database (sqlite online backup)."""
+        os.makedirs(os.path.dirname(os.path.abspath(dest_path)), exist_ok=True)
+        src = sqlite3.connect(self.db_path)
+        dst = sqlite3.connect(dest_path)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+            src.close()
+
     def clear_all(self):
+        """Portfolio reset. Nothing is deleted from the journal: a backup copy is written to
+        <db dir>/backups/ and every current row is stamped archived_at, which hides it from
+        the dashboard. Only processed signal ids (no trade data) are cleared."""
+        from app.services.market_hours import now_ist
+        now = now_ist().replace(microsecond=0)
+        stamp = now.strftime("%Y%m%d-%H%M%S")
+        backup_dir = os.path.join(os.path.dirname(os.path.abspath(self.db_path)), "backups")
+        self.backup_to(os.path.join(backup_dir, f"trades-before-reset-{stamp}.db"))
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM positions;")
+            cursor.execute(
+                "UPDATE positions SET archived_at = ? WHERE archived_at IS NULL;",
+                (now.isoformat(),),
+            )
             cursor.execute("DELETE FROM processed_signals;")
             conn.commit()
