@@ -425,3 +425,25 @@ def test_quarantine_flags_without_deleting_and_excludes_from_totals(tmp_path):
     # reversible
     storage.clear_quarantine(["EVENING", "STACK2"])
     assert PaperTradingEngine(db_path=db).get_portfolio().total_trades_count == 5
+
+
+@pytest.mark.asyncio
+async def test_closed_mode_publishes_no_signals_and_neutral_bias():
+    """Pre-open scan on yesterday's candles must not show active signals or a market bias."""
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    worker.set_session_credentials("10001", "tok")
+    worker.dhan_client.fetch_marketfeed_quotes = AsyncMock(return_value=_fake_marketfeed())
+    worker.dhan_client.fetch_expiry_list = AsyncMock(return_value=["2026-10-15"])
+    worker.dhan_client.fetch_option_chain = AsyncMock(return_value=_frozen_chain(2_500_000))
+    n = 60
+    trend = pd.DataFrame([{
+        "timestamp": datetime(2026, 10, 14, 15, 25) - timedelta(minutes=5 * (n - i)),
+        "open": 22000.0 + 10 * i, "high": 22010.0 + 10 * i, "low": 21990.0 + 10 * i,
+        "close": 22005.0 + 10 * i, "volume": 1000,
+    } for i in range(n)])
+    worker.dhan_client.fetch_intraday_candles = AsyncMock(return_value=trend)
+    with market_hours.override_clock(at(8, 40, day=15)):
+        state = await worker.run_single_scan_cycle("10001", "tok")
+    assert state.active_mode == "closed"
+    assert state.signals == []
+    assert state.market_bias == "NEUTRAL"

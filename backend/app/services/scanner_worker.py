@@ -702,7 +702,9 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 except Exception as e:
                     logger.warning(f"Error processing option chain for {inst.symbol}: {e}")
 
-            new_signals.extend(detected)
+            # Closed session: candles are yesterday's, so nothing is a live/confirmed signal.
+            if mode != "closed":
+                new_signals.extend(detected)
             self._bar_completed_symbols.discard(inst.symbol)
 
             # Update progress
@@ -743,7 +745,8 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         self._state.radar = new_radar
         self._state.top_bullish = rankings.top_bullish
         self._state.top_bearish = rankings.top_bearish
-        self._state.market_bias = market_bias
+        # Market bias comes from NIFTY vs VWAP on stale candles outside the session: not meaningful.
+        self._state.market_bias = "NEUTRAL" if mode == "closed" else market_bias
         self._state.paper_portfolio = paper_trader.get_portfolio(mode=mode)
         self._state.last_scan_time = market_hours.now_ist_naive().strftime("%H:%M:%S")
         self._state.scan_cycle_count += 1

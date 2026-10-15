@@ -401,7 +401,7 @@ const DashboardContent: React.FC = () => {
                       state.market_bias === 'BULLISH' ? 'up' : state.market_bias === 'BEARISH' ? 'down' : ''
                     }`}
                   >
-                    {state.market_bias || 'NEUTRAL'}
+                    {state.active_mode === 'closed' ? 'MARKET CLOSED' : state.market_bias || 'NEUTRAL'}
                   </span>
                   <span className="desk-muted">
                     {state.market_bias === 'BULLISH'
