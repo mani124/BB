@@ -97,6 +97,12 @@ class PaperStorage:
                 "ALTER TABLE positions ADD COLUMN quarantine_reason TEXT DEFAULT NULL;",
                 "ALTER TABLE positions ADD COLUMN entry_estimated INTEGER DEFAULT 0;",
                 "ALTER TABLE positions ADD COLUMN archived_at TEXT DEFAULT NULL;",
+                "ALTER TABLE positions ADD COLUMN entry_bid REAL DEFAULT NULL;",
+                "ALTER TABLE positions ADD COLUMN entry_spread_pct REAL DEFAULT NULL;",
+                "ALTER TABLE positions ADD COLUMN option_volume REAL DEFAULT NULL;",
+                "ALTER TABLE positions ADD COLUMN option_oi REAL DEFAULT NULL;",
+                "ALTER TABLE positions ADD COLUMN bid_qty REAL DEFAULT NULL;",
+                "ALTER TABLE positions ADD COLUMN ask_qty REAL DEFAULT NULL;",
             ]
             for stmt in migrations:
                 try:
@@ -177,6 +183,7 @@ class PaperStorage:
         "total_slippage_cost", "gross_pnl", "total_charges", "net_pnl", "charges_json",
         "booked_slippage_cost", "pending_spot_exit", "pending_spot_tp1",
         "entry_datetime", "exit_datetime", "quarantine_reason", "entry_estimated",
+        "entry_bid", "entry_spread_pct", "option_volume", "option_oi", "bid_qty", "ask_qty",
     )
     # Columns that never change after the row is first inserted.
     # (underlying_sl / option_sl are deliberately absent: they move to entry at Target 1 and must persist.)
@@ -185,6 +192,7 @@ class PaperStorage:
         "entry_time", "underlying_entry", "underlying_target_1", "underlying_target_2",
         "option_entry", "option_target_1", "option_target_2", "lot_size",
         "initial_lots", "initial_quantity",
+        "entry_bid", "entry_spread_pct", "option_volume", "option_oi", "bid_qty", "ask_qty",
     })
 
     @classmethod
@@ -223,6 +231,9 @@ class PaperStorage:
             getattr(pos, "entry_datetime", None), getattr(pos, "exit_datetime", None),
             getattr(pos, "quarantine_reason", None),
             1 if getattr(pos, "entry_estimated", False) else 0,
+            getattr(pos, "entry_bid", None), getattr(pos, "entry_spread_pct", None),
+            getattr(pos, "option_volume", None), getattr(pos, "option_oi", None),
+            getattr(pos, "bid_qty", None), getattr(pos, "ask_qty", None),
         )
 
     def upsert_position(self, pos: PaperPosition):

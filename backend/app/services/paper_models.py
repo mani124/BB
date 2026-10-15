@@ -64,6 +64,14 @@ class PaperPosition(BaseModel):
     quarantine_reason: Optional[str] = None
     # True when the entry price was modelled (no real ask/last from the exchange feed).
     entry_estimated: bool = False
+    # Liquidity at the moment of entry (None when the feed did not supply it). Logged so a
+    # spread or volume filter can be tested on real trades.
+    entry_bid: Optional[float] = None
+    entry_spread_pct: Optional[float] = None
+    option_volume: Optional[float] = None
+    option_oi: Optional[float] = None
+    bid_qty: Optional[float] = None
+    ask_qty: Optional[float] = None
 
 class DailyPnl(BaseModel):
     date: str
@@ -108,6 +116,7 @@ class PaperPortfolio(BaseModel):
     active_positions: list[PaperPosition] = []
     closed_trades: list[PaperPosition] = []
     auto_trade_enabled: bool = True
+    setup_modes: dict[str, str] = {}
     default_lots: int = 2
     max_risk_per_trade: float = 8000.0
     total_realized_pnl: float = 0.0

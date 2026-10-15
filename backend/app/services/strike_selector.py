@@ -107,6 +107,11 @@ class OptionStrikeRecommendation(BaseModel):
     real_bid_price: Optional[float] = None
     real_ltp: Optional[float] = None
     real_delta: Optional[float] = None
+    # Liquidity snapshot from the chain/quote (None when the feed does not carry it).
+    real_volume: Optional[float] = None
+    real_oi: Optional[float] = None
+    real_bid_qty: Optional[float] = None
+    real_ask_qty: Optional[float] = None
     # True when the option SL/targets were scaled with a default delta (0.50-0.55) instead of the
     # contract's own Greek, i.e. the premium exits are an approximation.
     delta_assumed: bool = False
@@ -117,6 +122,14 @@ class OptionStrikeRecommendation(BaseModel):
 
 # Backwards-compatible alias
 OptionStrike = OptionStrikeRecommendation
+
+
+def _opt_float(value) -> Optional[float]:
+    """A feed number as float, or None when it is missing or not numeric."""
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 INDEX_STRIKE_STEPS: dict[str, int] = {
     "NIFTY 50": 50,
@@ -463,6 +476,10 @@ def resolve_live_strike_from_chain(
             expiry_date=expiry_date,
             real_ask_price=ask,
             real_bid_price=bid,
+            real_volume=_opt_float(opt_contract.get("volume")),
+            real_oi=_opt_float(opt_contract.get("oi")),
+            real_bid_qty=_opt_float(opt_contract.get("top_bid_quantity")),
+            real_ask_qty=_opt_float(opt_contract.get("top_ask_quantity")),
             real_ltp=ltp,
             real_delta=round(delta, 4),
             delta_assumed=delta_assumed,

@@ -915,6 +915,11 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                         "quote_age_s": self._chain_age_s(inst.symbol),
                         "last_price": opt_ltp,
                         "volume": opt_vol,
+                        # Chain snapshot, logged on the trade so a liquidity filter can be tested later.
+                        "day_volume": opt_info.get("volume"),
+                        "oi": opt_info.get("oi"),
+                        "top_bid_quantity": opt_info.get("top_bid_quantity"),
+                        "top_ask_quantity": opt_info.get("top_ask_quantity"),
                         "ask_price": float(opt_info.get("top_ask_price", 0.0) or opt_info.get("ask_price", 0.0) or 0.0),
                         "bid_price": float(opt_info.get("top_bid_price", 0.0) or opt_info.get("bid_price", 0.0) or 0.0),
                         "is_live_quote": bool(opt_ltp > 0 or float(opt_info.get("top_ask_price", 0.0) or 0.0) > 0)

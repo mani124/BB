@@ -6,7 +6,7 @@ import { IndexHeroRadar } from './components/IndexHeroRadar';
 import { SetupFilterTabs } from './components/SetupFilterTabs';
 import { SignalTable } from './components/SignalTable';
 import { PaperPortfolioView, PortfolioStrip, OpenPositionsPanel, liveTrades } from './components/PaperPortfolioView';
-import { PaperPortfolio, PaperPosition, ScannerState, Signal } from './types';
+import { PaperPortfolio, PaperPosition, ScannerState, SetupMode, Signal } from './types';
 import { AlertCircle, X, KeyRound, Lock, CheckCircle2 } from 'lucide-react';
 import { isIndexSymbol } from './components/instruments';
 import { apiFetch, bootstrapDashboardSession, getDashboardCapability, setDashboardCapability } from './api/client';
@@ -305,6 +305,27 @@ const DashboardContent: React.FC = () => {
     }
   };
 
+  const handleChangeSetupMode = async (setup: string, mode: SetupMode) => {
+    try {
+      const res = await apiFetch('/api/paper/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ setup_modes: { [setup]: mode } }),
+      });
+      if (res.status === 401) {
+        setCapabilityModalOpen(true);
+        setActionError('Unauthorized: Dashboard capability required.');
+        return;
+      }
+      if (res.ok) {
+        const portData = await res.json();
+        applyPortfolio(portData);
+      }
+    } catch (e) {
+      console.error('Change setup mode failed', e);
+    }
+  };
+
   const handleChangeLots = async (lots: number) => {
     try {
       const res = await apiFetch('/api/paper/settings', {
@@ -495,6 +516,7 @@ const DashboardContent: React.FC = () => {
             onClosePosition={handleClosePosition}
             onToggleAutoTrade={handleToggleAutoTrade}
             onChangeLots={handleChangeLots}
+            onChangeSetupMode={handleChangeSetupMode}
             onResetPortfolio={handleResetPortfolio}
             hideStrip
           />

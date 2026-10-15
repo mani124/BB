@@ -134,6 +134,13 @@ export interface PaperPosition {
   exit_datetime?: string | null;
   quarantine_reason?: string | null;
   entry_estimated?: boolean;
+  // Liquidity at entry (absent when the feed did not supply it).
+  entry_bid?: number | null;
+  entry_spread_pct?: number | null;
+  option_volume?: number | null;
+  option_oi?: number | null;
+  bid_qty?: number | null;
+  ask_qty?: number | null;
   exit_reason?: string;
   initial_lots?: number;
   initial_quantity?: number;
@@ -151,12 +158,16 @@ export interface PaperPosition {
   charges_breakdown?: TradeChargesBreakdown;
 }
 
+export type SetupMode = 'off' | 'index' | 'stocks' | 'all';
+
 export interface PaperPortfolio {
   active_positions: PaperPosition[];
   // Empty in the live stream; filled by GET /api/paper/portfolio.
   closed_trades: PaperPosition[];
   closed_trades_count?: number;
   auto_trade_enabled: boolean;
+  // Setup number ('1'..'9') -> off | index | stocks | all
+  setup_modes?: Record<string, SetupMode>;
   default_lots: number;
   max_risk_per_trade?: number;
   total_realized_pnl: number;

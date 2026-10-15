@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PaperPortfolio, PaperPosition } from '../types';
+import { PaperPortfolio, PaperPosition, SetupMode } from '../types';
 import { RefreshCcw, Power, Receipt, X, LineChart } from 'lucide-react';
 import { PositionChartModal } from './PositionChartModal';
 import { setupCode } from './setupCode';
@@ -53,6 +53,7 @@ interface PaperPortfolioViewProps {
   onClosePosition: (id: string) => void;
   onToggleAutoTrade: (enabled: boolean) => void;
   onChangeLots: (lots: number) => void;
+  onChangeSetupMode?: (setup: string, mode: SetupMode) => void;
   onResetPortfolio: () => void;
   hideStrip?: boolean;
 }
@@ -271,11 +272,31 @@ const dayLabel = (iso: string): string => {
 
 const DAYS_SHOWN = 5;
 
+const SETUP_SWITCH_ROWS: { key: string; label: string }[] = [
+  { key: '1', label: 'Setup 1 · BB Squeeze' },
+  { key: '2', label: 'Setup 2 · Walking the Bands' },
+  { key: '3', label: 'Setup 3 · W/M Reversal' },
+  { key: '4', label: 'Setup 4 · 9:30 ORB' },
+  { key: '5', label: 'Setup 5 · Option Chart Scalp' },
+  { key: '6', label: 'Setup 6 · Pin Bar Snapback' },
+  { key: '7', label: 'Setup 7 · Inside Bar Snapback' },
+  { key: '8', label: 'Setup 8 · Divergence Fade' },
+  { key: '9', label: 'Setup 9 · Relative Strength' },
+];
+
+const SETUP_MODE_OPTIONS: { mode: SetupMode; label: string; title: string }[] = [
+  { mode: 'off', label: 'Off', title: 'Never auto-enter this setup' },
+  { mode: 'index', label: 'Index', title: 'Auto-enter on indices only' },
+  { mode: 'stocks', label: 'Stocks', title: 'Auto-enter on stocks only' },
+  { mode: 'all', label: 'All', title: 'Auto-enter on indices and stocks' },
+];
+
 export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
   portfolio,
   onClosePosition,
   onToggleAutoTrade,
   onChangeLots,
+  onChangeSetupMode,
   onResetPortfolio,
   hideStrip = false,
 }) => {
@@ -360,6 +381,38 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
           Reset Portfolio
         </button>
       </div>
+
+      {onChangeSetupMode && (
+        <section className="desk-panel" aria-labelledby="setup-switches-title">
+          <div className="desk-ph">
+            <h2 id="setup-switches-title">Setup switches</h2>
+            <span className="text-xs desk-muted">Auto-entry only. Manual trades are never blocked.</span>
+          </div>
+          <div className="px-3.5 py-2.5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-2">
+            {SETUP_SWITCH_ROWS.map((row) => {
+              const current = portfolio.setup_modes?.[row.key] ?? 'all';
+              return (
+                <div key={row.key} className="flex items-center justify-between gap-3 text-xs">
+                  <span>{row.label}</span>
+                  <div className="desk-seg" role="group" aria-label={`${row.label} mode`}>
+                    {SETUP_MODE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.mode}
+                        type="button"
+                        title={opt.title}
+                        aria-pressed={current === opt.mode}
+                        onClick={() => onChangeSetupMode(row.key, opt.mode)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-3 items-start">
         <OpenPositionsPanel positions={portfolio.active_positions} onClosePosition={onClosePosition} />
