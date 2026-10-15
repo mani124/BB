@@ -223,11 +223,12 @@ def test_finding_6_intraday_volume_baseline_checks_today_bars():
     """F6: Prior-session bars in history do not prevent first today quote from initializing forming candle volume."""
     from app.services.scanner_worker import ScannerWorker
     from app.services.universe_manager import UniverseManager
-    from datetime import datetime, timedelta
+    from datetime import timedelta
+    from app.services import market_hours
 
     worker = ScannerWorker(universe_mgr=UniverseManager())
     inst = worker.universe_mgr.get_indices()[0]
-    now = datetime.now()
+    now = market_hours.now_ist_naive()  # pinned exchange clock, not the wall clock
 
     # Pre-populate history with bars from YESTERDAY
     yesterday = now - timedelta(days=1)

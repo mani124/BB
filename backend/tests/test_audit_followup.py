@@ -350,7 +350,8 @@ def test_volume_baseline_with_seeded_forming_bar():
     inst = worker.universe_mgr.get_indices()[0]
     sym = inst.symbol
 
-    now = datetime.now()
+    from app.services import market_hours
+    now = market_hours.now_ist_naive()  # pinned exchange clock, not the wall clock
     step_min = 5
     current_slot_min = (now.minute // step_min) * step_min
     current_slot_ts = now.replace(minute=current_slot_min, second=0, microsecond=0)

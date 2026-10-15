@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
+from app.services import market_hours
 from app.services.universe_manager import UniverseManager
 from app.services.scanner_worker import ScannerWorker, IndexRadarItem
 from app.services.paper_trader import paper_trader
@@ -205,13 +206,14 @@ async def test_feed_health_derived_from_quote_success():
 async def test_session_boundary_clears_candle_history():
     from datetime import date, timedelta
     worker = ScannerWorker(universe_mgr=UniverseManager())
-    worker._candle_history["NIFTY 50"] = [{"timestamp": datetime.now(), "close": 25000.0}]
-    worker._last_session_date = date.today() - timedelta(days=1)
+    today = market_hours.now_ist().date()  # the suite pins the exchange clock (conftest)
+    worker._candle_history["NIFTY 50"] = [{"timestamp": market_hours.now_ist_naive(), "close": 25000.0}]
+    worker._last_session_date = today - timedelta(days=1)
 
     # When date changes, reset session candles
     worker.check_session_reset()
     assert "NIFTY 50" not in worker._candle_history
-    assert worker._last_session_date == date.today()
+    assert worker._last_session_date == today
     await worker.stop()
 
 
