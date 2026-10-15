@@ -44,6 +44,11 @@ class PaperPosition(BaseModel):
     booked_lots: int = 0
     booked_pnl_rupees: float = 0.0
     booked_slippage_cost: float = 0.0
+    # Open positions only (refreshed on every price update): gross P&L of the lots still open,
+    # the estimated charges for the whole trade if it were closed now, and the net result.
+    unrealized_pnl_rupees: float = 0.0
+    est_exit_charges: float = 0.0
+    est_net_pnl: float = 0.0
     pending_spot_exit: Optional[str] = None
     pending_spot_tp1: bool = False
     option_security_id: Optional[str] = None
@@ -112,6 +117,8 @@ class PaperPortfolio(BaseModel):
     max_risk_per_trade: float = 8000.0
     total_realized_pnl: float = 0.0
     total_unrealized_pnl: float = 0.0
+    total_unrealized_charges: float = 0.0
+    total_unrealized_net: float = 0.0
     total_pnl: float = 0.0
     win_rate_pct: float = 0.0
     total_trades_count: int = 0

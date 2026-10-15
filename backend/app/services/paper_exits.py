@@ -91,6 +91,27 @@ class PaperExitsMixin:
         pos.net_pnl = round(pos.gross_pnl - pos.total_charges, 2)
         pos.charges_breakdown = breakdown.model_dump()
 
+    @staticmethod
+    def _mark_open_estimates(pos: PaperPosition) -> None:
+        """Unrealised P&L of the open lots and the net result if the trade closed now, using the
+        same charge model as _finalize_closed_position."""
+        runner = round(pos.pnl_points * pos.quantity, 2)
+        pos.unrealized_pnl_rupees = runner
+        init_qty = pos.initial_quantity if (pos.initial_quantity and pos.initial_quantity > 0) else pos.quantity
+        gross = round(pos.booked_pnl_rupees + runner, 2)
+        if init_qty <= 0:
+            pos.est_exit_charges, pos.est_net_pnl = 0.0, gross
+            return
+        sell_price = max(0.0, round(pos.option_entry + gross / init_qty, 2))
+        breakdown = calculate_option_trade_charges(
+            buy_price=pos.option_entry,
+            sell_price=sell_price,
+            quantity=init_qty,
+            orders_count=3 if pos.booked_lots > 0 else 2,
+        )
+        pos.est_exit_charges = breakdown.total_charges
+        pos.est_net_pnl = round(gross - breakdown.total_charges, 2)
+
     def update_market_prices(
         self,
         price_map: dict[str, float],
@@ -239,6 +260,11 @@ class PaperExitsMixin:
                     pos.option_sl = pos.option_entry
                     self._enqueue_write("upsert", pos)
 
+                # Keep the headline P&L live. This branch used to skip the update below, so a
+                # Setup 5 position showed +33 pts but P&L of 0.
+                pos.pnl_rupees = round(pos.booked_pnl_rupees + round(pos.pnl_points * pos.quantity, 2), 2)
+                if orig_state[3] != pos.pnl_rupees or orig_state[1] != pos.current_option_price:
+                    changed_active.append(pos)
                 still_active.append(pos)
                 continue
 
@@ -453,6 +479,9 @@ class PaperExitsMixin:
         active_booked_pnl = sum(p.booked_pnl_rupees for p in self._portfolio.active_positions)
         realized = closed_pnl + active_booked_pnl
         unrealized = sum(round(p.pnl_points * p.quantity, 2) for p in self._portfolio.active_positions)
+        for p in self._portfolio.active_positions:
+            self._mark_open_estimates(p)
+        unrealized_charges = sum(p.est_exit_charges for p in self._portfolio.active_positions)
 
         # Same rule as the per-book views and the daily table: net of charges, breakeven is neither.
         from app.services.paper_trader import _outcome_pnl
@@ -462,6 +491,8 @@ class PaperExitsMixin:
 
         self._portfolio.total_realized_pnl = round(realized, 2)
         self._portfolio.total_unrealized_pnl = round(unrealized, 2)
+        self._portfolio.total_unrealized_charges = round(unrealized_charges, 2)
+        self._portfolio.total_unrealized_net = round(unrealized - unrealized_charges, 2)
         self._portfolio.total_pnl = round(realized + unrealized, 2)
         self._portfolio.winning_trades_count = wins
         self._portfolio.losing_trades_count = losses

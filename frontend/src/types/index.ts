@@ -139,6 +139,9 @@ export interface PaperPosition {
   initial_quantity?: number;
   booked_lots?: number;
   booked_pnl_rupees?: number;
+  unrealized_pnl_rupees?: number;
+  est_exit_charges?: number;
+  est_net_pnl?: number;
   option_security_id?: string;
   theoretical_entry?: number;
   entry_slippage?: number;
@@ -161,6 +164,8 @@ export interface PaperPortfolio {
   max_risk_per_trade?: number;
   total_realized_pnl: number;
   total_unrealized_pnl: number;
+  total_unrealized_charges?: number;
+  total_unrealized_net?: number;
   total_pnl: number;
   win_rate_pct: number;
   total_trades_count: number;
