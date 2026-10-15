@@ -494,3 +494,21 @@ Tightening the code to the spec would reduce Setup 3 signal frequency; loosening
 * Option exits scale spot risk by the contract's chain delta; when the chain has no Greek the default 0.50–0.55 is used and the recommendation carries `delta_assumed = true` (`REQUIRE_REAL_DELTA=1` refuses such entries).
 * Setup 5 stops entering after 14:30 IST on the contract's expiry day.
 * Size defaults scale with the 2-lot default: `max_risk_per_trade` 8,000 (was 4,000) and `MAX_OPEN_NOTIONAL` 20 lakh (was 10 lakh, env override `MAX_OPEN_NOTIONAL`). Position-count caps (8 open, 3 entries per stock per day) are unchanged.
+
+---
+
+## 12. Research Setup: Bullish RSI Divergence Confirmation (disabled, not traded)
+
+* **Status:** detector + replay script only. `RSI_DIVERGENCE_ENABLED` defaults to `0`; nothing in the scanner, strategy engine or paper trader imports it, so no paper trade can come from it. Enable only after the replay numbers have been reviewed on real candles.
+* **Code:** `backend/app/services/rsi_divergence.py`, tests in `tests/test_rsi_divergence.py`, replay in `backend/scripts/backtest_rsi_divergence.py`.
+* **Idea:** a lower low in price with a higher low in Wilder RSI(14) on the 5m chart, used as a *confirmation* of the lower-band snap-back idea behind setups 6–8, not a stand-alone signal. Direction: BUY CE only (bearish mirror not built).
+* **Relation to existing setups:** Setup 8 (section 11.1) already fires on a lower-band trough with RSI divergence, but it uses a 15-bar window split 3/12, no swing-pivot rule, no confirming candle and enters on the first bar that closes inside the band. This setup is the stricter, pivot-based version; compare signal counts before adding any of it live.
+
+### Rules (5m bars; evaluated on the last CLOSED bar only)
+1. **Swing low:** a bar whose low is strictly below the 2 bars before it and ≤ the 2 bars after it (`pivot_k = 2`). A pivot is only known 2 bars later, so there is no look-ahead. Pivots before bar 15 are ignored (RSI warm-up).
+2. **Two lows:** L1 older, L2 newer, 4–20 bars apart, same session; L2 is the lowest print since L1.
+3. **Divergence:** `low(L2) < low(L1)` and `RSI(L2) >= RSI(L1) + 2.0`, with `RSI(L1) <= 40`.
+4. **Band context (default on, `require_lower_band`):** `low(L1) <= lower Bollinger band(L1)`.
+5. **Trigger:** the first bullish candle (close > open) that closes above the previous bar's high, within 3 bars after L2 is confirmed. One signal per pivot; never on the forming bar.
+6. **Stop:** `low(L2) − max(0.5, 0.05% of close)`. Reference target: 20 SMA (Target 1). A real entry would fill on the next bar, so the replay uses the next bar's open.
+7. **Optional filter (not implemented):** 15m trend/support alignment. Add only if the 5m replay shows an edge worth refining.
