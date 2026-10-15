@@ -18,5 +18,5 @@ check "temp removed" '[ -z "$(ls $T/trades-* 2>/dev/null)" ]'
 run --status; check "status ok" '[ $? -eq 0 ]'
 touch "$T/broken"; run; check "failed upload -> last_failure" '[ -f "$T/st/last_failure" ]'
 run --status; check "status reports failure" '[ $? -eq 1 ]'
-rm "$T/broken"; TB= run; check "missing bucket fails" '[ -f "$T/st/last_failure" ]'
+rm "$T/broken"; TB='' run; check "missing bucket fails" '[ -f "$T/st/last_failure" ]'
 exit $fail
