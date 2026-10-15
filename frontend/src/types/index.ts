@@ -153,7 +153,9 @@ export interface PaperPosition {
 
 export interface PaperPortfolio {
   active_positions: PaperPosition[];
+  // Empty in the live stream; filled by GET /api/paper/portfolio.
   closed_trades: PaperPosition[];
+  closed_trades_count?: number;
   auto_trade_enabled: boolean;
   default_lots: number;
   max_risk_per_trade?: number;

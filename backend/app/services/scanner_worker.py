@@ -535,7 +535,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 if pd.isna(bw_min) or bw_min <= 0:
                     bw_min = bw_val
 
-                is_sq = (bw_val <= bw_min * 1.25) or (bw_val <= 5.0)
+                is_sq = (bw_val <= bw_min * 1.25) or (bw_val <= float(settings.SQUEEZE_ABS_BW_PCT))
                 vwap_b = "ABOVE_VWAP" if radar_close >= float(last_row["vwap"]) else "BELOW_VWAP"
 
                 percent_b_val = float(last_row["percent_b"])
@@ -745,10 +745,10 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             feed_mode=mode,
             option_bid_map=option_bid_map,
         )
-        if mode != "demo":
-            # P0-5: close stale carry-overs and square off at the EOD time (live positions only)
-            paper_trader.flag_stale_carryover()
-            paper_trader.square_off_if_due(feed_mode="live")
+        # P0-5: in every mode (a demo scan after a disconnect too) close positions carried over
+        # from an earlier date (both books) and square off live positions at the EOD time.
+        paper_trader.flag_stale_carryover()
+        paper_trader.square_off_if_due(feed_mode="live")
         if mode in ("live", "demo"):
             paper_trader.on_signals_cycle(new_signals, feed_mode=mode)
         if mode == "live" and ws_healthy:
@@ -767,7 +767,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         self._state.top_bearish = rankings.top_bearish
         # Market bias comes from NIFTY vs VWAP on stale candles outside the session: not meaningful.
         self._state.market_bias = "NEUTRAL" if mode == "closed" else market_bias
-        self._state.paper_portfolio = paper_trader.get_portfolio(mode=mode)
+        self._state.paper_portfolio = paper_trader.get_portfolio_summary(mode=mode)
         self._state.last_scan_time = market_hours.now_ist_naive().strftime("%H:%M:%S")
         self._state.scan_cycle_count += 1
         self._state.is_scanning = False

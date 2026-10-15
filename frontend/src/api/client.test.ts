@@ -4,7 +4,6 @@ import {
   setDashboardCapability,
   bootstrapDashboardSession,
   apiFetch,
-  DEFAULT_CAPABILITY,
   CAPABILITY_STORAGE_KEY,
 } from './client';
 
@@ -14,8 +13,20 @@ describe('client api and capability helper', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns default capability if none in localStorage', () => {
-    expect(getDashboardCapability()).toBe(DEFAULT_CAPABILITY);
+  it('has no built-in key when none is stored', () => {
+    expect(getDashboardCapability()).toBe('');
+  });
+
+  it('ignores the old public default key left in storage', () => {
+    localStorage.setItem(CAPABILITY_STORAGE_KEY, 'bb-options-local-capability');
+    expect(getDashboardCapability()).toBe('');
+  });
+
+  it('bootstrapDashboardSession does not call the server without a key', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await bootstrapDashboardSession()).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('stores and retrieves custom capability token', () => {

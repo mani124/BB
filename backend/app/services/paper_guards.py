@@ -51,11 +51,19 @@ class PaperGuardsMixin:
             return f"sym:{str(strike_symbol).strip()}"
         return None
 
-    def _exposure_block_reason(self, signal: Signal, lots: Optional[int] = None) -> Optional[str]:
-        """P0-2: returns why a new entry must be refused, or None if it may proceed."""
+    def _exposure_block_reason(self, signal: Signal, lots: Optional[int] = None, feed_mode: Optional[str] = None) -> Optional[str]:
+        """P0-2: returns why a new entry must be refused, or None if it may proceed.
+
+        Caps are per book: demo positions never count against live limits and vice versa."""
         rec = signal.strike_recommendation
         key = self._contract_key(getattr(rec, "option_security_id", None), getattr(rec, "strike_symbol", None))
-        for p in self._portfolio.active_positions:
+
+        def same_book(p) -> bool:
+            return feed_mode is None or getattr(p, "feed_mode", "demo") == feed_mode
+
+        active = [p for p in self._portfolio.active_positions if same_book(p)]
+        closed = [p for p in self._portfolio.closed_trades if same_book(p)]
+        for p in active:
             if key and self._contract_key(p.option_security_id, p.strike_symbol) == key:
                 return f"contract {key} already has an open position"
             if p.symbol == signal.symbol and p.option_type == signal.option_type:
@@ -63,12 +71,12 @@ class PaperGuardsMixin:
 
         # P1-7: portfolio-level caps (0 disables a cap)
         max_open = int(getattr(settings, "MAX_OPEN_POSITIONS", 0) or 0)
-        if max_open > 0 and len(self._portfolio.active_positions) >= max_open:
+        if max_open > 0 and len(active) >= max_open:
             return f"max open positions reached ({max_open})"
 
         max_notional = float(getattr(settings, "MAX_OPEN_NOTIONAL", 0) or 0)
         if max_notional > 0:
-            open_notional = sum(p.option_entry * p.quantity for p in self._portfolio.active_positions)
+            open_notional = sum(p.option_entry * p.quantity for p in active)
             lots = lots if lots is not None else self._portfolio.default_lots
             new_notional = float(getattr(rec, "estimated_option_entry", 0.0) or 0.0) * int(getattr(rec, "lot_size", 0) or 0) * max(1, lots)
             if open_notional + new_notional > max_notional:
@@ -78,7 +86,7 @@ class PaperGuardsMixin:
         if max_per_day > 0:
             today = market_hours.now_ist().date()
             entered = 0
-            for p in self._portfolio.active_positions + self._portfolio.closed_trades:
+            for p in active + closed:
                 if p.symbol != signal.symbol or p.quarantine_reason:
                     continue
                 ed = _parse_iso(p.entry_datetime)
@@ -90,7 +98,7 @@ class PaperGuardsMixin:
         cooldown = int(getattr(settings, "REENTRY_COOLDOWN_SECONDS", 0) or 0)
         if cooldown > 0:
             now = market_hours.now_ist()
-            for p in reversed(self._portfolio.closed_trades):
+            for p in reversed(closed):
                 if p.symbol != signal.symbol or p.option_type != signal.option_type or p.quarantine_reason:
                     continue
                 exited = _parse_iso(p.exit_datetime)

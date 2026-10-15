@@ -32,14 +32,18 @@ def find_suspect_rows(db_path: str) -> dict[str, str]:
     - OFF_SESSION_ENTRY: entered on a weekend/holiday or outside 09:15-15:30 IST.
     - STACKED_DUPLICATE: opened while an earlier row on the same contract (option_security_id,
       else strike_symbol) was still open; the earliest row is kept, later overlaps are flagged.
-    Rows already quarantined are skipped. Rows without an entry_datetime are skipped.
+    Only live rows are checked (demo mode is not tied to exchange hours). Rows already
+    quarantined, archived, or without an entry_datetime are skipped.
     """
+    from app.services.paper_storage import PaperStorage
+    PaperStorage(db_path)  # make sure the schema (archived_at etc.) is current
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
             "SELECT id, strike_symbol, option_security_id, entry_datetime, exit_datetime, status "
             "FROM positions WHERE quarantine_reason IS NULL AND entry_datetime IS NOT NULL "
+            "AND COALESCE(feed_mode, 'demo') = 'live' AND archived_at IS NULL "
             "ORDER BY entry_datetime ASC;"
         ).fetchall()
     finally:

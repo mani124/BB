@@ -1,3 +1,13 @@
+import os
+import tempfile
+
+# Keep the test suite away from the real journal and key file: these must be set before any
+# app module is imported, because settings and the paper-trading engine are built at import time.
+_TEST_DATA_DIR = tempfile.mkdtemp(prefix="bb-tests-")
+os.environ["BB_DATA_DIR"] = _TEST_DATA_DIR
+os.environ["BB_DB_PATH"] = os.path.join(_TEST_DATA_DIR, "trades-test.db")
+os.environ["DASHBOARD_CAPABILITY"] = "test-dashboard-capability-not-for-production"
+
 from starlette.testclient import TestClient
 from app.core.config import settings
 

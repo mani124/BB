@@ -10,7 +10,7 @@ router = APIRouter(prefix="/signals", tags=["signals"])
 @router.get("")
 @router.get("/snapshot")
 @router.get("/state")
-def get_signals_snapshot():
+async def get_signals_snapshot():
     from app.main import worker
     return worker.get_state().model_dump()
 
@@ -74,7 +74,7 @@ async def stream_signals(request: Request, max_events: Optional[int] = None):
 
 
 @router.post("/close/{position_id}")
-def close_trade_signal(position_id: str, body: Optional[ClosePositionRequest] = None):
+async def close_trade_signal(position_id: str, body: Optional[ClosePositionRequest] = None):
     # F2, F4, F8: Enforces server-owned pricing via shared freshness-checking close logic.
     from app.api.paper import _close_position_with_freshness
     if isinstance(body, dict):

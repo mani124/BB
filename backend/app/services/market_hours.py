@@ -9,7 +9,11 @@ from contextlib import contextmanager
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Callable, Iterator, Optional, Union
 
+import logging
+
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 IST = timezone(timedelta(hours=5, minutes=30), name="IST")
 
@@ -36,6 +40,12 @@ NSE_HOLIDAYS: frozenset[date] = frozenset({
     date(2026, 11, 24),  # Guru Nanak Jayanti
     date(2026, 12, 25),  # Christmas
 })
+
+# Years the list above covers. A date in any other year is treated as a NON-trading day
+# (fail closed): trading on an unlisted holiday means trading on frozen quotes.
+# When NSE publishes next year's circular, add its dates above and the year here.
+NSE_HOLIDAY_YEARS: frozenset[int] = frozenset({2026})
+_warned_missing_years: set[int] = set()
 
 _Clock = Callable[[], datetime]
 _clock: Optional[_Clock] = None
@@ -104,7 +114,21 @@ def _resolve(now: Optional[datetime]) -> datetime:
 
 
 def is_trading_day(d: date) -> bool:
+    if d.year not in NSE_HOLIDAY_YEARS:
+        if d.year not in _warned_missing_years:
+            _warned_missing_years.add(d.year)
+            logger.error(
+                "DATA_QUALITY no NSE holiday list for %s; treating every day as closed until "
+                "market_hours.NSE_HOLIDAYS / NSE_HOLIDAY_YEARS are updated", d.year,
+            )
+        return False
     return d.weekday() < 5 and d not in NSE_HOLIDAYS
+
+
+def holiday_list_missing_soon(today: Optional[date] = None, days: int = 31) -> bool:
+    """True when the holiday list for the year starting within ``days`` days is missing."""
+    t = today or now_ist().date()
+    return (t + timedelta(days=days)).year not in NSE_HOLIDAY_YEARS
 
 
 def is_market_open(now: Optional[datetime] = None) -> bool:

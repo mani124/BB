@@ -173,7 +173,8 @@ def get_strike_step(symbol: str, price: float) -> int:
 def estimate_option_entry(symbol: str, underlying_price: float, step: int) -> float:
     """Estimate realistic 1-strike ITM option entry premium based on underlying tier and step."""
     clean = clean_symbol_key(symbol)
-    is_index = any(idx in clean for idx in ["NIFTY", "BANK", "FINNIFTY", "SENSEX", "MIDCP"])
+    # Exact index names only: a substring test made AUBANK, BANKBARODA, YESBANK, ... "indices".
+    is_index = clean in INDEX_STRIKE_STEPS
     if is_index:
         # Intrinsic step value + ~0.5% extrinsic time value
         return round(float(step) + (underlying_price * 0.005), 1)
