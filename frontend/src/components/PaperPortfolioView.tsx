@@ -135,10 +135,13 @@ export const PortfolioStrip: React.FC<{ portfolio?: PaperPortfolio }> = ({ portf
   const totalCharges = portfolio?.total_charges ?? 0;
   const netRealized = portfolio?.total_net_pnl ?? portfolio?.total_realized_pnl ?? 0;
   const floating = portfolio?.total_unrealized_pnl ?? 0;
+  const floatingCharges = portfolio?.total_unrealized_charges ?? 0;
+  const floatingNet = portfolio?.total_unrealized_net ?? floating;
+  const openCount = portfolio?.active_positions?.length ?? 0;
 
   return (
     <section
-      className="desk-strip grid-cols-2 md:grid-cols-3 lg:grid-cols-[1.4fr_repeat(4,1fr)]"
+      className="desk-strip grid-cols-2 md:grid-cols-3 lg:grid-cols-[1.4fr_repeat(5,1fr)]"
       aria-label="Portfolio performance"
     >
       <div className="col-span-2 md:col-span-3 lg:col-span-1">
@@ -173,11 +176,19 @@ export const PortfolioStrip: React.FC<{ portfolio?: PaperPortfolio }> = ({ portf
         <div className="text-xs desk-muted">STT, GST, exchange, SEBI</div>
       </div>
       <div>
+        <div className="desk-label">Unrealized P&L (open)</div>
+        <div className={`desk-num text-lg font-semibold ${pnlClass(floating)}`}>
+          {formatCurrency(floating, true)}
+        </div>
+        <div className="text-xs desk-muted">
+          {openCount} open · net if closed now{' '}
+          <span className={`desk-num ${pnlClass(floatingNet)}`}>{formatCurrency(floatingNet, true)}</span>
+          {floatingCharges > 0 && <> (est. charges ₹{floatingCharges.toLocaleString('en-IN', INR)})</>}
+        </div>
+      </div>
+      <div>
         <div className="desk-label">Win rate</div>
         <div className="desk-num text-lg font-semibold">{(portfolio?.win_rate_pct ?? 0).toFixed(1)}%</div>
-        <div className="text-xs desk-muted">
-          Floating <span className={`desk-num ${pnlClass(floating)}`}>₹{floating.toFixed(2)}</span>
-        </div>
       </div>
     </section>
   );
@@ -205,6 +216,8 @@ export const OpenPositionsPanel: React.FC<{
         const isT1 = pos.status === 'TARGET_1';
         const target = isT1 ? pos.option_target_2 : pos.option_target_1;
         const span = target - pos.option_sl;
+        const booked = pos.booked_pnl_rupees ?? 0;
+        const openGain = pos.unrealized_pnl_rupees ?? Math.round((pos.pnl_rupees - booked) * 100) / 100;
         const frac = span > 0 ? Math.max(0, Math.min(1, (pos.current_option_price - pos.option_sl) / span)) : 0.5;
         return (
           <div
@@ -222,8 +235,8 @@ export const OpenPositionsPanel: React.FC<{
               </span>
             </div>
             <div className={`desk-num text-xl font-semibold text-right ${pnlClass(pos.pnl_rupees)}`}>
-              {pos.pnl_rupees >= 0 ? '+' : ''}₹{pos.pnl_rupees.toLocaleString('en-IN', { minimumFractionDigits: 1 })}
-              <span className="desk-sub text-right">{pos.pnl_points >= 0 ? '+' : ''}{pos.pnl_points.toFixed(1)} pts</span>
+              {formatCurrency(pos.pnl_rupees, true)}
+              <span className="desk-sub text-right">Total · {pos.pnl_points >= 0 ? '+' : ''}{pos.pnl_points.toFixed(1)} pts on open lots</span>
             </div>
             <div
               className="col-span-2 relative h-1.5 rounded-sm my-2"
@@ -237,9 +250,25 @@ export const OpenPositionsPanel: React.FC<{
               <span style={{ color: 'var(--fg)', fontWeight: 600 }}>LTP {pos.current_option_price.toFixed(1)}</span>
               <span className="desk-up">{isT1 ? 'T2' : 'T1'} {target.toFixed(1)}</span>
             </div>
+            <div className="col-span-2 flex flex-wrap justify-between gap-x-3 text-xs desk-num">
+              <span className={pnlClass(booked)}>
+                Booked {formatCurrency(booked, true)}
+              </span>
+              <span className={pnlClass(openGain)}>
+                Unrealized {formatCurrency(openGain, true)}
+              </span>
+              {pos.est_net_pnl !== undefined && (
+                <span className={pnlClass(pos.est_net_pnl)} title="Booked + unrealized, minus estimated brokerage and taxes for the whole trade">
+                  Net if closed now {formatCurrency(pos.est_net_pnl, true)}
+                  {(pos.est_exit_charges ?? 0) > 0 && <span className="desk-muted"> (charges ₹{pos.est_exit_charges!.toLocaleString('en-IN', INR)})</span>}
+                </span>
+              )}
+            </div>
             {isT1 && (
               <div className="col-span-2 text-xs" style={{ color: 'var(--accent)' }}>
-                ✓ 50% booked (+₹{pos.booked_pnl_rupees?.toFixed(1) || '0'})
+                {(pos.booked_lots ?? 0) > 0
+                  ? `✓ ${pos.booked_lots} of ${pos.initial_lots ?? (pos.lots + (pos.booked_lots ?? 0))} lots booked at T1: ${formatCurrency(booked, true)} locked in`
+                  : 'T1 hit: a single lot cannot be split, so nothing is booked. Stop moved to breakeven.'}
               </div>
             )}
             <div className="col-span-2 text-right mt-1">

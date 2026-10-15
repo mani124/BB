@@ -60,6 +60,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         realized = round(closed_pnl + active_booked_pnl, 2)
         unrealized = round(sum(round(p.pnl_points * p.quantity, 2) for p in active), 2)
         total = round(realized + unrealized, 2)
+        unrealized_charges = round(sum(p.est_exit_charges for p in active), 2)
         total_trades = len(closed)
         winning = sum(1 for p in closed if _outcome_pnl(p) > 0)
         losing = sum(1 for p in closed if _outcome_pnl(p) < 0)
@@ -82,6 +83,8 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             max_risk_per_trade=self._portfolio.max_risk_per_trade,
             total_realized_pnl=realized,
             total_unrealized_pnl=unrealized,
+            total_unrealized_charges=unrealized_charges,
+            total_unrealized_net=round(unrealized - unrealized_charges, 2),
             total_pnl=total,
             win_rate_pct=win_rate,
             total_trades_count=total_trades,
