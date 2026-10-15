@@ -109,7 +109,7 @@ class PaperPortfolio(BaseModel):
     closed_trades: list[PaperPosition] = []
     auto_trade_enabled: bool = True
     default_lots: int = 2
-    max_risk_per_trade: float = 4000.0
+    max_risk_per_trade: float = 8000.0
     total_realized_pnl: float = 0.0
     total_unrealized_pnl: float = 0.0
     total_pnl: float = 0.0
