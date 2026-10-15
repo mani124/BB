@@ -3,7 +3,9 @@ import { PaperPortfolio, PaperPosition, SetupMode } from '../types';
 import { RefreshCcw, Power, Receipt, X, LineChart } from 'lucide-react';
 import { PositionChartModal } from './PositionChartModal';
 import { setupCode } from './setupCode';
+import { CostPanel } from './CostPanel';
 import { isIndexSymbol } from './instruments';
+import { SetupStatsPanel } from './SetupStatsPanel';
 
 // Show the date whenever a trade crosses midnight/sessions so an overnight exit never
 // looks like it happened before its entry (times alone are HH:MM:SS).
@@ -411,6 +413,8 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
         </button>
       </div>
 
+      <SetupStatsPanel refreshKey={portfolio.closed_trades.length} />
+
       {onChangeSetupMode && (
         <section className="desk-panel" aria-labelledby="setup-switches-title">
           <div className="desk-ph">
@@ -471,6 +475,8 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
           )}
         </section>
       </div>
+
+      <CostPanel refreshKey={portfolio.closed_trades_count ?? closedTrades.length} />
 
       {/* Closed trades journal, grouped by day */}
       <section className="desk-panel" aria-labelledby="journal-title">

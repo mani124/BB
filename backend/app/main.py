@@ -11,11 +11,13 @@ from app.api.auth import router as auth_router
 from app.api.universe import router as universe_router
 from app.api.signals import router as signals_router
 from app.api.paper import router as paper_router
+from app.api.cost import router as cost_router
 from app.api.position_chart import router as position_chart_router
 
 setup_security_logging()
 
 from app.services.paper_trader import paper_trader
+from app.services.notifier import notify
 
 universe_mgr = UniverseManager()
 worker = ScannerWorker(universe_mgr=universe_mgr)
@@ -33,6 +35,7 @@ async def lifespan(app: FastAPI):
             "treated as closed until app/services/market_hours.py is updated."
         )
     await paper_trader.start_persistence_worker()
+    notify("service_started", f"{settings.APP_NAME} started (v{settings.VERSION}).", min_interval=60)
     worker.start()
     yield
     await worker.stop()
@@ -151,6 +154,7 @@ def create_app() -> FastAPI:
     app.include_router(universe_router, prefix=settings.API_PREFIX)
     app.include_router(signals_router, prefix=settings.API_PREFIX)
     app.include_router(paper_router, prefix=settings.API_PREFIX)
+    app.include_router(cost_router, prefix=settings.API_PREFIX)
     app.include_router(position_chart_router, prefix=settings.API_PREFIX)
 
     return app
