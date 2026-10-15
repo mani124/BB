@@ -104,12 +104,25 @@ def test_only_first_pullback():
 
 def test_outside_session_window():
     df = _stock_with_pullback(+1)
-    shift = timedelta(minutes=5 * 50)
+    # move the series so the pullback bar starts at 15:15, past the 15:10 last bar start
+    shift = START.replace(hour=15, minute=15) - df["timestamp"].iloc[-1]
     late = df.copy()
-    late["timestamp"] = late["timestamp"] + shift * 1.4
+    late["timestamp"] = late["timestamp"] + shift
     nifty = _nifty(len(df))
-    nifty["timestamp"] = nifty["timestamp"] + shift * 1.4
-    assert pd.to_datetime(late["timestamp"].iloc[-1]).time() > datetime(2026, 1, 1, 15, 15).time()
+    nifty["timestamp"] = nifty["timestamp"] + shift
     assert evaluate_relative_strength("RELIANCE", late, nifty, stock_bias="BULLISH") == []
     early = df.iloc[:5].copy()  # last bar starts 09:35, before the 09:45 window
     assert evaluate_relative_strength("RELIANCE", early, _nifty(5), stock_bias="BULLISH") == []
+
+
+def test_no_signal_when_nifty_lags_the_stock_bar():
+    df = _stock_with_pullback(+1)
+    nifty = _nifty(len(df)).iloc[:-1]  # NIFTY has not closed the signal bar yet
+    assert evaluate_relative_strength("RELIANCE", df, nifty, stock_bias="BULLISH") == []
+
+
+def test_duplicate_or_unordered_nifty_bars_do_not_raise():
+    df = _stock_with_pullback(+1)
+    nifty = _nifty(len(df))
+    messy = pd.concat([nifty.iloc[[5]], nifty, nifty.iloc[[3]]]).reset_index(drop=True)
+    assert len(evaluate_relative_strength("RELIANCE", df, messy, stock_bias="BULLISH")) == 1

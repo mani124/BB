@@ -17,12 +17,18 @@ FLAT_BAND_PCT = 0.15           # NIFTY counts as "flat" within +/- this
 MIN_SPREAD_PCT = 0.75          # stock minus NIFTY day move
 MIN_BARS_TODAY = 6             # 30 minutes of 5m bars
 WINDOW_START = dtime(9, 45)
-WINDOW_END = dtime(15, 15)     # same fresh-entry cutoff as the other setups
+WINDOW_END = dtime(15, 10)     # bar start; a 15:10 bar confirms at 15:15, the fresh-entry cutoff
 
 
 def _day_bars(df: pd.DataFrame, day) -> pd.DataFrame:
-    ts = pd.to_datetime(df["timestamp"])
-    return df[ts.dt.date == day].reset_index(drop=True)
+    """Today's bars in time order, one per timestamp (a duplicated bar keeps the latest copy)."""
+    out = df.assign(timestamp=pd.to_datetime(df["timestamp"]))
+    out = out[out["timestamp"].dt.date == day]
+    return (
+        out.drop_duplicates(subset="timestamp", keep="last")
+        .sort_values("timestamp")
+        .reset_index(drop=True)
+    )
 
 
 def evaluate_relative_strength(
@@ -52,18 +58,17 @@ def evaluate_relative_strength(
     idx_day = _day_bars(index_df, last_ts.date())
     if len(day) < MIN_BARS_TODAY or idx_day.empty:
         return []
+    # NIFTY must have closed the same bar; a lagging index would be forward-filled with a stale close
+    if idx_day["timestamp"].iloc[-1] < day["timestamp"].iloc[-1]:
+        return []
 
     # Day move of the stock and NIFTY from today's first open, per stock bar (NIFTY aligned by time)
     stock_open = float(day["open"].iloc[0])
     idx_open = float(idx_day["open"].iloc[0])
     if stock_open <= 0 or idx_open <= 0:
         return []
-    idx_close = (
-        idx_day.assign(timestamp=pd.to_datetime(idx_day["timestamp"]))
-        .set_index("timestamp")["close"]
-    )
-    stock_ts = pd.to_datetime(day["timestamp"])
-    idx_aligned = idx_close.reindex(stock_ts.values, method="ffill")
+    idx_close = idx_day.set_index("timestamp")["close"]
+    idx_aligned = idx_close.reindex(day["timestamp"].values, method="ffill")
     if idx_aligned.isna().any():
         return []
     stock_move = (day["close"].astype(float) / stock_open - 1.0) * 100.0
@@ -99,6 +104,7 @@ def evaluate_relative_strength(
         return []
 
     # Index of the first bar where relative strength held, and the earlier EMA touches since
+    # qualified.iloc[t] is True here, so argmax always finds a real first True
     q_first = int(qualified.values.argmax())
     touched_before = any(
         (float(day["low"].iloc[j]) <= float(day["ema_9"].iloc[j])) if side == "CE"

@@ -509,7 +509,7 @@ Trades stocks that move on their own momentum: rising while NIFTY is flat or fal
 3. **Trend intact:** the pullback bar closes above session VWAP (below for PE) and the 9 EMA is higher than three bars earlier (lower for PE).
 4. **First pullback:** the previous bar did not touch the 9 EMA, and no bar since the relative-strength condition first held has touched it.
 5. **Trigger:** the bar's low reaches the 9 EMA (within 0.1%), and it closes above the EMA and above its own open (below both for PE). The signal fires at that bar's close, never on a forming bar.
-6. **Window:** at least 6 bars today, bar start between 09:45 and 15:15 IST (same fresh-entry cutoff as the other setups). The setup runs in live mode only.
+6. **Window:** at least 6 bars today, bar start between 09:45 and 15:10 IST, so the last confirmation lands at the 15:15 fresh-entry cutoff. NIFTY must have closed the same bar (a lagging index skips the bar rather than using a stale close). The setup runs in live mode only, so it never appears in demo.
 
 ### Risk
 * Entry: the confirming bar's close. Stop: pullback low minus `max(0.5, 0.05%)` (pullback high plus the same buffer for PE), widened to the minimum risk by `recommend_strike`.

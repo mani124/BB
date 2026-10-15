@@ -593,13 +593,19 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 # Setup 9 (relative strength vs NIFTY) only fires on completed bars
                 nifty_bars = self._candle_history.get(NIFTY_SYMBOL, [])
                 if stock_bias and inst.instrument_type == "EQUITY" and nifty_bars:
-                    for s in evaluate_relative_strength(
-                        inst.symbol,
-                        completed_df,
-                        pd.DataFrame(nifty_bars),
-                        timeframe=inst.default_timeframe,
-                        stock_bias=stock_bias,
-                    ):
+                    # Isolated so a bad candle can never abort the cycle (and with it exits for open positions)
+                    try:
+                        rs_signals = evaluate_relative_strength(
+                            inst.symbol,
+                            completed_df,
+                            pd.DataFrame(nifty_bars),
+                            timeframe=inst.default_timeframe,
+                            stock_bias=stock_bias,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Setup 9 evaluation failed for {inst.symbol}: {e}")
+                        rs_signals = []
+                    for s in rs_signals:
                         if pd.to_datetime(s.timestamp).date() == today_date:
                             confirmed_signals.append(s)
 
