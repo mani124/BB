@@ -388,4 +388,31 @@ describe('PaperPortfolioView journal', () => {
     expect(screen.getByText(/Fri, 16 Oct|Fri 16 Oct|16 Oct/)).toBeInTheDocument();
     expect(screen.getByText(/Journal \(2\)|Closed Trades Journal \(2\)/)).toBeInTheDocument();
   });
+  it('combines the index/stock filter with the setup filter', () => {
+    const base: Partial<PaperPosition> = {
+      option_type: 'CE', option_entry: 100, current_option_price: 105,
+      pnl_points: 5, pnl_rupees: 500, gross_pnl: 500, net_pnl: 450, status: 'CLOSED',
+      exit_datetime: '2026-10-15T10:30:00',
+    };
+    const portfolio = {
+      active_positions: [],
+      closed_trades: [
+        { ...base, id: 'I', symbol: 'NIFTY 50', strike_symbol: 'NIFTYX CE', setup_type: 'BB_SQUEEZE' },
+        { ...base, id: 'S', symbol: 'RELIANCE', strike_symbol: 'STOCKX CE', setup_type: 'BB_SQUEEZE' },
+      ],
+      auto_trade_enabled: false, default_lots: 2, total_realized_pnl: 0, total_unrealized_pnl: 0,
+      total_pnl: 0, win_rate_pct: 0, total_trades_count: 2, winning_trades_count: 0, losing_trades_count: 0,
+    } as unknown as PaperPortfolio;
+    render(
+      <PaperPortfolioView portfolio={portfolio} onClosePosition={() => {}} onToggleAutoTrade={() => {}} onChangeLots={() => {}} onResetPortfolio={() => {}} />
+    );
+    const group = screen.getByRole('group', { name: 'Journal instrument filter' });
+    fireEvent.click(within(group).getByText('Index'));
+    expect(screen.getByText('NIFTYX CE')).toBeInTheDocument();
+    expect(screen.queryByText('STOCKX CE')).not.toBeInTheDocument();
+    expect(screen.getByText(/Journal \(1 of 2\)/)).toBeInTheDocument();
+    fireEvent.click(within(group).getByText('Stock'));
+    expect(screen.getByText('STOCKX CE')).toBeInTheDocument();
+    expect(screen.queryByText('NIFTYX CE')).not.toBeInTheDocument();
+  });
 });

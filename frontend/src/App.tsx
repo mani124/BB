@@ -8,6 +8,7 @@ import { SignalTable } from './components/SignalTable';
 import { PaperPortfolioView, PortfolioStrip, OpenPositionsPanel, liveTrades } from './components/PaperPortfolioView';
 import { PaperPortfolio, PaperPosition, ScannerState, Signal } from './types';
 import { AlertCircle, X, KeyRound, Lock, CheckCircle2 } from 'lucide-react';
+import { isIndexSymbol } from './components/instruments';
 import { apiFetch, bootstrapDashboardSession, getDashboardCapability, setDashboardCapability } from './api/client';
 
 const DashboardContent: React.FC = () => {
@@ -365,7 +366,7 @@ const DashboardContent: React.FC = () => {
       if (!match) return false;
     }
     if (selectedOptionType !== 'ALL' && sig.option_type !== selectedOptionType) return false;
-    const isIndex = ['NIFTY 50', 'NIFTY BANK', 'FINNIFTY', 'SENSEX'].includes(sig.symbol);
+    const isIndex = isIndexSymbol(sig.symbol);
     if (selectedInstrumentType === 'INDEX' && !isIndex) return false;
     if (selectedInstrumentType === 'STOCK' && isIndex) return false;
     if (selectedTimeframe !== 'ALL' && sig.timeframe !== selectedTimeframe) return false;
