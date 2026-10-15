@@ -55,6 +55,20 @@ interface PaperPortfolioViewProps {
   hideStrip?: boolean;
 }
 
+const INDEX_SYMBOLS = new Set([
+  'NIFTY 50', 'NIFTY', 'NIFTY BANK', 'BANKNIFTY', 'BANK NIFTY', 'FINNIFTY',
+  'NIFTY FINANCIAL SERVICES', 'SENSEX', 'MIDCPNIFTY',
+]);
+const isIndexTrade = (t: PaperPosition): boolean => INDEX_SYMBOLS.has((t.symbol ?? '').toUpperCase());
+
+const KIND_FILTER_OPTIONS = [
+  { id: 'ALL', label: 'All' },
+  { id: 'INDEX', label: 'Index' },
+  { id: 'STOCK', label: 'Stock' },
+];
+const matchKind = (t: PaperPosition, kind: string): boolean =>
+  kind === 'ALL' || (kind === 'INDEX') === isIndexTrade(t);
+
 const SETUP_FILTER_OPTIONS = [
   { id: 'ALL', label: 'All setups' },
   { id: 'SETUP_1', label: 'S1 Squeeze' },
@@ -252,6 +266,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
   hideStrip = false,
 }) => {
   const [selectedSetupFilter, setSelectedSetupFilter] = useState<string>('ALL');
+  const [selectedKindFilter, setSelectedKindFilter] = useState<string>('ALL');
   const [selectedTradeForReceipt, setSelectedTradeForReceipt] = useState<PaperPosition | null>(null);
   const [showAllDays, setShowAllDays] = useState(false);
 
@@ -272,7 +287,10 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
   }
 
   const closedTrades = liveTrades(portfolio.closed_trades);
-  const filteredTrades = closedTrades.filter((t) => matchSetup(t.setup_type, selectedSetupFilter));
+  const filteredTrades = closedTrades.filter(
+    (t) => matchSetup(t.setup_type, selectedSetupFilter) && matchKind(t, selectedKindFilter),
+  );
+  const isFiltered = selectedSetupFilter !== 'ALL' || selectedKindFilter !== 'ALL';
   const summary = summarizeTrades(filteredTrades);
 
   // Group newest first by calendar day.
@@ -361,9 +379,23 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
       <section className="desk-panel" aria-labelledby="journal-title">
         <div className="desk-ph">
           <h2 id="journal-title">
-            Closed Trades Journal ({filteredTrades.length}{selectedSetupFilter !== 'ALL' ? ` of ${closedTrades.length}` : ''})
+            Closed Trades Journal ({filteredTrades.length}{isFiltered ? ` of ${closedTrades.length}` : ''})
           </h2>
-          <div className="flex flex-wrap gap-1.5 ml-auto" role="group" aria-label="Journal setup filter">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 ml-auto">
+          <div className="flex gap-1.5" role="group" aria-label="Journal instrument filter">
+            {KIND_FILTER_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                className="desk-chip"
+                aria-pressed={selectedKindFilter === opt.id}
+                onClick={() => setSelectedKindFilter(opt.id)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Journal setup filter">
             {SETUP_FILTER_OPTIONS.map((opt) => (
               <button
                 key={opt.id}
@@ -375,6 +407,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                 {opt.label}
               </button>
             ))}
+          </div>
           </div>
         </div>
 
@@ -392,7 +425,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
           <div className="p-6 text-center text-xs desk-muted">
             {closedTrades.length === 0
               ? 'No closed trades yet. Trades will record here when targets or stop-losses are triggered.'
-              : 'No closed trades matching the selected setup filter.'}
+              : 'No closed trades matching the selected filters.'}
           </div>
         ) : (
           <>
