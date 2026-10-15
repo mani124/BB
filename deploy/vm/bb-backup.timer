@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly BB trades.db backup (22:30 UTC = 04:00 IST, market closed)
+
+[Timer]
+OnCalendar=*-*-* 22:30:00 UTC
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
