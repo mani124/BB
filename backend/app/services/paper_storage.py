@@ -2,6 +2,7 @@ from __future__ import annotations
 import sqlite3
 import os
 import json
+from app.services import market_hours
 from datetime import datetime, timedelta
 from typing import Optional, TYPE_CHECKING
 
@@ -115,6 +116,16 @@ class PaperStorage:
             CREATE TABLE IF NOT EXISTS processed_signals (
                 signal_id TEXT PRIMARY KEY,
                 created_at TEXT
+            );
+            """)
+            # Additive: per-trade chart candles so closed trades and trades from before a restart still chart.
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trade_candles (
+                position_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                bars_json TEXT NOT NULL,
+                updated_at TEXT,
+                PRIMARY KEY (position_id, kind)
             );
             """)
             self._backfill_datetimes(cursor)
@@ -354,6 +365,51 @@ class PaperStorage:
             cursor.execute("SELECT signal_id FROM processed_signals;")
             rows = cursor.fetchall()
             return {r["signal_id"] for r in rows}
+
+    TRADE_CANDLE_CAP = 150          # bars kept per series (about two 5m sessions: warm-up for the bands)
+    TRADE_CANDLE_RETENTION_DAYS = 90
+
+    def save_trade_candles(self, position_id: str, kind: str, bars: list[dict]) -> None:
+        """Store (replace) the candle series for one trade; `kind` is 'option' or 'underlying'."""
+        if not bars:
+            return
+        rows = []
+        for b in bars[-self.TRADE_CANDLE_CAP:]:
+            ts = b.get("timestamp")
+            rows.append({
+                "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+                "open": b.get("open"), "high": b.get("high"), "low": b.get("low"),
+                "close": b.get("close"), "volume": b.get("volume", 0),
+            })
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO trade_candles (position_id, kind, bars_json, updated_at) VALUES (?, ?, ?, ?);",
+                (position_id, kind, json.dumps(rows), market_hours.now_ist().replace(microsecond=0).isoformat()),
+            )
+            conn.commit()
+
+    def load_trade_candles(self, position_id: str, kind: str) -> list[dict]:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT bars_json FROM trade_candles WHERE position_id = ? AND kind = ?;", (position_id, kind)
+            ).fetchone()
+        if not row:
+            return []
+        try:
+            return json.loads(row["bars_json"])
+        except (TypeError, ValueError):
+            return []
+
+    def prune_trade_candles(self) -> int:
+        """Drop candle rows with no matching trade, or older than the retention window."""
+        cutoff = (market_hours.now_ist() - timedelta(days=self.TRADE_CANDLE_RETENTION_DAYS)).isoformat()
+        with self._get_connection() as conn:
+            cur = conn.execute(
+                "DELETE FROM trade_candles WHERE updated_at < ? OR position_id NOT IN (SELECT id FROM positions);",
+                (cutoff,),
+            )
+            conn.commit()
+            return cur.rowcount
 
     def backup_to(self, dest_path: str) -> None:
         """Consistent copy of the whole database (sqlite online backup)."""

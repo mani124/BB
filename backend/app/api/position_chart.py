@@ -102,31 +102,35 @@ def _epoch_ist(iso: Optional[str]) -> Optional[int]:
     return int((t - pd.Timestamp("1970-01-01")) // pd.Timedelta(seconds=1))
 
 
+def position_bars(worker, pos: PaperPosition):
+    """(option, underlying) bars for a position: saved snapshot first, then the scanner's live memory on top."""
+    storage = paper_trader.storage
+    saved_opt = storage.load_trade_candles(pos.id, "option") if storage else []
+    saved_und = storage.load_trade_candles(pos.id, "underlying") if storage else []
+    sec = str(pos.option_security_id) if pos.option_security_id else None
+    cached = forming = None
+    opt_hist = []
+    if sec:
+        cached = worker._option_chart_cache.get(sec)
+        forming = worker._option_forming_candle.get(sec)
+        opt_hist = worker._option_candle_history.get(sec, [])
+    opt_df = _merge_bars(saved_opt, cached[1] if cached else None, opt_hist, [forming] if forming else None)
+    und_forming = worker._current_forming_candle.get(pos.symbol)
+    und_df = _merge_bars(saved_und, worker._candle_history.get(pos.symbol, []), [und_forming] if und_forming else None)
+    return opt_df, und_df
+
+
 @router.get("/positions/{position_id}/chart")
 def get_position_chart(position_id: str):
     """Candles and setup indicators for a position's option contract and its underlying.
-    Built only from data the scanner already holds in memory; nothing is fetched or changed."""
+    Built from the saved per-trade candles plus whatever the scanner holds in memory; nothing is fetched."""
     from app.main import worker
 
     pos = _find_position(position_id)
     if pos is None:
         raise HTTPException(status_code=404, detail="Position not found")
 
-    sec = str(pos.option_security_id) if pos.option_security_id else None
-    opt_df = pd.DataFrame()
-    if sec:
-        cached = worker._option_chart_cache.get(sec)
-        forming = worker._option_forming_candle.get(sec)
-        opt_df = _merge_bars(
-            cached[1] if cached else None,
-            worker._option_candle_history.get(sec, []),
-            [forming] if forming else None,
-        )
-    und_forming = worker._current_forming_candle.get(pos.symbol)
-    und_df = _merge_bars(
-        worker._candle_history.get(pos.symbol, []),
-        [und_forming] if und_forming else None,
-    )
+    opt_df, und_df = position_bars(worker, pos)
     # Show only the entry's trading day (indicators still warm up on the earlier bars).
     day = (pos.entry_datetime or "")[:10] or None
 

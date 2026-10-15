@@ -59,6 +59,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         self._option_chain_cache: dict[str, tuple[float, dict]] = {}
         self._option_chart_cache: dict[str, tuple[datetime, pd.DataFrame]] = {}
         self._candle_history: dict[str, list[dict]] = {}
+        self._trade_candle_saved_at: dict[str, float] = {}
         self._current_forming_candle: dict[str, dict] = {}
         self._option_candle_history: dict[str, list[dict]] = {}
         self._option_forming_candle: dict[str, dict] = {}
@@ -95,6 +96,33 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             except RuntimeError:
                 pass
 
+
+    def persist_trade_candles(self, throttle_s: float = 30.0) -> None:
+        """Save the candles each open trade charts from, so closed trades and restarts keep their chart.
+        Open trades are re-saved at most every `throttle_s`; a trade that closed since the last call gets a final save."""
+        storage = paper_trader.storage
+        if storage is None:
+            return
+        try:
+            pf = paper_trader._portfolio
+            now = time.time()
+            last = self._trade_candle_saved_at
+            targets = [p for p in pf.active_positions if now - last.get(p.id, 0.0) >= throttle_s]
+            closed_ids = {p.id for p in pf.closed_trades}
+            targets += [p for p in pf.closed_trades if p.id in last and not last[p.id] < 0]
+            for p in targets:
+                from app.api.position_chart import position_bars
+                opt, und = position_bars(self, p)
+                if p.id in closed_ids:
+                    last[p.id] = -1.0  # final snapshot taken
+                else:
+                    last[p.id] = now
+                if opt is not None and not opt.empty:
+                    storage.save_trade_candles(p.id, "option", opt.to_dict("records"))
+                if und is not None and not und.empty:
+                    storage.save_trade_candles(p.id, "underlying", und.to_dict("records"))
+        except Exception as e:
+            logger.warning(f"Could not persist trade candles: {e}")
 
     def check_session_reset(self):
         today = market_hours.now_ist().date()
@@ -749,6 +777,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         # from an earlier date (both books) and square off live positions at the EOD time.
         paper_trader.flag_stale_carryover()
         paper_trader.square_off_if_due(feed_mode="live")
+        self.persist_trade_candles()
         if mode in ("live", "demo"):
             paper_trader.on_signals_cycle(new_signals, feed_mode=mode)
         if mode == "live" and ws_healthy:

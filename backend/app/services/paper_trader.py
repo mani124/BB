@@ -40,6 +40,10 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         if db_path is not None:
             from app.services.paper_storage import PaperStorage
             self.storage = PaperStorage(db_path)
+            try:
+                self.storage.prune_trade_candles()
+            except Exception:
+                pass
             self._load_from_storage()
 
     def get_portfolio(self, mode: Optional[str] = None) -> PaperPortfolio:
