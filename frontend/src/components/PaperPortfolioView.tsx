@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PaperPortfolio, PaperPosition } from '../types';
 import { RefreshCcw, Power, Receipt, X } from 'lucide-react';
+import { PositionChartModal } from './PositionChartModal';
 import { setupCode } from './setupCode';
 
 // Show the date whenever a trade crosses midnight/sessions so an overnight exit never
@@ -173,7 +174,10 @@ export const PortfolioStrip: React.FC<{ portfolio?: PaperPortfolio }> = ({ portf
 export const OpenPositionsPanel: React.FC<{
   positions: PaperPosition[];
   onClosePosition: (id: string) => void;
-}> = ({ positions, onClosePosition }) => (
+}> = ({ positions, onClosePosition }) => {
+  const [chartPositionId, setChartPositionId] = useState<string | null>(null);
+  const chartPosition = positions.find((p) => p.id === chartPositionId) ?? null;
+  return (
   <section className="desk-panel" aria-labelledby="open-positions-title">
     <div className="desk-ph">
       <h2 id="open-positions-title">Active Open Paper Positions ({positions.length})</h2>
@@ -190,7 +194,13 @@ export const OpenPositionsPanel: React.FC<{
         const span = target - pos.option_sl;
         const frac = span > 0 ? Math.max(0, Math.min(1, (pos.current_option_price - pos.option_sl) / span)) : 0.5;
         return (
-          <div key={pos.id} className="px-3.5 py-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1" style={{ borderBottom: '1px solid var(--line)' }}>
+          <div
+            key={pos.id}
+            className="px-3.5 py-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 cursor-pointer"
+            style={{ borderBottom: '1px solid var(--line)' }}
+            onClick={() => setChartPositionId(pos.id)}
+            title="Click to open chart"
+          >
             <div>
               <span className="desk-sym">{pos.strike_symbol}</span>{' '}
               <span className={`desk-side ${pos.option_type === 'CE' ? 'ce' : 'pe'}`}>BUY {pos.option_type}</span>
@@ -220,7 +230,10 @@ export const OpenPositionsPanel: React.FC<{
               </div>
             )}
             <div className="col-span-2 text-right mt-1">
-              <button type="button" className="desk-btn danger" onClick={() => onClosePosition(pos.id)}>
+              <button type="button" className="desk-btn accent mr-2" onClick={(e) => { e.stopPropagation(); setChartPositionId(pos.id); }}>
+                Chart
+              </button>
+              <button type="button" className="desk-btn danger" onClick={(e) => { e.stopPropagation(); onClosePosition(pos.id); }}>
                 Close
               </button>
             </div>
@@ -228,8 +241,10 @@ export const OpenPositionsPanel: React.FC<{
         );
       })
     )}
+    {chartPosition && <PositionChartModal position={chartPosition} onClose={() => setChartPositionId(null)} />}
   </section>
-);
+  );
+};
 
 /* ---------- Journal helpers ---------- */
 const tradeDay = (t: PaperPosition): string =>

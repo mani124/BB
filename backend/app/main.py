@@ -10,6 +10,7 @@ from app.api.auth import router as auth_router
 from app.api.universe import router as universe_router
 from app.api.signals import router as signals_router
 from app.api.paper import router as paper_router
+from app.api.position_chart import router as position_chart_router
 
 setup_security_logging()
 
@@ -146,6 +147,7 @@ def create_app() -> FastAPI:
     app.include_router(universe_router, prefix=settings.API_PREFIX)
     app.include_router(signals_router, prefix=settings.API_PREFIX)
     app.include_router(paper_router, prefix=settings.API_PREFIX)
+    app.include_router(position_chart_router, prefix=settings.API_PREFIX)
 
     return app
 
