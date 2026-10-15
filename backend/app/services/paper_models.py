@@ -117,7 +117,7 @@ def _parse_iso(value: Optional[str]) -> Optional[datetime]:
         return None
     return dt if dt.tzinfo else dt.replace(tzinfo=market_hours.IST)
 
-class PaperPortfolio(BaseModel):
+class PaperPortfolio(BaseModel):  # `risk` is filled by the engine (see paper_risk.RiskStatus)
     active_positions: list[PaperPosition] = []
     closed_trades: list[PaperPosition] = []
     auto_trade_enabled: bool = True
@@ -141,4 +141,5 @@ class PaperPortfolio(BaseModel):
     # Number of closed trades in this view. The SSE state stream sends closed_trades empty
     # (see get_portfolio_summary) and the UI fetches the list when this count changes.
     closed_trades_count: int = 0
+    risk: Optional[dict] = None
 

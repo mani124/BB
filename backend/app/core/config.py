@@ -48,6 +48,10 @@ class Settings(BaseModel):
     MAX_OPEN_POSITIONS: int = int(os.getenv("MAX_OPEN_POSITIONS", "8"))
     MAX_ENTRIES_PER_SYMBOL_PER_DAY: int = int(os.getenv("MAX_ENTRIES_PER_SYMBOL_PER_DAY", "3"))
     MAX_OPEN_NOTIONAL: float = float(os.getenv("MAX_OPEN_NOTIONAL", "2000000"))
+    # Daily loss cap (INR, 0 disables): new entries stop for the rest of the IST day once the day's net P&L
+    # (realised + open, after charges) reaches -DAILY_LOSS_LIMIT. 24000 = 3x the default per-trade risk
+    # (max_risk_per_trade 8000), i.e. about three full stop-outs, ~1.2% of the 2,000,000 open-premium cap.
+    DAILY_LOSS_LIMIT: float = float(os.getenv("DAILY_LOSS_LIMIT", "24000"))
     # The old public default. It is never accepted: when DASHBOARD_CAPABILITY is unset (or set to this),
     # a random key is generated once and kept in <DATA_DIR>/dashboard_key (see resolve_dashboard_capability).
     DEFAULT_DASHBOARD_CAPABILITY: str = "bb-options-local-capability"

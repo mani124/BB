@@ -306,6 +306,30 @@ const DashboardContent: React.FC = () => {
     }
   };
 
+  const handleKillSwitch = async (engage: boolean) => {
+    try {
+      const res = await apiFetch(engage ? '/api/paper/kill-switch' : '/api/paper/kill-switch/release', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true }),
+      });
+      if (res.status === 401) {
+        setCapabilityModalOpen(true);
+        setActionError('Unauthorized: Dashboard capability required.');
+        return;
+      }
+      if (!res.ok) {
+        setActionError('Kill switch request failed. Please try again.');
+        return;
+      }
+      const portRes = await apiFetch('/api/paper/portfolio');
+      if (portRes.ok) applyPortfolio(await portRes.json());
+    } catch (e) {
+      console.error('Kill switch failed', e);
+      setActionError('Network error changing the kill switch.');
+    }
+  };
+
   const handleChangeSetupMode = async (setup: string, mode: SetupMode) => {
     try {
       const res = await apiFetch('/api/paper/settings', {
@@ -416,6 +440,8 @@ const DashboardContent: React.FC = () => {
         onTabChange={setActiveTab}
         openPositionsCount={activePositionsCount}
         onOpenAccessKey={openCapabilityModal}
+        risk={state.paper_portfolio?.risk}
+        onKillSwitch={handleKillSwitch}
       />
 
       <main className="flex-1 max-w-[1360px] w-full mx-auto px-4 sm:px-6 py-3 flex flex-col gap-3">
