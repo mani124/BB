@@ -545,3 +545,29 @@ Trades stocks that move on their own momentum: rising while NIFTY is flat or fal
 ### Notes
 * The thresholds (1.30x, 3 bars, 3% leg gain) are starting values. Option candles for past sessions are not available for replay, so this setup is validated by paper trading.
 * The ATM strike can change during the day; each strike has its own full-day exchange series, so the straddle is always built from the current ATM pair.
+
+
+---
+
+## 14. Setup 11: Filtered Option Chart Scalper (Setup 5 shadow)
+
+* **Setup Enum:** `SetupType.SETUP_11_FILTERED_OPTION_BB`; code in `backend/app/services/setup11.py`, wired in `scanner_worker._evaluate_option_chart_setups`.
+* **Why it exists:** the 2026-10-16 review (`notes/trade_loss_analysis_2026-10-16.md`) found Setup 5 lost 19,925 on 26 trades, with entry slippage and wide stops the largest costs. Setups 1 and 5 are not to be changed, so Setup 11 runs next to Setup 5 and the two are compared on the same days.
+
+### Qualification
+Setup 11 only sees Setup 5 signals. A Setup 5 signal becomes a Setup 11 signal when all three filters, read from the same option premium chart (completed bars), pass:
+1. **Option trend strength:** the signal bar's RSI and BandWidth are both strictly higher than on the previous bar.
+2. **Candle quality:** the signal bar is green (close above open) and closes in the top 60% of its high-low range (upper wick at most 40% of the range).
+3. **Stop-width cap:** (fill - stop) / fill is at most 30%, where fill is the live ask when known and higher than the signal close, otherwise the signal close.
+
+Entry, stop, T1 (1.5R), T2 (2.5R), sizing and the option-chart-only exits are identical to Setup 5. A skipped Setup 5 signal is logged as `Setup 11 skipped <symbol> <side>: <filter reason>`.
+
+### Isolation from Setup 5
+* Setup 11 trades as its own position even on the same contract as an open Setup 5 position (the duplicate is intended, so the two can be compared).
+* Setup 11 has its own exposure caps (one position per contract and per symbol+side, max open positions, open premium notional, entries per symbol per day, re-entry cooldown and chop-box gate), counted only against Setup 11 positions, and Setup 11 positions are not counted against the other setups' caps.
+* Setup 11 has its own daily loss cap (`DAILY_LOSS_LIMIT`, latched under `<book>:s11`); its P&L does not count toward the main cap. The kill switch applies to all setups.
+* Default per-setup switch: `all`.
+
+### Notes
+* Filter thresholds (60% candle position, 30% stop width, strictly rising RSI and BandWidth) are starting values from one session; tune them from paper trades.
+* Not included on purpose: an entry-time cutoff, an entry-slippage guard, spread/volume/OI limits and a stock-trend check. The 2026-10-16 data did not support the spread and volume limits, and a stock-trend check would bring a spot signal into a setup that reads only the option chart.

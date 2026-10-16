@@ -25,6 +25,7 @@ from app.services.strategy_engine import evaluate_signals, Signal, SetupType
 from app.services.relative_strength import evaluate_relative_strength, NIFTY_SYMBOL
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size, option_exchange_segment
 from app.services.option_chart_strategy import evaluate_option_chart_signal
+from app.services.setup11 import evaluate_setup11
 from app.services.straddle_squeeze import StraddleLeg, evaluate_straddle_squeeze
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
 from app.services.momentum_ranker import MomentumRanker, MomentumRankings
@@ -975,6 +976,9 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 )
                 if sig:
                     results.append(sig)
+                    s11 = evaluate_setup11(ind_opt, sig)
+                    if s11:
+                        results.append(s11)
 
         # Setup 10: ATM straddle premium squeeze, from the same two completed-bar series.
         # Skipped when Setup 5 already fired on this side, so one contract is never entered twice.
@@ -988,7 +992,8 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 lot_size=lot_size,
                 timeframe="5m",
             )
-            if s10 and not any(r.option_type == s10.option_type for r in results):
+            if s10 and not any(r.option_type == s10.option_type and r.setup_type == SetupType.SETUP_5_OPTION_BB
+                               for r in results):
                 results.append(s10)
 
         return results

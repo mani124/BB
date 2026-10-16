@@ -17,6 +17,7 @@ class SetupType(str, enum.Enum):
     SETUP_8_DIVERGENCE_SNAPBACK = "Setup 8: Climax Swing Divergence Fade"
     SETUP_9_RELATIVE_STRENGTH = "Setup 9: Relative Strength vs NIFTY (9 EMA Pullback)"
     SETUP_10_STRADDLE_SQUEEZE = "Setup 10: ATM Straddle Premium Squeeze"
+    SETUP_11_FILTERED_OPTION_BB = "Setup 11: Filtered Option Chart Scalp"
 
 class Signal(BaseModel):
     id: str
@@ -105,10 +106,18 @@ def _reversal_legs(df: pd.DataFrame, bullish: bool):
 
 
 
+def is_setup11(setup_type) -> bool:
+    """True for Setup 11 (enum, value, or a stored label). Setup 11 trades in its own book of caps."""
+    return setup_type == SetupType.SETUP_11_FILTERED_OPTION_BB or "Setup 11" in str(getattr(setup_type, "value", setup_type))
+
+
 def is_setup5(setup_type) -> bool:
-    """True for setups managed on the option premium chart (Setup 5 and Setup 10), whether given
+    """True for setups managed on the option premium chart (Setups 5, 10 and 11), whether given
     as the enum, its value, or a legacy stored label."""
-    if setup_type in (SetupType.SETUP_5_OPTION_BB, SetupType.SETUP_10_STRADDLE_SQUEEZE):
+    if setup_type in (SetupType.SETUP_5_OPTION_BB, SetupType.SETUP_10_STRADDLE_SQUEEZE,
+                      SetupType.SETUP_11_FILTERED_OPTION_BB):
+        return True
+    if "Setup 11" in str(getattr(setup_type, "value", setup_type)):
         return True
     if "Setup 10" in str(getattr(setup_type, "value", setup_type)):
         return True

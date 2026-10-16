@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Literal, Optional
 from pydantic import BaseModel
 from app.services.charges_calculator import calculate_option_trade_charges
-from app.services.strategy_engine import Signal, is_setup5
+from app.services.strategy_engine import Signal, is_setup5, is_setup11
 from app.services.strike_selector import get_lot_size
 from app.services import market_hours
 from app.core.config import settings
@@ -58,8 +58,13 @@ class PaperGuardsMixin:
         rec = signal.strike_recommendation
         key = self._contract_key(getattr(rec, "option_security_id", None), getattr(rec, "strike_symbol", None))
 
+        # Setup 11 shadows Setup 5 on the same contracts, so it has its own book of caps: its positions
+        # never count against the other setups' limits and theirs never count against it.
+        s11 = is_setup11(signal.setup_type)
+
         def same_book(p) -> bool:
-            return feed_mode is None or getattr(p, "feed_mode", "demo") == feed_mode
+            return (feed_mode is None or getattr(p, "feed_mode", "demo") == feed_mode) \
+                and is_setup11(p.setup_type) == s11
 
         active = [p for p in self._portfolio.active_positions if same_book(p)]
         closed = [p for p in self._portfolio.closed_trades if same_book(p)]
