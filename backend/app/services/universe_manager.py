@@ -50,6 +50,26 @@ class UniverseManager:
             default_timeframe="5m",
             sector="Benchmark"
         ),
+        # Thin option chains: monthly expiry only, wide spreads. Security ids are from Dhan's
+        # published index list and should be checked against the instrument master.
+        Instrument(
+            symbol="MIDCPNIFTY",
+            name="Nifty Midcap Select Index",
+            security_id="442",
+            exchange_segment="IDX_I",
+            instrument_type="INDEX",
+            default_timeframe="5m",
+            sector="Midcap"
+        ),
+        Instrument(
+            symbol="NIFTYNXT50",
+            name="Nifty Next 50 Index",
+            security_id="38",
+            exchange_segment="IDX_I",
+            instrument_type="INDEX",
+            default_timeframe="5m",
+            sector="Benchmark"
+        ),
     ]
 
     MOMENTUM_STOCKS: list[Instrument] = [
@@ -151,5 +171,5 @@ class UniverseManager:
         return self.INDICES + self.get_fno_stocks()
 
     def get_universe(self) -> list[Instrument]:
-        """Returns the full universe (4 Indices + all 213 F&O Stocks)."""
+        """Returns the full universe (6 Indices + all 213 F&O Stocks)."""
         return self.get_all_instruments()

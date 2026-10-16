@@ -117,7 +117,7 @@ def is_setup5(setup_type) -> bool:
     ) or "Setup 5" in str(setup_type)
 
 
-INDEX_SYMBOLS = {"NIFTY 50", "NIFTY", "NIFTY BANK", "BANKNIFTY", "FINNIFTY", "NIFTY FINANCIAL SERVICES", "SENSEX", "MIDCPNIFTY"}
+INDEX_SYMBOLS = {"NIFTY 50", "NIFTY", "NIFTY BANK", "BANKNIFTY", "FINNIFTY", "NIFTY FINANCIAL SERVICES", "SENSEX", "MIDCPNIFTY", "NIFTYNXT50", "NIFTY NEXT 50"}
 
 def _walked_band(row, side: str) -> bool:
     """Setup 2: the bar closed in the outer 10% of the Bollinger band (or beyond it)."""

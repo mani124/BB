@@ -11,6 +11,8 @@ DEFAULT_LOT_SIZES: dict[str, int] = {
     "NIFTY FINANCIAL SERVICES": 65,
     "SENSEX": 20,
     "MIDCPNIFTY": 120,
+    "NIFTYNXT50": 25,
+    "NIFTY NEXT 50": 25,
     "RELIANCE": 500,
     "HDFCBANK": 650,
     "ICICIBANK": 700,
@@ -146,6 +148,8 @@ INDEX_STRIKE_STEPS: dict[str, int] = {
     "NIFTY FINANCIAL SERVICES": 50,
     "SENSEX": 100,
     "MIDCPNIFTY": 25,
+    "NIFTYNXT50": 100,
+    "NIFTY NEXT 50": 100,
 }
 
 STOCK_STRIKE_STEPS: dict[str, int] = {

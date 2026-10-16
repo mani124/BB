@@ -46,9 +46,9 @@ def test_api_universe():
     data = response.json()
     assert "indices" in data
     assert "stocks" in data
-    assert len(data["indices"]) == 4
+    assert len(data["indices"]) == 6
     assert len(data["stocks"]) == 35
-    assert data["total_count"] == 217
+    assert data["total_count"] == 219
     assert data["fno_count"] == 213
 
     idx_symbols = [i["symbol"] for i in data["indices"]]
@@ -56,6 +56,8 @@ def test_api_universe():
     assert "NIFTY BANK" in idx_symbols
     assert "FINNIFTY" in idx_symbols
     assert "SENSEX" in idx_symbols
+    assert "MIDCPNIFTY" in idx_symbols
+    assert "NIFTYNXT50" in idx_symbols
 
     stock_symbols = [s["symbol"] for s in data["stocks"]]
     assert "RELIANCE" in stock_symbols

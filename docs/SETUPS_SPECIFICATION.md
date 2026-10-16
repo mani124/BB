@@ -355,7 +355,7 @@ $$\text{Composite Score} = (\text{Change \%} \times 0.40) + (\text{VWAP Dist \%}
 
 ### Tier 2: Deep Bollinger Scanning
 Deep historical candle calculations are executed **only** on:
-1. 4 Benchmark Indices (`NIFTY 50`, `NIFTY BANK`, `FINNIFTY`, `SENSEX`).
+1. 6 Benchmark Indices (`NIFTY 50`, `NIFTY BANK`, `FINNIFTY`, `SENSEX`, `MIDCPNIFTY`, `NIFTYNXT50`).
 2. Top 5 Bullish Stocks.
 3. Top 5 Bearish Stocks.
 4. Active Paper Positions (for continuous exit monitoring).
@@ -539,7 +539,7 @@ Trades stocks that move on their own momentum: rising while NIFTY is flat or fal
 ### Risk and management
 * Strike: ATM, the bought leg only. Entry, stop (`max(close - 9 EMA, 0.5 x bar range, 4% of close)`), T1 1.5R and T2 2.5R are the Setup 5 premium formulas, and the position is managed on the option chart only (no spot checks), like Setup 5.
 * Setup 5 and Setup 10 never enter the same side in one scan: when Setup 5 fires on a leg, the Setup 10 signal for that side is dropped.
-* Default per-setup switch: `index` (NIFTY, BANKNIFTY, FINNIFTY, SENSEX). Stock option premiums are too thin for a stable straddle series.
+* Default per-setup switch: `index` (NIFTY, BANKNIFTY, FINNIFTY, SENSEX, MIDCPNIFTY, NIFTYNXT50). Stock option premiums are too thin for a stable straddle series.
 * The signal's indicator snapshot logs `straddle_close`, `straddle_bb_upper`, `straddle_bandwidth`, `straddle_bandwidth_20_min` and each leg's bar gain, so thresholds can be tuned from paper trades.
 
 ### Notes
