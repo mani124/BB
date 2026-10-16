@@ -124,3 +124,15 @@ def test_m_top_stop_above_second_high():
     legs = se._reversal_legs(df, False)
     assert sig.stop_loss == round(legs[1]["high"] + se.S3_SL_ATR_BUFFER * se._recent_atr(df), 2)
     assert sig.stop_loss < legs[0]["high"] or legs[0]["high"] <= legs[1]["high"]
+
+
+def test_needs_20_bars_of_current_session():
+    # 25 flat bars yesterday, then the W today: only 7 bars of today's session -> no signal
+    recs = [dict(FLAT) for _ in range(25)] + [dict(r) for r in W]
+    day_two = T0 + timedelta(days=1)
+    stamps = [T0 + timedelta(minutes=5 * i) for i in range(25)] + [day_two + timedelta(minutes=5 * i) for i in range(len(W))]
+    df = calculate_indicators(pd.DataFrame([dict(r, timestamp=t) for r, t in zip(recs, stamps)]))
+    assert se._session_bars(df) == len(W)
+    assert _s3(df, "CE") == []
+    # same pattern with a full 25-bar session before it still fires
+    assert len(_s3(_df(W), "CE")) == 1

@@ -193,6 +193,8 @@ $$\text{BandWidth} \le \text{BW}_{20\text{-min}} \times 1.30 \quad \text{OR} \qu
 
 ### Qualification Criteria
 
+**Session gate:** at least 20 bars of the current session must exist (overnight-gap distortion of bands and RSI).
+
 #### 1. W-Bottom Reversal (BUY CE)
 1. **First Low ($L_1$):** Formed 5 to 20 candles before the trigger candle where $\text{Low}_{L_1} \le \text{Lower Band}_{L_1}$ (outside or piercing the band). If several bars pierce, the lowest one is $L_1$.
 2. **Intermediate Peak ($P$):** A bounce toward the 20 SMA middle band separates the two bottoms.
@@ -477,6 +479,8 @@ All three require `BandWidth > SQUEEZE_ABS_BW_PCT` ("bands are wide") and use a 
 
 ### 11.2 Setup 3: code follows section 4
 Aligned on 2026-10-16 (from the Setup 3 analysis). Leg 1 is 5-20 bars back and must pierce the band; leg 2 is the lowest low of the last 5 bars, at least 3 bars after leg 1, inside the band and not more than 0.25 ATR(14) beyond leg 1; RSI divergence margin is 1.5 points; the trigger needs the neckline cross **and** close beyond the 9 EMA.
+
+Setup 3 also waits for at least 20 bars of the current session (same rule as Setup 2), so the overnight gap does not distort the bands and RSI at the first low.
 
 Stop-loss: second low (high for M) minus (plus) 0.1 ATR(14), replacing the flat 1.0 point under the deeper of both lows. The old stop gave about 1.3x the risk of the second-low stop in the synthetic run (median 62 vs 52 NIFTY points), so fewer lots and farther targets. The spec's flat 2.0 point buffer was dropped because it does not scale across NIFTY and stocks. Watch the first week of paper trades for extra wick stop-outs.
 
