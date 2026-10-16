@@ -38,6 +38,7 @@ S3_LEG1_MIN_AGE, S3_LEG1_MAX_AGE = 5, 20
 S3_LEG2_MAX_AGE = 5
 S3_MIN_LEG_GAP = 3
 S3_RSI_MARGIN = 1.5
+S3_SL_ATR_BUFFER = 0.1  # stop sits this many ATRs beyond leg 2
 S3_ATR_TOLERANCE = 0.25  # leg 2 may undercut (W) / overshoot (M) leg 1 by at most this many ATRs
 
 
@@ -295,11 +296,11 @@ def evaluate_signals(
         if bullish:
             if not (close > neckline and prev["close"] <= neckline and close > ema_9):
                 continue
-            sl = round(min(row1["low"], row2["low"]) - 1.0, 2)
+            sl = round(row2["low"] - S3_SL_ATR_BUFFER * _recent_atr(df), 2)
         else:
             if not (close < neckline and prev["close"] >= neckline and close < ema_9):
                 continue
-            sl = round(max(row1["high"], row2["high"]) + 1.0, 2)
+            sl = round(row2["high"] + S3_SL_ATR_BUFFER * _recent_atr(df), 2)
         strike_rec = recommend_strike(symbol, close, opt, sl)
         signals.append(Signal(
             id=f"{symbol}_{timeframe}_S3_{opt}_{ts_clean}",

@@ -95,3 +95,32 @@ def test_leg1_beyond_old_12_bar_window_accepted():
     legs = se._reversal_legs(df, True)
     assert legs is not None
     assert len(df) - 1 - legs[0].name >= 13
+
+
+def _scaled(rows, k=250.0):
+    return [_bar(r["open"] * k, r["high"] * k, r["low"] * k, r["close"] * k, r["volume"]) for r in rows]
+
+
+def _df_scaled(rows, lead=25, k=250.0):
+    recs = [dict(open=100 * k, high=100.5 * k, low=99.5 * k, close=100 * k, volume=2000) for _ in range(lead)] + rows
+    return calculate_indicators(pd.DataFrame(
+        [dict(r, timestamp=T0 + timedelta(minutes=5 * i)) for i, r in enumerate(recs)]))
+
+
+def test_stop_sits_atr_buffer_beyond_second_low():
+    # NIFTY-scale prices so the minimum-risk floor does not bind
+    df = _df_scaled(_scaled(W))
+    sig = _s3(df, "CE")[0]
+    legs = se._reversal_legs(df, True)
+    expected = round(legs[1]["low"] - se.S3_SL_ATR_BUFFER * se._recent_atr(df), 2)
+    assert sig.stop_loss == expected
+    # leg 1 is deeper than leg 2 here; the stop is no longer anchored to it
+    assert sig.stop_loss > legs[0]["low"]
+
+
+def test_m_top_stop_above_second_high():
+    df = _df_scaled(_scaled(_mirror(W, pivot=200.0), k=250.0))
+    sig = _s3(df, "PE")[0]
+    legs = se._reversal_legs(df, False)
+    assert sig.stop_loss == round(legs[1]["high"] + se.S3_SL_ATR_BUFFER * se._recent_atr(df), 2)
+    assert sig.stop_loss < legs[0]["high"] or legs[0]["high"] <= legs[1]["high"]

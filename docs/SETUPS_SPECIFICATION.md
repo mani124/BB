@@ -203,7 +203,7 @@ $$\text{BandWidth} \le \text{BW}_{20\text{-min}} \times 1.30 \quad \text{OR} \qu
 5. **Confirmation Trigger:** Current candle closes above intermediate peak $P$ and above the 9 EMA:
    $$\text{Close} > P_{\text{high}} \quad \text{AND} \quad \text{Close} > 9\text{ EMA}$$
 6. **Execution Levels:**
-   * **Spot Stop-Loss:** Code: $\text{SL} = \min(\text{Low}_{L_1}, \text{Low}_{L_2}) - 1.0$ (the stop rule is still open, see 11.2).
+   * **Spot Stop-Loss:** $\text{SL} = \text{Low}_{L_2} - 0.1 \times \text{ATR}(14)$ (then widened to the minimum risk floor if needed).
    * **Spot Targets:** 1:1.5 RR (Target 1), 1:2.5 RR (Target 2).
    * **Strike:** 1-Strike ITM CE.
 
@@ -217,7 +217,7 @@ $$\text{BandWidth} \le \text{BW}_{20\text{-min}} \times 1.30 \quad \text{OR} \qu
 5. **Confirmation Trigger:** Current candle closes below intermediate valley $V$ and below the 9 EMA:
    $$\text{Close} < V_{\text{low}} \quad \text{AND} \quad \text{Close} < 9\text{ EMA}$$
 6. **Execution Levels:**
-   * **Spot Stop-Loss:** Code: $\text{SL} = \max(\text{High}_{H_1}, \text{High}_{H_2}) + 1.0$ (the stop rule is still open, see 11.2).
+   * **Spot Stop-Loss:** $\text{SL} = \text{High}_{H_2} + 0.1 \times \text{ATR}(14)$ (then widened to the minimum risk floor if needed).
    * **Spot Targets:** 1:1.5 RR (Target 1), 1:2.5 RR (Target 2).
    * **Strike:** 1-Strike ITM PE.
 
@@ -474,14 +474,10 @@ All three require `BandWidth > SQUEEZE_ABS_BW_PCT` ("bands are wide") and use a 
 | 7 | `SETUP_7_INSIDE_BAR_SNAPBACK` | Bar t-2 reaches the 2.5σ band, bar t-1 is an inside bar, bar t closes below the inside bar's low, close above the 20 SMA. SL above the mother-bar high. |
 | 8 | `SETUP_8_DIVERGENCE_SNAPBACK` | Climax swing with RSI divergence fading back toward the mean (see `strategy_engine.py`, Setup 8 block). |
 
-### 11.2 Setup 3: code now follows section 4 except the stop-loss
-Aligned on 2026-10-16 (from the Setup 3 analysis): leg 1 is 5-20 bars back and must pierce the band; leg 2 is the lowest low of the last 5 bars, at least 3 bars after leg 1, inside the band and not more than 0.25 ATR(14) beyond leg 1; RSI divergence margin is 1.5 points; the trigger needs the neckline cross **and** close beyond the 9 EMA.
+### 11.2 Setup 3: code follows section 4
+Aligned on 2026-10-16 (from the Setup 3 analysis). Leg 1 is 5-20 bars back and must pierce the band; leg 2 is the lowest low of the last 5 bars, at least 3 bars after leg 1, inside the band and not more than 0.25 ATR(14) beyond leg 1; RSI divergence margin is 1.5 points; the trigger needs the neckline cross **and** close beyond the 9 EMA.
 
-| Rule | Spec (section 4) | Code |
-|---|---|---|
-| Stop-loss | Second low - 2.0 | Lower of both lows - 1.0 (unchanged, decision open) |
-
-The code stop sits under the older, deeper low, which gave about 1.3x the risk of the spec stop in the synthetic run (median 62 vs 52 NIFTY points) and so fewer lots. Pick one: keep it (safer, smaller size) or move to the second low plus an ATR-scaled buffer.
+Stop-loss: second low (high for M) minus (plus) 0.1 ATR(14), replacing the flat 1.0 point under the deeper of both lows. The old stop gave about 1.3x the risk of the second-low stop in the synthetic run (median 62 vs 52 NIFTY points), so fewer lots and farther targets. The spec's flat 2.0 point buffer was dropped because it does not scale across NIFTY and stocks. Watch the first week of paper trades for extra wick stop-outs.
 
 ### 11.3 Stock ranking and risk cap
 * The momentum ranker is constructed with `top_n = 10` in `scanner_worker.py` (the class default and section 7 say 5).
