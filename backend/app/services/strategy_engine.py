@@ -33,6 +33,75 @@ class Signal(BaseModel):
     rationale: str
     is_confirmed: bool = True
 
+# Setup 3 geometry: leg 1 is 5-20 bars back, leg 2 within the last 5 bars, at least 3 bars apart.
+S3_LEG1_MIN_AGE, S3_LEG1_MAX_AGE = 5, 20
+S3_LEG2_MAX_AGE = 5
+S3_MIN_LEG_GAP = 3
+S3_RSI_MARGIN = 1.5
+S3_ATR_TOLERANCE = 0.25  # leg 2 may undercut (W) / overshoot (M) leg 1 by at most this many ATRs
+
+
+def _recent_atr(df: pd.DataFrame, period: int = 14) -> float:
+    """Mean true range of the last `period` bars (price units)."""
+    h, l, c = df["high"], df["low"], df["close"]
+    tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
+    return float(tr.iloc[-period:].mean())
+
+
+def _reversal_legs(df: pd.DataFrame, bullish: bool):
+    """Find a Setup 3 double bottom (bullish) or double top (bearish).
+
+    Returns (leg1_row, leg2_row, neckline) or None. Leg 1 pierces the outer band; leg 2 holds
+    inside the band at a higher (W) / lower (M) extreme within an ATR tolerance, with RSI divergence
+    of at least S3_RSI_MARGIN. The neckline is the best opposite extreme between the legs.
+    """
+    n = len(df)
+    last = n - 1
+    if n < 15:
+        return None
+    lo1 = max(0, last - S3_LEG1_MAX_AGE)
+    hi1 = last - S3_LEG1_MIN_AGE
+    lo2 = max(0, last - S3_LEG2_MAX_AGE)
+    if hi1 < lo1:
+        return None
+    w1 = df.iloc[lo1:hi1 + 1]
+    w2 = df.iloc[lo2:last]  # excludes the trigger bar
+    if w1.empty or w2.empty:
+        return None
+    atr = _recent_atr(df)
+    tol = S3_ATR_TOLERANCE * atr
+    if bullish:
+        pierce = w1[w1["low"] <= w1["bb_lower"]]
+        if pierce.empty:
+            return None
+        i1 = pierce["low"].idxmin()
+        w2b = w2.loc[i1 + S3_MIN_LEG_GAP:]
+        if w2b.empty:
+            return None
+        i2 = w2b["low"].idxmin()
+        r1, r2 = df.loc[i1], df.loc[i2]
+        if r2["low"] < r1["low"] - tol or r2["low"] <= r2["bb_lower"]:
+            return None
+        if not r2["rsi"] > r1["rsi"] + S3_RSI_MARGIN:
+            return None
+        return r1, r2, float(df.loc[i1:i2, "high"].max())
+    pierce = w1[w1["high"] >= w1["bb_upper"]]
+    if pierce.empty:
+        return None
+    i1 = pierce["high"].idxmax()
+    w2b = w2.loc[i1 + S3_MIN_LEG_GAP:]
+    if w2b.empty:
+        return None
+    i2 = w2b["high"].idxmax()
+    r1, r2 = df.loc[i1], df.loc[i2]
+    if r2["high"] > r1["high"] + tol or r2["high"] >= r2["bb_upper"]:
+        return None
+    if not r2["rsi"] < r1["rsi"] - S3_RSI_MARGIN:
+        return None
+    return r1, r2, float(df.loc[i1:i2, "low"].min())
+
+
+
 def is_setup5(setup_type) -> bool:
     """True for Setup 5 whether given as the enum, its value, or a legacy stored label."""
     if setup_type == SetupType.SETUP_5_OPTION_BB:
@@ -217,70 +286,40 @@ def evaluate_signals(
     # =========================================================================
     # SETUP 3: W-Bottom (CE) & M-Top (PE) Reversals
     # =========================================================================
-    if len(df) >= 15:
-        recent_window = df.iloc[-12:]
-        # W-Bottom:
-        # Look for a trough outside lower band, intermediate bounce, second trough inside lower band
-        min1_idx = recent_window["low"].iloc[:6].idxmin()
-        min2_idx = recent_window["low"].iloc[6:].idxmin()
-        if min1_idx != min2_idx and min2_idx > min1_idx and min2_idx < last_idx:
-            row_min1 = df.loc[[min1_idx]].iloc[0]
-            row_min2 = df.loc[[min2_idx]].iloc[0]
-            # Low 1 was outside lower band
-            if row_min1["low"] < row_min1["bb_lower"]:
-                # Low 2 was strictly inside lower band and RSI had bullish divergence
-                if row_min2["close"] > row_min2["bb_lower"] and row_min2["rsi"] > row_min1["rsi"]:
-                    # Neckline is max high between the two troughs
-                    neckline = df.loc[min1_idx:min2_idx, "high"].max()
-                    if close > neckline and prev["close"] <= neckline:
-                        sl = round(min(row_min1["low"], row_min2["low"]) - 1.0, 2)
-                        strike_rec = recommend_strike(symbol, close, "CE", sl)
-                        signals.append(Signal(
-                            id=f"{symbol}_{timeframe}_S3_CE_{ts_clean}",
-                            symbol=symbol,
-                            timeframe=timeframe,
-                            setup_type=SetupType.SETUP_3_REVERSAL,
-                            option_type="CE",
-                            timestamp=ts_str,
-                            entry_price=round(close, 2),
-                            stop_loss=strike_rec.stop_loss,
-                            target_1=strike_rec.target_1,
-                            target_2=strike_rec.target_2,
-                            strike_recommendation=strike_rec,
-                            indicators_snapshot=snap,
-                            rationale="Bollinger W-Bottom reversal with Bullish RSI Divergence breaking neckline"
-                        ))
-
-        # M-Top:
-        max1_idx = recent_window["high"].iloc[:6].idxmax()
-        max2_idx = recent_window["high"].iloc[6:].idxmax()
-        if max1_idx != max2_idx and max2_idx > max1_idx and max2_idx < last_idx:
-            row_max1 = df.loc[[max1_idx]].iloc[0]
-            row_max2 = df.loc[[max2_idx]].iloc[0]
-            # High 1 was outside upper band
-            if row_max1["high"] > row_max1["bb_upper"]:
-                # High 2 was inside upper band and RSI had bearish divergence
-                if row_max2["close"] < row_max2["bb_upper"] and row_max2["rsi"] < row_max1["rsi"]:
-                    # Neckline is min low between the two peaks
-                    neckline = df.loc[max1_idx:max2_idx, "low"].min()
-                    if close < neckline and prev["close"] >= neckline:
-                        sl = round(max(row_max1["high"], row_max2["high"]) + 1.0, 2)
-                        strike_rec = recommend_strike(symbol, close, "PE", sl)
-                        signals.append(Signal(
-                            id=f"{symbol}_{timeframe}_S3_PE_{ts_clean}",
-                            symbol=symbol,
-                            timeframe=timeframe,
-                            setup_type=SetupType.SETUP_3_REVERSAL,
-                            option_type="PE",
-                            timestamp=ts_str,
-                            entry_price=round(close, 2),
-                            stop_loss=strike_rec.stop_loss,
-                            target_1=strike_rec.target_1,
-                            target_2=strike_rec.target_2,
-                            strike_recommendation=strike_rec,
-                            indicators_snapshot=snap,
-                            rationale="Bollinger M-Top reversal with Bearish RSI Divergence breaking neckline"
-                        ))
+    for opt in ("CE", "PE"):
+        legs = _reversal_legs(df, bullish=(opt == "CE"))
+        if legs is None:
+            continue
+        bullish = opt == "CE"
+        row1, row2, neckline = legs
+        if bullish:
+            if not (close > neckline and prev["close"] <= neckline and close > ema_9):
+                continue
+            sl = round(min(row1["low"], row2["low"]) - 1.0, 2)
+        else:
+            if not (close < neckline and prev["close"] >= neckline and close < ema_9):
+                continue
+            sl = round(max(row1["high"], row2["high"]) + 1.0, 2)
+        strike_rec = recommend_strike(symbol, close, opt, sl)
+        signals.append(Signal(
+            id=f"{symbol}_{timeframe}_S3_{opt}_{ts_clean}",
+            symbol=symbol,
+            timeframe=timeframe,
+            setup_type=SetupType.SETUP_3_REVERSAL,
+            option_type=opt,
+            timestamp=ts_str,
+            entry_price=round(close, 2),
+            stop_loss=strike_rec.stop_loss,
+            target_1=strike_rec.target_1,
+            target_2=strike_rec.target_2,
+            strike_recommendation=strike_rec,
+            indicators_snapshot=snap,
+            rationale=(
+                "Bollinger W-Bottom reversal with Bullish RSI Divergence breaking neckline"
+                if bullish else
+                "Bollinger M-Top reversal with Bearish RSI Divergence breaking neckline"
+            ),
+        ))
 
     # =========================================================================
     # SETUP 4: 9:30 AM Opening Range Breakout (ORB)
