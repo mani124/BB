@@ -4,6 +4,7 @@ Separate from ``positions`` on purpose: the table is created additively (IF NOT 
 paper-trading engine and its migrations are untouched and a reset never loses what was written.
 """
 import sqlite3
+from contextlib import contextmanager
 from typing import Optional
 
 from app.services import market_hours
@@ -17,10 +18,15 @@ class JournalStore:
         self.db_path = db_path
         self._init_db()
 
-    def _conn(self) -> sqlite3.Connection:
+    @contextmanager
+    def _conn(self):
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn:  # commit / rollback
+                yield conn
+        finally:
+            conn.close()
 
     def _init_db(self) -> None:
         with self._conn() as conn:

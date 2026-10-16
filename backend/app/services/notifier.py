@@ -82,6 +82,7 @@ class Notifier:
         except Exception:
             with self._lock:
                 self._pending -= 1
+                self._last_sent.pop(key, None)
             return False
         return True
 

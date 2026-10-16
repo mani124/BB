@@ -16,6 +16,7 @@ ADX_MIN = 20.0            # Pine "strong trend" level
 ADX_RISING_BARS = 3       # ADX must be above its value this many bars back
 MIN_DIST_ATR = 0.1        # close must clear the EMA by this many ATRs (drops marginal crosses)
 MAX_DIST_ATR = 1.0        # ...but not by more than this (no chasing)
+MIN_HISTORY_BARS = 30       # ADX (Wilder 14) is filled with a neutral 20.0 until about 28 bars exist
 MIN_SESSION_BARS = 20     # first entry about 10:55 IST
 WINDOW_END = dtime(14, 25)  # bar start; a 14:25 bar confirms at 14:30
 
@@ -24,7 +25,7 @@ REQUIRED = {"timestamp", "open", "high", "low", "close", "atr", "adx", "plus_di"
 
 def evaluate_adx_ema_cross(symbol: str, df: pd.DataFrame, timeframe: str = "5m") -> list[Signal]:
     """`df` is completed bars with indicators (needs atr, adx, plus_di, minus_di). At most one signal."""
-    if df is None or df.empty or len(df) < MIN_SESSION_BARS or not REQUIRED.issubset(df.columns):
+    if df is None or df.empty or len(df) < MIN_HISTORY_BARS or timeframe != "5m" or not REQUIRED.issubset(df.columns):
         return []
     last_ts = pd.to_datetime(df["timestamp"].iloc[-1])
     if last_ts.time() > WINDOW_END or _session_bars(df) < MIN_SESSION_BARS:
