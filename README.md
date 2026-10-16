@@ -137,11 +137,11 @@ The dashboard continuously evaluates four high-probability option buying setups 
 
 | Instrument Universe | Primary Execution Timeframe | Setup 4 (ORB) Timeframe |
 | :--- | :--- | :--- |
-| **Benchmark Indices** *(NIFTY 50, BANKNIFTY, FINNIFTY, SENSEX, MIDCPNIFTY)* | **5-Minute** | **3-Minute / 5-Minute** |
+| **Benchmark Indices** *(NIFTY 50, BANKNIFTY, FINNIFTY, SENSEX, MIDCPNIFTY, NIFTYNXT50)* | **5-Minute** | **3-Minute / 5-Minute** |
 | **Liquid F&O Momentum Stocks** *(~30 Curated Equities)* | **15-Minute** | **5-Minute** |
 
 ### Curated High-Beta Universe:
-- **Indices**: NIFTY 50, BANKNIFTY, FINNIFTY, SENSEX, MIDCPNIFTY.
+- **Indices**: NIFTY 50, BANKNIFTY, FINNIFTY, SENSEX, MIDCPNIFTY, NIFTYNXT50.
 - **Banking & Financials**: HDFCBANK, ICICIBANK, SBIN, AXISBANK, KOTAKBANK, BAJFINANCE, BAJAJFINSV.
 - **IT & Tech**: RELIANCE, TCS, INFY, HCLTECH, TECHM, WIPRO.
 - **Auto & Industrials**: TATAMOTORS, MARUTI, M&M, BAJAJ-AUTO, EICHERMOT, LT.
@@ -182,6 +182,7 @@ Calculations apply exact NSE lot sizes:
 - **FINNIFTY**: 65
 - **SENSEX**: 20
 - **MIDCPNIFTY**: 120
+- **NIFTYNXT50**: 25
 - **Equities**: RELIANCE (500), HDFCBANK (650), ICICIBANK (700), SBIN (750), TATASTEEL (5500), TCS (175), INFY (400), etc.
 
 ---

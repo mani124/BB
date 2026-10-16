@@ -44,6 +44,8 @@ class ScannerCandlesMixin:
             "NIFTY BANK": 48500.0,
             "FINNIFTY": 21500.0,
             "SENSEX": 74000.0,
+            "MIDCPNIFTY": 12500.0,
+            "NIFTYNXT50": 68000.0,
             "RELIANCE": 2980.0,
             "HDFCBANK": 1680.0,
             "ICICIBANK": 1280.0,

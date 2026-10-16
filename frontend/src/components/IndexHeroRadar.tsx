@@ -6,11 +6,11 @@ interface IndexHeroRadarProps {
 }
 
 export const IndexHeroRadar: React.FC<IndexHeroRadarProps> = ({ radar }) => {
-  const indexKeys = ['NIFTY 50', 'NIFTY BANK', 'FINNIFTY', 'SENSEX'];
+  const indexKeys = ['NIFTY 50', 'NIFTY BANK', 'FINNIFTY', 'SENSEX', 'MIDCPNIFTY', 'NIFTYNXT50'];
 
   return (
     <section
-      className="desk-strip grid-cols-2 lg:grid-cols-4"
+      className="desk-strip grid-cols-2 lg:grid-cols-6"
       aria-label="Benchmark indices Bollinger radar (5m)"
     >
       {indexKeys.map((key) => {
