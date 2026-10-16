@@ -183,7 +183,6 @@ Calculations apply exact NSE lot sizes:
 - **SENSEX**: 20
 - **MIDCPNIFTY**: 120
 - **NIFTYNXT50**: 25
-- **MIDCPNIFTY**: 120
 - **Equities**: RELIANCE (500), HDFCBANK (650), ICICIBANK (700), SBIN (750), TATASTEEL (5500), TCS (175), INFY (400), etc.
 
 ---
