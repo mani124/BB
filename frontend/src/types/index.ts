@@ -12,6 +12,7 @@ export type SetupType =
   | 'Setup 9: Relative Strength vs NIFTY (9 EMA Pullback)'
   | 'Setup 10: ATM Straddle Premium Squeeze'
   | 'Setup 11: Filtered Option Chart Scalp'
+  | 'Setup 12: ADX + EMA 20 Trend Cross'
   | 'SETUP_1_SQUEEZE_EXPANSION'
   | 'SETUP_2_WALKING_BANDS'
   | 'SETUP_3_WM_REVERSAL'
@@ -22,7 +23,8 @@ export type SetupType =
   | 'SETUP_8_DIVERGENCE_SNAPBACK'
   | 'SETUP_9_RELATIVE_STRENGTH'
   | 'SETUP_10_STRADDLE_SQUEEZE'
-  | 'SETUP_11_FILTERED_OPTION_BB';
+  | 'SETUP_11_FILTERED_OPTION_BB'
+  | 'SETUP_12_ADX_EMA_CROSS';
 
 export interface OptionStrikeRecommendation {
   symbol: string;

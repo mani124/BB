@@ -18,6 +18,7 @@ class SetupType(str, enum.Enum):
     SETUP_9_RELATIVE_STRENGTH = "Setup 9: Relative Strength vs NIFTY (9 EMA Pullback)"
     SETUP_10_STRADDLE_SQUEEZE = "Setup 10: ATM Straddle Premium Squeeze"
     SETUP_11_FILTERED_OPTION_BB = "Setup 11: Filtered Option Chart Scalp"
+    SETUP_12_ADX_EMA_CROSS = "Setup 12: ADX + EMA 20 Trend Cross"
 
 class Signal(BaseModel):
     id: str

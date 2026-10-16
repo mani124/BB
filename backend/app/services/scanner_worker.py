@@ -26,6 +26,7 @@ from app.services.relative_strength import evaluate_relative_strength, NIFTY_SYM
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size, option_exchange_segment
 from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.setup11 import evaluate_setup11
+from app.services.setup12 import evaluate_adx_ema_cross
 from app.services.straddle_squeeze import StraddleLeg, evaluate_straddle_squeeze
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
 from app.services.momentum_ranker import MomentumRanker, MomentumRankings
@@ -632,6 +633,16 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                             confirmed_signals.append(s)
                     except Exception:
                         pass
+
+                # Setup 12 (ADX + EMA 20 trend cross) only fires on completed bars; isolated like Setup 9
+                try:
+                    s12_signals = evaluate_adx_ema_cross(inst.symbol, completed_df, timeframe=inst.default_timeframe)
+                except Exception as e:
+                    logger.warning(f"Setup 12 evaluation failed for {inst.symbol}: {e}")
+                    s12_signals = []
+                for s in s12_signals:
+                    if pd.to_datetime(s.timestamp).date() == today_date:
+                        confirmed_signals.append(s)
 
                 # Setup 9 (relative strength vs NIFTY) only fires on completed bars
                 nifty_bars = self._candle_history.get(NIFTY_SYMBOL, [])
