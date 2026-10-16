@@ -79,12 +79,16 @@ const SETUP_FILTER_OPTIONS = [
   { id: 'SETUP_7', label: 'S7 Inside Bar' },
   { id: 'SETUP_8', label: 'S8 Climax Divergence' },
   { id: 'SETUP_9', label: 'S9 Rel. Strength' },
+  { id: 'SETUP_10', label: 'S10 Straddle Squeeze' },
 ];
 
 const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
   if (filterId === 'ALL') return true;
   if (!tradeSetup) return false;
   const s = tradeSetup.toUpperCase();
+  // A numbered label ('SETUP 1', 'SETUP_10_...') decides on its number so S1 never matches S10.
+  const num = s.match(/SETUP[_ ](\d+)/)?.[1];
+  if (num) return `SETUP_${num}` === filterId;
   if (filterId === 'SETUP_1') {
     return s.includes('SETUP_1') || s.includes('SETUP 1') || s.includes('SQUEEZE');
   }
@@ -313,6 +317,7 @@ const SETUP_SWITCH_ROWS: { key: string; label: string }[] = [
   { key: '7', label: 'Setup 7 · Inside Bar Snapback' },
   { key: '8', label: 'Setup 8 · Divergence Fade' },
   { key: '9', label: 'Setup 9 · Relative Strength' },
+  { key: '10', label: 'Setup 10 · Straddle Squeeze' },
 ];
 
 const SETUP_MODE_OPTIONS: { mode: SetupMode; label: string; title: string }[] = [

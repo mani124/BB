@@ -90,6 +90,55 @@ def evaluate_option_chart_signal(
     if volume < max(1000.0, avg_vol * 1.2):
         return None
 
+    return build_option_chart_signal(
+        setup_type=SetupType.SETUP_5_OPTION_BB,
+        rationale="Option BB Upper expansion with VWAP & volume surge",
+        tag="S5",
+        curr=curr,
+        last_idx=last_idx,
+        symbol=symbol,
+        strike_symbol=strike_symbol,
+        option_type=option_type,
+        underlying_price=underlying_price,
+        strike_price=strike_price,
+        expiry_date=expiry_date,
+        lot_size=lot_size,
+        option_security_id=option_security_id,
+        timeframe=timeframe,
+        current_quote=current_quote,
+    )
+
+
+def build_option_chart_signal(
+    *,
+    setup_type: SetupType,
+    rationale: str,
+    tag: str,
+    curr,
+    last_idx: int,
+    symbol: str,
+    strike_symbol: str,
+    option_type: Literal["CE", "PE"],
+    underlying_price: float,
+    strike_price: float,
+    expiry_date: Optional[str],
+    lot_size: int,
+    option_security_id: Optional[str],
+    timeframe: str,
+    current_quote: Optional[dict],
+    extra_snapshot: Optional[dict] = None,
+) -> Optional[Signal]:
+    """Risk, targets, time guards and Signal assembly shared by the option-premium setups (5 and 10).
+
+    ``curr`` is the last completed bar of the traded option's indicator frame.
+    """
+    close = float(curr["close"])
+    bb_upper = float(curr["bb_upper"])
+    vwap = float(curr["vwap"])
+    rsi = float(curr["rsi"])
+    volume = float(curr["volume"])
+    ema_9 = float(curr["ema_9"])
+
     # Dynamic Option Risk and Targets directly on Option Premium points
     bar_range = max(float(curr.get("high", close)) - float(curr.get("low", close)), close * 0.04)
     # Stop loss placed below 9 EMA or breakout bar low, with min 4% buffer
@@ -120,7 +169,7 @@ def evaluate_option_chart_signal(
     # Identity = stock + side + contract + bar open time, so a re-evaluation of the same bar
     # on the same contract always yields the same id (and a different contract never collides).
     contract_part = f"{option_security_id}_" if option_security_id else ""
-    sig_id = f"{symbol}_{timeframe}_S5_{option_type}_{contract_part}{ts_clean}"
+    sig_id = f"{symbol}_{timeframe}_{tag}_{option_type}_{contract_part}{ts_clean}"
 
     # Finding 2: Require authentic current live quote before labelling as live quote
     is_live = False
@@ -185,12 +234,14 @@ def evaluate_option_chart_signal(
         "vwap": vwap,
         "close": close
     }
+    if extra_snapshot:
+        indicators_snap.update(extra_snapshot)
 
     return Signal(
         id=sig_id,
         symbol=symbol,
         timeframe=timeframe,
-        setup_type=SetupType.SETUP_5_OPTION_BB,
+        setup_type=setup_type,
         option_type=option_type,
         timestamp=ts_str,
         entry_price=close,
@@ -199,5 +250,5 @@ def evaluate_option_chart_signal(
         target_2=opt_t2,
         strike_recommendation=rec,
         indicators_snapshot=indicators_snap,
-        rationale="Option BB Upper expansion with VWAP & volume surge"
+        rationale=rationale
     )
