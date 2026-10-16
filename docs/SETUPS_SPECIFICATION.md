@@ -136,36 +136,37 @@ $$\text{BandWidth} \le \text{BW}_{20\text{-min}} \times 1.30 \quad \text{OR} \qu
 ### Qualification Criteria
 
 #### 1. Trend Strength Qualifier
-* Minimum lookback of 22 bars available.
-* $\text{ADX} \ge 23.0$ (prohibits taking walking entries in ranging or consolidating markets).
+* Minimum lookback of 22 bars available, and at least 20 bars of the current session (so the bands are not distorted by the overnight gap).
+* $\text{ADX} \ge 23.0$ (prohibits taking walking entries in ranging or consolidating markets). ADX is neutral (20) until 28 bars exist.
 
 #### 2. BUY CE (Call Option) Trigger
-1. **Prior Momentum Walk:** At least one of the prior 2 candles closed at or above the Upper Band:
-   $$\text{Close}_{t-1} \ge \text{Upper Band}_{t-1} \times 0.998 \quad \text{OR} \quad \text{Close}_{t-2} \ge \text{Upper Band}_{t-2} \times 0.998$$
+1. **Prior Momentum Walk:** At least one of the prior 2 candles closed in the top 10% of the band or above it (width $W = \text{Upper} - \text{Lower}$):
+   $$\text{Close}_{t-k} \ge \text{Upper Band}_{t-k} - 0.1\,W_{t-k}, \quad k \in \{1, 2\}$$
 2. **Expansion Filter:** Upper Band must be expanding upward, not curling down into consolidation:
    $$\text{Upper Band}_t \ge \text{Upper Band}_{t-1}$$
 3. **Directional Flow:** $+DI \ge -DI$ (positive directional dominance).
 4. **Moving Average Alignment:** $9\text{ EMA} > \text{Middle Band}$ and $\text{Close} > 9\text{ EMA}$ and $\text{Close} > \text{VWAP}$.
 5. **9 EMA Pullback Touch:** Current candle low retests 9 EMA and closes bullish:
-   $$\text{Low} \le \max(9\text{ EMA} \times 1.004,\, 9\text{ EMA} + 0.5) \quad \text{AND} \quad \text{Close} \ge \text{Open}$$
+   $$\text{Low} \le 9\text{ EMA} + 0.25 \cdot \text{ATR}_{14} \quad \text{AND} \quad \text{Close} \ge \text{Open}$$
+   (without ATR the pad is 0.1% of the EMA)
 6. **Execution Levels:**
-   * **Spot Stop-Loss:** Placed snugly below the 9 EMA:
-     $$\text{SL} = 9\text{ EMA} - \max(\text{Bar Range} \times 0.4,\, \text{Close} \times 0.001)$$
+   * **Spot Stop-Loss:** Below the lower of the 9 EMA and the signal bar's low:
+     $$\text{SL} = \min(9\text{ EMA}, \text{Low}) - \max(\text{Bar Range} \times 0.25,\, \text{Close} \times 0.0005)$$
    * **Spot Targets:** 1:1.5 RR (Target 1), 1:2.5 RR (Target 2).
    * **Strike:** 1-Strike ITM CE.
 
 #### 3. BUY PE (Put Option) Trigger
-1. **Prior Momentum Walk:** Prior candle closed at or below Lower Band:
-   $$\text{Close}_{t-1} \le \text{Lower Band}_{t-1} \times 1.002 \quad \text{OR} \quad \text{Close}_{t-2} \le \text{Lower Band}_{t-2} \times 1.002$$
+1. **Prior Momentum Walk:** At least one of the prior 2 candles closed in the bottom 10% of the band or below it:
+   $$\text{Close}_{t-k} \le \text{Lower Band}_{t-k} + 0.1\,W_{t-k}, \quad k \in \{1, 2\}$$
 2. **Expansion Filter:** Lower Band must be expanding downward:
    $$\text{Lower Band}_t \le \text{Lower Band}_{t-1}$$
 3. **Directional Flow:** $-DI \ge +DI$ (negative directional dominance).
 4. **Moving Average Alignment:** $9\text{ EMA} < \text{Middle Band}$ and $\text{Close} < 9\text{ EMA}$ and $\text{Close} < \text{VWAP}$.
 5. **9 EMA Pullback Retest:** Current candle high retests 9 EMA and closes bearish:
-   $$\text{High} \ge \min(9\text{ EMA} \times 0.996,\, 9\text{ EMA} - 0.5) \quad \text{AND} \quad \text{Close} \le \text{Open}$$
+   $$\text{High} \ge 9\text{ EMA} - 0.25 \cdot \text{ATR}_{14} \quad \text{AND} \quad \text{Close} \le \text{Open}$$
 6. **Execution Levels:**
-   * **Spot Stop-Loss:** Placed snugly above the 9 EMA:
-     $$\text{SL} = 9\text{ EMA} + \max(\text{Bar Range} \times 0.4,\, \text{Close} \times 0.001)$$
+   * **Spot Stop-Loss:** Above the higher of the 9 EMA and the signal bar's high:
+     $$\text{SL} = \max(9\text{ EMA}, \text{High}) + \max(\text{Bar Range} \times 0.25,\, \text{Close} \times 0.0005)$$
    * **Spot Targets:** 1:1.5 RR (Target 1), 1:2.5 RR (Target 2).
    * **Strike:** 1-Strike ITM PE.
 

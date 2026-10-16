@@ -44,6 +44,24 @@ def is_setup5(setup_type) -> bool:
 
 INDEX_SYMBOLS = {"NIFTY 50", "NIFTY", "NIFTY BANK", "BANKNIFTY", "FINNIFTY", "NIFTY FINANCIAL SERVICES", "SENSEX", "MIDCPNIFTY"}
 
+def _walked_band(row, side: str) -> bool:
+    """Setup 2: the bar closed in the outer 10% of the Bollinger band (or beyond it)."""
+    width = float(row["bb_upper"] - row["bb_lower"])
+    if width <= 0:
+        return False
+    if side == "up":
+        return row["close"] >= row["bb_upper"] - 0.1 * width
+    return row["close"] <= row["bb_lower"] + 0.1 * width
+
+
+def _session_bars(df: pd.DataFrame) -> int:
+    """Bars of the latest bar's own session, so overnight-gap bars do not distort Setup 2's bands."""
+    if "timestamp" not in df.columns:
+        return len(df)
+    dates = pd.to_datetime(df["timestamp"]).dt.date
+    return int((dates == dates.iloc[-1]).sum())
+
+
 def evaluate_signals(
     symbol: str,
     df: pd.DataFrame,
@@ -158,18 +176,23 @@ def evaluate_signals(
     # =========================================================================
     # SETUP 2: Walking the Bands with 9 EMA
     # =========================================================================
-    if len(df) >= 22 and adx >= 23.0:
+    if len(df) >= 22 and adx >= 23.0 and _session_bars(df) >= 20:
         prev2 = df.iloc[last_idx - 2]
-        # CE Walking: Prior 2 candles had strong closes near or above upper band AND trading above session VWAP
-        # Must have expanding upper band (not curling downward into chop) and bullish directional movement (+DI >= -DI)
+        atr = float(curr.get("atr", 0.0) or 0.0)
+        # Pullback touch zone scales with volatility (ATR); falls back to 0.1% of the EMA without ATR.
+        touch_pad = 0.25 * atr if atr > 0 else ema_9 * 0.001
+        bar_range = float(curr["high"] - curr["low"])
+
+        # CE Walking: one of the prior 2 closes was in the top 10% of the band (or beyond it) AND trading above VWAP.
+        # Upper band must be expanding (not curling into chop) and +DI >= -DI.
         upper_expanding = curr["bb_upper"] >= prev["bb_upper"]
         di_bull = curr.get("plus_di", 25.0) >= curr.get("minus_di", 20.0) if ("plus_di" in curr and "minus_di" in curr) else True
-        prior_bull = (prev["close"] >= prev["bb_upper"] * 0.998) or (prev2["close"] >= prev2["bb_upper"] * 0.998)
+        prior_bull = _walked_band(prev, "up") or _walked_band(prev2, "up")
         if prior_bull and upper_expanding and di_bull and ema_9 > mid and close > ema_9 and close > vwap:
-            # Low retested near 9 EMA and closed green
-            if curr["low"] <= max(ema_9 * 1.004, ema_9 + 0.5) and curr["close"] >= curr["open"]:
-                bar_range = max(curr["high"] - curr["low"], close * 0.0015)
-                sl = round(ema_9 - max(bar_range * 0.4, close * 0.001), 2)
+            # Low retested the 9 EMA zone and closed green
+            if curr["low"] <= ema_9 + touch_pad and curr["close"] >= curr["open"]:
+                # Stop sits below the lower of the EMA and the signal bar's own low
+                sl = round(min(ema_9, curr["low"]) - max(bar_range * 0.25, close * 0.0005), 2)
                 strike_rec = recommend_strike(symbol, close, "CE", sl)
                 signals.append(Signal(
                     id=f"{symbol}_{timeframe}_S2_CE_{ts_clean}",
@@ -187,16 +210,14 @@ def evaluate_signals(
                     rationale="Bullish momentum trend riding Upper Band with 9 EMA support bounce"
                 ))
 
-        # PE Walking: Prior 2 candles had strong closes near or below lower band AND trading below session VWAP
-        # Must have expanding lower band (not curling upward into chop) and bearish directional movement (-DI >= +DI)
+        # PE Walking: mirror image (bottom 10% of the band, lower band expanding, -DI >= +DI, below VWAP).
         lower_expanding = curr["bb_lower"] <= prev["bb_lower"]
         di_bear = curr.get("minus_di", 25.0) >= curr.get("plus_di", 20.0) if ("plus_di" in curr and "minus_di" in curr) else True
-        prior_bear = (prev["close"] <= prev["bb_lower"] * 1.002) or (prev2["close"] <= prev2["bb_lower"] * 1.002)
+        prior_bear = _walked_band(prev, "down") or _walked_band(prev2, "down")
         if prior_bear and lower_expanding and di_bear and ema_9 < mid and close < ema_9 and close < vwap:
-            # High retested near 9 EMA and closed red
-            if curr["high"] >= min(ema_9 * 0.996, ema_9 - 0.5) and curr["close"] <= curr["open"]:
-                bar_range = max(curr["high"] - curr["low"], close * 0.0015)
-                sl = round(ema_9 + max(bar_range * 0.4, close * 0.001), 2)
+            # High retested the 9 EMA zone and closed red
+            if curr["high"] >= ema_9 - touch_pad and curr["close"] <= curr["open"]:
+                sl = round(max(ema_9, curr["high"]) + max(bar_range * 0.25, close * 0.0005), 2)
                 strike_rec = recommend_strike(symbol, close, "PE", sl)
                 signals.append(Signal(
                     id=f"{symbol}_{timeframe}_S2_PE_{ts_clean}",
