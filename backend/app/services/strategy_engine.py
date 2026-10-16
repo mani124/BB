@@ -38,6 +38,7 @@ S3_LEG1_MIN_AGE, S3_LEG1_MAX_AGE = 5, 20
 S3_LEG2_MAX_AGE = 5
 S3_MIN_LEG_GAP = 3
 S3_RSI_MARGIN = 1.5
+S3_MIN_SESSION_BARS = 20  # bands/RSI need a full clean session start, like Setup 2
 S3_SL_ATR_BUFFER = 0.1  # stop sits this many ATRs beyond leg 2
 S3_ATR_TOLERANCE = 0.25  # leg 2 may undercut (W) / overshoot (M) leg 1 by at most this many ATRs
 
@@ -125,7 +126,7 @@ def _walked_band(row, side: str) -> bool:
 
 
 def _session_bars(df: pd.DataFrame) -> int:
-    """Bars of the latest bar's own session, so overnight-gap bars do not distort Setup 2's bands."""
+    """Bars of the latest bar's own session, so overnight-gap bars do not distort the bands (Setups 2 and 3)."""
     if "timestamp" not in df.columns:
         return len(df)
     dates = pd.to_datetime(df["timestamp"]).dt.date
@@ -308,8 +309,9 @@ def evaluate_signals(
     # =========================================================================
     # SETUP 3: W-Bottom (CE) & M-Top (PE) Reversals
     # =========================================================================
+    s3_session_ok = _session_bars(df) >= S3_MIN_SESSION_BARS
     for opt in ("CE", "PE"):
-        legs = _reversal_legs(df, bullish=(opt == "CE"))
+        legs = _reversal_legs(df, bullish=(opt == "CE")) if s3_session_ok else None
         if legs is None:
             continue
         bullish = opt == "CE"
