@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.services import market_hours
+from app.services.strategy_engine import is_setup11
 from app.services.paper_models import _now_stamp, _parse_iso
 
 logger = logging.getLogger(__name__)
@@ -74,50 +75,58 @@ class PaperRiskMixin:
     def _today_iso() -> str:
         return market_hours.now_ist().date().isoformat()
 
-    def day_pnl(self, book: Optional[str] = None) -> float:
+    def day_pnl(self, book: Optional[str] = None, pool: Optional[str] = "main") -> float:
         """Net P&L for today's IST date: closed trades exited today, partial profit already booked on
-        open runners, and open positions marked to market after estimated exit charges."""
+        open runners, and open positions marked to market after estimated exit charges.
+
+        `pool` is "main" (every setup except Setup 11), "s11" (Setup 11 only) or None (everything).
+        Setup 11 shadows Setup 5, so its P&L has its own loss cap and never counts toward the main one."""
         from app.services.paper_trader import _outcome_pnl
         today = market_hours.now_ist().date()
         total = 0.0
+        def in_pool(p) -> bool:
+            return pool is None or (is_setup11(p.setup_type) == (pool == "s11"))
+
         for p in self._portfolio.closed_trades:
-            if p.quarantine_reason or (book and getattr(p, "feed_mode", "demo") != book):
+            if p.quarantine_reason or (book and getattr(p, "feed_mode", "demo") != book) or not in_pool(p):
                 continue
             ed = _parse_iso(p.exit_datetime)
             if ed is not None and ed.date() == today:
                 total += _outcome_pnl(p)
         for p in self._portfolio.active_positions:
-            if p.quarantine_reason or (book and getattr(p, "feed_mode", "demo") != book):
+            if p.quarantine_reason or (book and getattr(p, "feed_mode", "demo") != book) or not in_pool(p):
                 continue
             total += p.booked_pnl_rupees
             total += round(p.pnl_points * p.quantity, 2) - p.est_exit_charges
         return round(total, 2)
 
-    def _check_loss_cap(self, book: str) -> bool:
-        """Latch the cap for `book` if today's loss has reached the limit. True when tripped today."""
+    def _check_loss_cap(self, book: str, pool: str = "main") -> bool:
+        """Latch the cap for `book` if today's loss has reached the limit. True when tripped today.
+        Setup 11 latches under "<book>:s11", so it can stop without stopping the other setups."""
         today = self._today_iso()
-        if self._loss_cap_trips.get(book) == today:
+        book_key = book if pool == "main" else f"{book}:{pool}"
+        if self._loss_cap_trips.get(book_key) == today:
             return True
         limit = self._daily_loss_limit
         if limit <= 0:
             return False
-        pnl = self.day_pnl(book)
+        pnl = self.day_pnl(book, pool)
         if pnl > -limit:
             return False
-        self._loss_cap_trips[book] = today
+        self._loss_cap_trips[book_key] = today
         self._loss_cap_trips = {k: v for k, v in self._loss_cap_trips.items() if v == today}
         self._enqueue_write("save_setting", ("loss_cap_trips", json.dumps(self._loss_cap_trips)))
         logger.warning("Daily loss cap tripped (%s book): day P&L %.2f <= -%.2f; new entries blocked until next IST day.",
                        book, pnl, limit)
-        self._emit_risk_event("loss_cap_tripped", {"book": book, "day_pnl": pnl, "limit": limit, "date": today})
+        self._emit_risk_event("loss_cap_tripped", {"book": book_key, "day_pnl": pnl, "limit": limit, "date": today})
         return True
 
-    def risk_block_reason(self, feed_mode: str) -> Optional[str]:
+    def risk_block_reason(self, feed_mode: str, pool: str = "main") -> Optional[str]:
         """Why a new entry in `feed_mode` must be refused by the kill switch or loss cap, else None."""
         if self._kill_switch:
             return "kill switch is engaged"
-        if self._check_loss_cap(feed_mode):
-            return f"daily loss cap reached (limit {self._daily_loss_limit:,.0f})"
+        if self._check_loss_cap(feed_mode, pool):
+            return f"daily loss cap reached{' for Setup 11' if pool == 's11' else ''} (limit {self._daily_loss_limit:,.0f})"
         return None
 
     def risk_status(self, mode: Optional[str] = None) -> RiskStatus:

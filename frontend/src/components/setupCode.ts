@@ -1,4 +1,4 @@
-// Short "S1".."S10" code for any setup naming scheme the backend emits
+// Short "S1".."S11" code for any setup naming scheme the backend emits
 // ("Setup 5: Option Chart BB Scalp", "SETUP_5_OPTION_BB_SCALP", "PIN BAR", ...).
 export function setupCode(setupType: string | undefined): string {
   const s = (setupType || '').toUpperCase();
