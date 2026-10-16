@@ -14,6 +14,7 @@ INDICATOR_COLUMNS = [
     "vwap",
     "rsi",
     "ema_9",
+    "atr",
     "adx",
     "plus_di",
     "minus_di",
@@ -144,6 +145,7 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
 
     atr14 = _wilder(tr)
+    res["atr"] = atr14
     atr14_safe = atr14.replace(0, np.nan)
     plus_di14 = (_wilder(pd.Series(plus_dm, index=res.index)) / atr14_safe * 100.0).fillna(0.0)
     minus_di14 = (_wilder(pd.Series(minus_dm, index=res.index)) / atr14_safe * 100.0).fillna(0.0)
