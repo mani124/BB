@@ -236,6 +236,7 @@ def test_strategy_engine_setup8_strike_recommendation():
     df.loc[last_idx, "high"] = df.loc[swing1_idx, "high"] + 2.0
     df.loc[last_idx, "close"] = df.loc[last_idx, "bb_upper"] - 2.0
     df.loc[last_idx, "rsi"] = 70.0
+    df.loc[last_idx, "open"] = df.loc[last_idx, "close"] + 3.0  # bearish confirmation candle
 
     signals = evaluate_signals("NIFTY 50", df, timeframe="5m")
     s8_signals = [s for s in signals if s.setup_type == SetupType.SETUP_8_DIVERGENCE_SNAPBACK and s.option_type == "PE"]

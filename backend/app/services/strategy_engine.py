@@ -405,13 +405,16 @@ def evaluate_signals(
     # =========================================================================
     # SETUP 6: Pin Bar Exhaustion Snapback
     # =========================================================================
+    # Snap-back setups need bands that are wide relative to their own recent compression.
+    # (An absolute % never works here: 5m BandWidth is ~0.3-2%, so the old `> 5%` gate never passed.)
+    bands_wide = bw > 0.0 and bw >= float(settings.SNAPBACK_MIN_BW_RATIO) * float(bw_min)
     curr_high = float(curr.get("high", close))
     curr_low = float(curr.get("low", close))
     curr_open = float(curr.get("open", close))
     curr_close = float(close)
     bar_range = curr_high - curr_low
 
-    if bw > abs_sq and adx <= 25.0 and bar_range > 0.0001:
+    if bands_wide and adx <= 25.0 and bar_range > 0.0001:
         # Bearish PE Pin Bar: High > Upper Band, Upper Wick >= 50% range, Close < Upper Band, RSI >= 68
         upper_wick = curr_high - max(curr_open, curr_close)
         is_pe_pinbar = (
@@ -481,7 +484,7 @@ def evaluate_signals(
     # =========================================================================
     # SETUP 7: 2.5σ Puncture & Inside Bar Breakdown
     # =========================================================================
-    if bw > abs_sq and len(df) >= 22:
+    if bands_wide and len(df) >= 22:
         prev2 = df.iloc[last_idx - 2]
         prev2_high = float(prev2.get("high", prev2["close"]))
         prev2_low = float(prev2.get("low", prev2["close"]))
@@ -562,7 +565,7 @@ def evaluate_signals(
     # =========================================================================
     # SETUP 8: Climax Swing RSI Divergence Fade
     # =========================================================================
-    if bw > abs_sq and len(df) >= 20:
+    if bands_wide and len(df) >= 20:
         window_size = min(15, len(df))
         lookback_window = df.iloc[-window_size:]
         recent_3 = lookback_window.iloc[-3:]
@@ -578,7 +581,9 @@ def evaluate_signals(
             if (
                 row_p1["high"] >= row_p1["bb_upper"]
                 and row_p2["high"] >= row_p1["high"] * 0.998
-                and (float(row_p1["rsi"]) - float(row_p2["rsi"]) >= 2.0)
+                and float(row_p1["rsi"]) >= 70.0
+                and curr_close < curr_open
+                and (float(row_p1["rsi"]) - float(row_p2["rsi"]) >= 5.0)
                 and curr_close < upper
                 and mid < curr_close
             ):
@@ -613,7 +618,9 @@ def evaluate_signals(
             if (
                 row_t1["low"] <= row_t1["bb_lower"]
                 and row_t2["low"] <= row_t1["low"] * 1.002
-                and (float(row_t2["rsi"]) - float(row_t1["rsi"]) >= 2.0)
+                and float(row_t1["rsi"]) <= 30.0
+                and curr_close > curr_open
+                and (float(row_t2["rsi"]) - float(row_t1["rsi"]) >= 5.0)
                 and curr_close > lower
                 and mid > curr_close
             ):

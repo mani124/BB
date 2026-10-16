@@ -469,13 +469,13 @@ $$\text{Risk per Lot (₹)} = (\text{Option Entry} - \text{Option SL}) \times \t
 This section records where the code deliberately or accidentally differs from sections 1–10. The code is the source of truth for live behaviour until a decision below says otherwise.
 
 ### 11.1 Setups 6–8 (snap-back family) are implemented but were not specified above
-All three require `BandWidth > SQUEEZE_ABS_BW_PCT` ("bands are wide") and use a 1-strike ITM strike, with targets at the 20 SMA (Target 1) and the opposite band (Target 2).
+All three require "bands are wide": `BandWidth >= SNAPBACK_MIN_BW_RATIO (default 1.3) x BandWidth 20-bar minimum` (changed 2026-10-16: the old `BandWidth > SQUEEZE_ABS_BW_PCT` (5%) gate could not pass on 5m bars, so Setups 6-8 never fired; Setup 1 still uses `SQUEEZE_ABS_BW_PCT`). They use a 1-strike ITM strike, with targets at the 20 SMA (Target 1) and the opposite band (Target 2).
 
 | Setup | Enum | Trigger (PE shown; CE is the mirror) |
 |---|---|---|
 | 6 | `SETUP_6_PINBAR_SNAPBACK` | `ADX <= 25`; high pierces the upper band, close back inside, upper wick >= 50% of the bar range, body in the lower 60%, `RSI >= 68`, close above the 20 SMA. SL above the pin-bar high. |
 | 7 | `SETUP_7_INSIDE_BAR_SNAPBACK` | Bar t-2 reaches the 2.5σ band, bar t-1 is an inside bar, bar t closes below the inside bar's low, close above the 20 SMA. SL above the mother-bar high. |
-| 8 | `SETUP_8_DIVERGENCE_SNAPBACK` | Climax swing with RSI divergence fading back toward the mean (see `strategy_engine.py`, Setup 8 block). |
+| 8 | `SETUP_8_DIVERGENCE_SNAPBACK` | Climax swing with RSI divergence fading back toward the mean. Peak 1 pierces the upper band with `RSI >= 70`; peak 2 (last 3 bars) retests peak 1 within 0.2% with RSI at least **5** points lower; the trigger bar is bearish (`close < open`), closes back inside the band and above the 20 SMA. CE is the mirror (`RSI <= 30`). Tightened 2026-10-16 from RSI gap 2 and no RSI/candle filter, which fired on about 4% of random-walk bars. |
 
 ### 11.2 Setup 3: code follows section 4
 Aligned on 2026-10-16 (from the Setup 3 analysis). Leg 1 is 5-20 bars back and must pierce the band; leg 2 is the lowest low of the last 5 bars, at least 3 bars after leg 1, inside the band and not more than 0.25 ATR(14) beyond leg 1; RSI divergence margin is 1.5 points; the trigger needs the neckline cross **and** close beyond the 9 EMA.
@@ -491,7 +491,7 @@ Stop-loss: second low (high for M) minus (plus) 0.1 ATR(14), replacing the flat 
 ### 11.4 Changes made after this spec was written
 * VWAP for instruments with no volume (cash indices) is the session-cumulative mean of typical price, not the single bar's typical price.
 * RSI / ATR / DI / ADX use Wilder smoothing seeded with an SMA; ADX is undefined (neutral 20) before bar 28.
-* "Bands are wide / squeeze" uses `SQUEEZE_ABS_BW_PCT` (default 5.0 = legacy; nearly always true on 5m bars). Recalibrate with `scripts/compare_squeeze.py` on recorded candles.
+* "Squeeze" for Setup 1 uses `SQUEEZE_ABS_BW_PCT` (default 5.0 = legacy; nearly always true on 5m bars) and is unchanged. Setups 6-8 use their own `SNAPBACK_MIN_BW_RATIO`. Recalibrate with `scripts/compare_squeeze.py` on recorded candles.
 * Option exits scale spot risk by the contract's chain delta; when the chain has no Greek the default 0.50–0.55 is used and the recommendation carries `delta_assumed = true` (`REQUIRE_REAL_DELTA=1` refuses such entries).
 * Setup 5 stops entering after 14:30 IST on the contract's expiry day.
 * Size defaults scale with the 2-lot default: `max_risk_per_trade` 8,000 (was 4,000) and `MAX_OPEN_NOTIONAL` 20 lakh (was 10 lakh, env override `MAX_OPEN_NOTIONAL`). Position-count caps (8 open, 3 entries per stock per day) are unchanged.

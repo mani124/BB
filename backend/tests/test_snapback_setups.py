@@ -243,3 +243,11 @@ def test_zero_division_and_flat_candle_guards():
     # Must not raise ZeroDivisionError
     signals = evaluate_signals("NIFTY 50", ind_df, timeframe="5m")
     assert isinstance(signals, list)
+
+
+def test_snapback_gate_is_relative_to_recent_bandwidth(monkeypatch):
+    """Setups 6-8 use a ratio to the 20-bar BandWidth minimum, not the 5% absolute squeeze value."""
+    from app.core.config import settings
+    from app.services import strategy_engine as se
+    assert settings.SQUEEZE_ABS_BW_PCT == 5.0  # Setup 1 constant untouched
+    assert settings.SNAPBACK_MIN_BW_RATIO == 1.3
