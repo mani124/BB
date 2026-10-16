@@ -25,6 +25,7 @@ from app.services.strategy_engine import evaluate_signals, Signal, SetupType
 from app.services.relative_strength import evaluate_relative_strength, NIFTY_SYMBOL
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size, option_exchange_segment
 from app.services.option_chart_strategy import evaluate_option_chart_signal
+from app.services.straddle_squeeze import StraddleLeg, evaluate_straddle_squeeze
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
 from app.services.momentum_ranker import MomentumRanker, MomentumRankings
 logger = logging.getLogger(__name__)
@@ -857,6 +858,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
 
         lot_size = get_lot_size(inst.symbol)
         inst_type_dhan = "OPTIDX" if inst.instrument_type == "INDEX" else "OPTSTK"
+        straddle_legs: dict[str, StraddleLeg] = {}
 
         for opt_type in ("CE", "PE"):
             opt_info = strike_data.get(opt_type.lower(), {})
@@ -942,6 +944,22 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
 
             if not opt_candles.empty and len(opt_candles) >= 20:
                 ind_opt = calculate_indicators(opt_candles)
+                leg_quote = {
+                    "quote_age_s": self._chain_age_s(inst.symbol),
+                    "last_price": opt_ltp,
+                    "volume": opt_vol,
+                    # Chain snapshot, logged on the trade so a liquidity filter can be tested later.
+                    "day_volume": opt_info.get("volume"),
+                    "oi": opt_info.get("oi"),
+                    "top_bid_quantity": opt_info.get("top_bid_quantity"),
+                    "top_ask_quantity": opt_info.get("top_ask_quantity"),
+                    "ask_price": float(opt_info.get("top_ask_price", 0.0) or opt_info.get("ask_price", 0.0) or 0.0),
+                    "bid_price": float(opt_info.get("top_bid_price", 0.0) or opt_info.get("bid_price", 0.0) or 0.0),
+                    "is_live_quote": bool(opt_ltp > 0 or float(opt_info.get("top_ask_price", 0.0) or 0.0) > 0)
+                }
+                straddle_legs[opt_type] = StraddleLeg(
+                    df=ind_opt, strike_symbol=strike_symbol, security_id=sec_id_str, quote=leg_quote,
+                )
                 sig = evaluate_option_chart_signal(
                     symbol=inst.symbol,
                     strike_symbol=strike_symbol,
@@ -953,22 +971,25 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                     lot_size=lot_size,
                     option_security_id=sec_id_str,
                     timeframe="5m",
-                    current_quote={
-                        "quote_age_s": self._chain_age_s(inst.symbol),
-                        "last_price": opt_ltp,
-                        "volume": opt_vol,
-                        # Chain snapshot, logged on the trade so a liquidity filter can be tested later.
-                        "day_volume": opt_info.get("volume"),
-                        "oi": opt_info.get("oi"),
-                        "top_bid_quantity": opt_info.get("top_bid_quantity"),
-                        "top_ask_quantity": opt_info.get("top_ask_quantity"),
-                        "ask_price": float(opt_info.get("top_ask_price", 0.0) or opt_info.get("ask_price", 0.0) or 0.0),
-                        "bid_price": float(opt_info.get("top_bid_price", 0.0) or opt_info.get("bid_price", 0.0) or 0.0),
-                        "is_live_quote": bool(opt_ltp > 0 or float(opt_info.get("top_ask_price", 0.0) or 0.0) > 0)
-                    }
+                    current_quote=leg_quote,
                 )
                 if sig:
                     results.append(sig)
+
+        # Setup 10: ATM straddle premium squeeze, from the same two completed-bar series.
+        # Skipped when Setup 5 already fired on this side, so one contract is never entered twice.
+        if len(straddle_legs) == 2:
+            s10 = evaluate_straddle_squeeze(
+                symbol=inst.symbol,
+                legs=straddle_legs,
+                underlying_price=underlying_price,
+                strike_price=atm_strike,
+                expiry_date=expiry,
+                lot_size=lot_size,
+                timeframe="5m",
+            )
+            if s10 and not any(r.option_type == s10.option_type for r in results):
+                results.append(s10)
 
         return results
 

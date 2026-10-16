@@ -21,6 +21,7 @@ DEFAULT_MODES: dict[str, str] = {
     "7": "all",
     "8": "all",
     "9": "all",
+    "10": "index",
 }
 
 

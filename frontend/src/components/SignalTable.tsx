@@ -47,7 +47,7 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, a
             const rec = sig.strike_recommendation;
             const ind = sig.indicators_snapshot;
             const isBought = activeSignalIds?.has(sig.id) || false;
-            const isOptionChart = sig.setup_type.includes('Setup 5') || sig.setup_type.includes('SETUP_5');
+            const isOptionChart = sig.setup_type.includes('Setup 5') || sig.setup_type.includes('SETUP_5') || sig.setup_type.includes('Setup 10') || sig.setup_type.includes('SETUP_10');
             const unconfirmed = sig.is_confirmed === false;
 
             return (
