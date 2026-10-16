@@ -80,6 +80,7 @@ const SETUP_FILTER_OPTIONS = [
   { id: 'SETUP_8', label: 'S8 Climax Divergence' },
   { id: 'SETUP_9', label: 'S9 Rel. Strength' },
   { id: 'SETUP_10', label: 'S10 Straddle Squeeze' },
+  { id: 'SETUP_11', label: 'S11 Filtered Scalp' },
 ];
 
 const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
@@ -318,6 +319,7 @@ const SETUP_SWITCH_ROWS: { key: string; label: string }[] = [
   { key: '8', label: 'Setup 8 · Divergence Fade' },
   { key: '9', label: 'Setup 9 · Relative Strength' },
   { key: '10', label: 'Setup 10 · Straddle Squeeze' },
+  { key: '11', label: 'Setup 11 · Filtered Option Scalp' },
 ];
 
 const SETUP_MODE_OPTIONS: { mode: SetupMode; label: string; title: string }[] = [

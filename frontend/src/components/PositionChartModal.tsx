@@ -43,6 +43,7 @@ export function setupIndicators(setupType: string): IndicatorKey[] {
     case 'S2': return ['bb', 'ema'];
     case 'S4': return ['orb', 'vwap'];
     case 'S10':
+    case 'S11':
     case 'S5': return ['bb', 'vwap', 'ema'];
     case 'S6':
     case 'S7': return ['bb', 'bb25'];
@@ -85,7 +86,7 @@ interface DrawnChart {
 }
 
 export const PositionChartModal: React.FC<{ position: PaperPosition; onClose: () => void }> = ({ position, onClose }) => {
-  const [which, setWhich] = useState<Which>(['S5', 'S10'].includes(setupCode(position.setup_type)) ? 'option' : 'underlying');
+  const [which, setWhich] = useState<Which>(['S5', 'S10', 'S11'].includes(setupCode(position.setup_type)) ? 'option' : 'underlying');
   const [data, setData] = useState<ChartPayload | null>(null);
   // The server's status wins, so a position that closes while the popup is open stops polling.
   const status = data?.status ?? position.status;

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Literal, Optional
 from pydantic import BaseModel
 from app.services.charges_calculator import calculate_option_trade_charges
-from app.services.strategy_engine import Signal, is_setup5
+from app.services.strategy_engine import Signal, is_setup5, is_setup11
 from app.services.strike_selector import get_lot_size
 from app.services import market_hours
 from app.core.config import settings
@@ -219,7 +219,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             return None
 
         # Kill switch and daily loss cap stop every new entry, auto or manual.
-        risk_block = self.risk_block_reason(feed_mode)
+        risk_block = self.risk_block_reason(feed_mode, pool="s11" if is_setup11(signal.setup_type) else "main")
         if risk_block:
             logger.info("Entry blocked for %s %s: %s", signal.symbol, signal.option_type, risk_block)
             self._processed_signal_ids.add(signal.id)
@@ -234,7 +234,8 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
 
         # Check re-entry gate: prevent consecutive stop-out churn in the same chop box
         last_closed = next(
-            (p for p in reversed(self._portfolio.closed_trades) if p.symbol == signal.symbol and p.option_type == signal.option_type and not p.quarantine_reason),
+            (p for p in reversed(self._portfolio.closed_trades) if p.symbol == signal.symbol and p.option_type == signal.option_type and not p.quarantine_reason
+             and is_setup11(p.setup_type) == is_setup11(signal.setup_type)),
             None
         )
         if last_closed and last_closed.status == "STOPPED_OUT":
