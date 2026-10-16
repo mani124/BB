@@ -571,3 +571,27 @@ Entry, stop, T1 (1.5R), T2 (2.5R), sizing and the option-chart-only exits are id
 ### Notes
 * Filter thresholds (60% candle position, 30% stop width, strictly rising RSI and BandWidth) are starting values from one session; tune them from paper trades.
 * Not included on purpose: an entry-time cutoff, an entry-slippage guard, spread/volume/OI limits and a stock-trend check. The 2026-10-16 data did not support the spread and volume limits, and a stock-trend check would bring a spot signal into a setup that reads only the option chart.
+
+
+---
+
+## 15. Setup 12: ADX + EMA 20 Trend Cross
+
+* **Setup Enum:** `SetupType.SETUP_12_ADX_EMA_CROSS`; code in `backend/app/services/setup12.py`, wired in `scanner_worker` next to Setup 9 (completed bars only).
+* **Origin:** the TradingView "Trinity ADX + EMA Scalper" Pine script. Its raw signal is "close crosses the EMA 20 in the direction of the candle", which fires on every cross in chop. Here the script's optional ADX filter is always on, plus distance and time guards. Setups 1 and 5 are unchanged.
+* **Underlying Principle:** take an EMA 20 cross only when a trend is already present (ADX at a trend level and rising, +DI/-DI aligned with the trade). Unlike Setup 2 it does not need a band walk or a 9 EMA pullback, so it can fire at the start of a trend leg.
+
+### Qualification (CE shown; PE is the mirror), on completed 5m spot bars
+1. **Cross:** previous close <= previous EMA 20 and close > EMA 20 (Pine `ta.crossover`), and close > previous close. EMA 20 is `close.ewm(span=20)`.
+2. **ADX gate (always on):** ADX >= 20 (Pine "strong" level) and ADX > its value 3 bars earlier, and +DI > -DI (PE: -DI > +DI). ADX/DI are the engine's Wilder values (Section 1), not the script's plain 14-bar average, so numbers differ slightly from the Pine plot. ADX is neutral (20) until 28 bars exist, so it cannot rise before then.
+3. **Distance:** close - EMA 20 must be between 0.1 and 1.0 ATR(14). Drops marginal crosses and chases.
+4. **Window:** at least 20 bars of the current session (first entry about 10:55 IST) and bar start no later than 14:25 (signal confirms at 14:30).
+
+### Risk
+* Stop: `min(EMA 20, bar low) - max(0.25 x bar range, 0.05% of close)` (PE mirrored), the Setup 2 formula on the 20 EMA. Targets T1 1.5R / T2 2.5R on spot, strike 1 ITM, partial booking at T1, sizing, risk cap and chop-box re-entry gate as for Setups 1 to 4.
+* Default per-setup switch: `index`.
+
+### Notes
+* Thresholds (ADX 20, 3-bar rise, 0.1 to 1.0 ATR, 14:25 cutoff) are starting values chosen before any replay; tune them from paper trades. The Pine script's 8-bar highest/lowest close lines are plot-only and not used.
+* Option fills, slippage and costs cannot be tested from past data (no past option candles). The spot signal can be replayed on past 5m index candles.
+
