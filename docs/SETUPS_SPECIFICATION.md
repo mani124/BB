@@ -194,30 +194,31 @@ $$\text{BandWidth} \le \text{BW}_{20\text{-min}} \times 1.30 \quad \text{OR} \qu
 ### Qualification Criteria
 
 #### 1. W-Bottom Reversal (BUY CE)
-1. **First Low ($L_1$):** Formed within the last 5 to 20 candles where $\text{Low}_{L_1} \le \text{Lower Band}_{L_1}$ (outside or piercing the band).
+1. **First Low ($L_1$):** Formed 5 to 20 candles before the trigger candle where $\text{Low}_{L_1} \le \text{Lower Band}_{L_1}$ (outside or piercing the band). If several bars pierce, the lowest one is $L_1$.
 2. **Intermediate Peak ($P$):** A bounce toward the 20 SMA middle band separates the two bottoms.
-3. **Second Low ($L_2$):** Formed more recently with a higher or equal low that stays **inside** the band:
-   $$\text{Low}_{L_2} \ge \text{Low}_{L_1} \times 0.995 \quad \text{AND} \quad \text{Low}_{L_2} > \text{Lower Band}_{L_2}$$
+3. **Second Low ($L_2$):** The lowest low of the last 5 candles (trigger candle excluded) that is at least 3 candles after $L_1$, a higher or equal low (within a small ATR tolerance) that stays **inside** the band:
+   $$\text{Low}_{L_2} \ge \text{Low}_{L_1} - 0.25 \times \text{ATR}(14) \quad \text{AND} \quad \text{Low}_{L_2} > \text{Lower Band}_{L_2}$$
+   (ATR tolerance replaces the earlier flat `x 0.995`, which is 125 points on NIFTY and rejected nothing.)
 4. **Bullish RSI Divergence:** Momentum weakens on the selling side:
    $$\text{RSI}(L_2) > \text{RSI}(L_1) + 1.5$$
 5. **Confirmation Trigger:** Current candle closes above intermediate peak $P$ and above the 9 EMA:
    $$\text{Close} > P_{\text{high}} \quad \text{AND} \quad \text{Close} > 9\text{ EMA}$$
 6. **Execution Levels:**
-   * **Spot Stop-Loss:** Placed below the second low: $\text{SL} = \text{Low}_{L_2} - 2.0$.
+   * **Spot Stop-Loss:** $\text{SL} = \text{Low}_{L_2} - 0.1 \times \text{ATR}(14)$ (then widened to the minimum risk floor if needed).
    * **Spot Targets:** 1:1.5 RR (Target 1), 1:2.5 RR (Target 2).
    * **Strike:** 1-Strike ITM CE.
 
 #### 2. M-Top Reversal (BUY PE)
-1. **First High ($H_1$):** Formed within the last 5 to 20 candles where $\text{High}_{H_1} \ge \text{Upper Band}_{H_1}$ (piercing the band).
+1. **First High ($H_1$):** Formed 5 to 20 candles before the trigger candle where $\text{High}_{H_1} \ge \text{Upper Band}_{H_1}$ (piercing the band). If several bars pierce, the highest one is $H_1$.
 2. **Intermediate Valley ($V$):** A pull-back toward the 20 SMA middle band.
-3. **Second High ($H_2$):** Formed more recently with a lower or equal high staying **inside** the band:
-   $$\text{High}_{H_2} \le \text{High}_{H_1} \times 1.005 \quad \text{AND} \quad \text{High}_{H_2} < \text{Upper Band}_{H_2}$$
+3. **Second High ($H_2$):** The highest high of the last 5 candles (trigger candle excluded) that is at least 3 candles after $H_1$, a lower or equal high (within a small ATR tolerance) staying **inside** the band:
+   $$\text{High}_{H_2} \le \text{High}_{H_1} + 0.25 \times \text{ATR}(14) \quad \text{AND} \quad \text{High}_{H_2} < \text{Upper Band}_{H_2}$$
 4. **Bearish RSI Divergence:** Momentum drops on the buying side:
    $$\text{RSI}(H_2) < \text{RSI}(H_1) - 1.5$$
 5. **Confirmation Trigger:** Current candle closes below intermediate valley $V$ and below the 9 EMA:
    $$\text{Close} < V_{\text{low}} \quad \text{AND} \quad \text{Close} < 9\text{ EMA}$$
 6. **Execution Levels:**
-   * **Spot Stop-Loss:** Placed above the second high: $\text{SL} = \text{High}_{H_2} + 2.0$.
+   * **Spot Stop-Loss:** $\text{SL} = \text{High}_{H_2} + 0.1 \times \text{ATR}(14)$ (then widened to the minimum risk floor if needed).
    * **Spot Targets:** 1:1.5 RR (Target 1), 1:2.5 RR (Target 2).
    * **Strike:** 1-Strike ITM PE.
 
@@ -474,16 +475,10 @@ All three require `BandWidth > SQUEEZE_ABS_BW_PCT` ("bands are wide") and use a 
 | 7 | `SETUP_7_INSIDE_BAR_SNAPBACK` | Bar t-2 reaches the 2.5σ band, bar t-1 is an inside bar, bar t closes below the inside bar's low, close above the 20 SMA. SL above the mother-bar high. |
 | 8 | `SETUP_8_DIVERGENCE_SNAPBACK` | Climax swing with RSI divergence fading back toward the mean (see `strategy_engine.py`, Setup 8 block). |
 
-### 11.2 Setup 3 differs from section 4 (decision needed; not changed)
-| Rule | Spec (section 4) | Code |
-|---|---|---|
-| Swing window | Leg 1 5–20 candles back | Last 12 candles, split 6 / 6 |
-| Second low | `Low2 >= Low1 × 0.995` and inside band | Only `close2 > lower band` |
-| RSI divergence | `RSI2 > RSI1 + 1.5` | `RSI2 > RSI1` (no margin) |
-| Trigger | Close > peak high **and** above 9 EMA | Close crosses the neckline (max high between the lows); 9 EMA not checked |
-| Stop-loss | Second low − 2.0 | Lower of both lows − 1.0 |
+### 11.2 Setup 3: code follows section 4
+Aligned on 2026-10-16 (from the Setup 3 analysis). Leg 1 is 5-20 bars back and must pierce the band; leg 2 is the lowest low of the last 5 bars, at least 3 bars after leg 1, inside the band and not more than 0.25 ATR(14) beyond leg 1; RSI divergence margin is 1.5 points; the trigger needs the neckline cross **and** close beyond the 9 EMA.
 
-Tightening the code to the spec would reduce Setup 3 signal frequency; loosening the spec to the code keeps current behaviour. This needs an owner decision.
+Stop-loss: second low (high for M) minus (plus) 0.1 ATR(14), replacing the flat 1.0 point under the deeper of both lows. The old stop gave about 1.3x the risk of the second-low stop in the synthetic run (median 62 vs 52 NIFTY points), so fewer lots and farther targets. The spec's flat 2.0 point buffer was dropped because it does not scale across NIFTY and stocks. Watch the first week of paper trades for extra wick stop-outs.
 
 ### 11.3 Stock ranking and risk cap
 * The momentum ranker is constructed with `top_n = 10` in `scanner_worker.py` (the class default and section 7 say 5).

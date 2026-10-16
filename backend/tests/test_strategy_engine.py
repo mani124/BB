@@ -193,9 +193,9 @@ def test_setup3_w_bottom_reversal_ce():
     records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 1)), "open": 93.0, "high": 98.0, "low": 93.0, "close": 97.5, "volume": 2500})
     records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 2)), "open": 97.5, "high": 98.5, "low": 97.0, "close": 98.0, "volume": 2000})
     # Trough 2: inside lower BB, higher RSI
-    records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 3)), "open": 98.0, "high": 98.0, "low": 94.5, "close": 95.0, "volume": 2000})
+    records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 3)), "open": 98.0, "high": 98.0, "low": 95.9, "close": 96.2, "volume": 2000})
     # Consolidation below neckline
-    records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 4)), "open": 95.0, "high": 97.0, "low": 95.0, "close": 96.5, "volume": 2000})
+    records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 4)), "open": 96.0, "high": 97.0, "low": 96.0, "close": 96.5, "volume": 2000})
     records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 5)), "open": 96.5, "high": 98.0, "low": 96.5, "close": 98.0, "volume": 2000})
     # Breakout candle above neckline (98.5)
     records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 6)), "open": 98.0, "high": 101.0, "low": 98.0, "close": 100.5, "volume": 5000})
@@ -234,9 +234,9 @@ def test_setup3_m_top_reversal_pe():
     records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 1)), "open": 107.0, "high": 107.0, "low": 102.0, "close": 102.5, "volume": 2500})
     records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 2)), "open": 102.5, "high": 103.0, "low": 101.5, "close": 102.0, "volume": 2000})
     # Peak 2: inside upper BB, lower RSI
-    records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 3)), "open": 102.0, "high": 105.5, "low": 102.0, "close": 104.5, "volume": 2000})
+    records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 3)), "open": 102.0, "high": 104.1, "low": 102.0, "close": 103.8, "volume": 2000})
     # Consolidation above neckline
-    records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 4)), "open": 104.5, "high": 105.0, "low": 103.0, "close": 103.5, "volume": 2000})
+    records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 4)), "open": 104.0, "high": 104.0, "low": 103.0, "close": 103.5, "volume": 2000})
     records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 5)), "open": 103.5, "high": 104.0, "low": 102.0, "close": 102.0, "volume": 2000})
     # Breakdown candle below neckline (101.5)
     records.append({"timestamp": start_t + timedelta(minutes=5 * (base_idx + 6)), "open": 102.0, "high": 102.0, "low": 99.0, "close": 99.5, "volume": 5000})
