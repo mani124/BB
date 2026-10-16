@@ -10,6 +10,7 @@ export type SetupType =
   | 'Setup 7: 2.5σ Puncture & Inside Bar'
   | 'Setup 8: Climax Swing Divergence Fade'
   | 'Setup 9: Relative Strength vs NIFTY (9 EMA Pullback)'
+  | 'Setup 10: ATM Straddle Premium Squeeze'
   | 'SETUP_1_SQUEEZE_EXPANSION'
   | 'SETUP_2_WALKING_BANDS'
   | 'SETUP_3_WM_REVERSAL'
@@ -18,7 +19,8 @@ export type SetupType =
   | 'SETUP_6_PINBAR_SNAPBACK'
   | 'SETUP_7_INSIDE_BAR_SNAPBACK'
   | 'SETUP_8_DIVERGENCE_SNAPBACK'
-  | 'SETUP_9_RELATIVE_STRENGTH';
+  | 'SETUP_9_RELATIVE_STRENGTH'
+  | 'SETUP_10_STRADDLE_SQUEEZE';
 
 export interface OptionStrikeRecommendation {
   symbol: string;
@@ -181,7 +183,7 @@ export interface PaperPortfolio {
   closed_trades_count?: number;
   risk?: RiskStatus | null;
   auto_trade_enabled: boolean;
-  // Setup number ('1'..'9') -> off | index | stocks | all
+  // Setup number ('1'..'10') -> off | index | stocks | all
   setup_modes?: Record<string, SetupMode>;
   default_lots: number;
   max_risk_per_trade?: number;

@@ -26,6 +26,7 @@ export const SETUP_FILTERS: { key: string; label: string; title: string }[] = [
   { key: 'Setup 7: 2.5σ Puncture & Inside Bar', label: 'S7 Inside Bar', title: 'Setup 7: 2.5σ Inside Bar' },
   { key: 'Setup 8: Climax Swing Divergence Fade', label: 'S8 Divergence Fade', title: 'Setup 8: Divergence Fade' },
   { key: 'Setup 9: Relative Strength vs NIFTY (9 EMA Pullback)', label: 'S9 Rel. Strength', title: 'Setup 9: Relative Strength vs NIFTY' },
+  { key: 'Setup 10: ATM Straddle Premium Squeeze', label: 'S10 Straddle Squeeze', title: 'Setup 10: ATM Straddle Premium Squeeze' },
 ];
 
 const Seg: React.FC<{

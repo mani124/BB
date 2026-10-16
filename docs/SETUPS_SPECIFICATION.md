@@ -519,3 +519,29 @@ Trades stocks that move on their own momentum: rising while NIFTY is flat or fal
 ### Notes
 * The NIFTY market-bias veto used by Setups 1–8 is deliberately **not** applied: this setup wants the stock to diverge from NIFTY.
 * The thresholds (0.75%, 0.15%) are starting values, not tuned on recorded candles.
+
+
+---
+
+## 13. Setup 10: ATM Straddle Premium Squeeze
+
+* **Setup Enum:** `SetupType.SETUP_10_STRADDLE_SQUEEZE`; code in `backend/app/services/straddle_squeeze.py`, signal assembly shared with Setup 5 (`build_option_chart_signal`).
+* **Underlying Principle:** Index options reprice on volatility before spot trends. A Bollinger squeeze on the combined ATM CE + ATM PE premium shows volatility compression that spot BandWidth can miss. When the combined premium then expands, the leg that leads the move is bought.
+
+### Qualification (all on completed 5m bars)
+1. **Straddle chart:** on the bars both ATM legs share, straddle OHLC = CE + PE (volume summed). Bollinger (20, 2.0), BandWidth and its 20-bar minimum are computed on that series. Needs 20 aligned bars today (so the first entry is about 11:00 IST) and both legs must have closed the same latest bar.
+2. **Squeeze:** in at least one of the 3 bars before the trigger bar, straddle `BandWidth <= 1.30 x` its 20-bar minimum (the Setup 1 factor; the always-true absolute 5% rule is not used).
+3. **Expansion:** the trigger bar's straddle close is above its upper band and above the previous straddle close.
+4. **Direction:** the leg with the larger bar gain must gain at least 3% on the bar while the other leg does not gain. If both legs rise (a volatility spike) there is no trade.
+5. **Leg confirmation:** the leading leg closes above its own session VWAP and 9 EMA, and its bar volume is real, at least 1,000 contracts and 1.2x its prior 20-bar average (same filter as Setup 5).
+6. **Windows:** same entry cutoff (15:15) and expiry-day cutoff as Setup 5.
+
+### Risk and management
+* Strike: ATM, the bought leg only. Entry, stop (`max(close - 9 EMA, 0.5 x bar range, 4% of close)`), T1 1.5R and T2 2.5R are the Setup 5 premium formulas, and the position is managed on the option chart only (no spot checks), like Setup 5.
+* Setup 5 and Setup 10 never enter the same side in one scan: when Setup 5 fires on a leg, the Setup 10 signal for that side is dropped.
+* Default per-setup switch: `index` (NIFTY, BANKNIFTY, FINNIFTY, SENSEX). Stock option premiums are too thin for a stable straddle series.
+* The signal's indicator snapshot logs `straddle_close`, `straddle_bb_upper`, `straddle_bandwidth`, `straddle_bandwidth_20_min` and each leg's bar gain, so thresholds can be tuned from paper trades.
+
+### Notes
+* The thresholds (1.30x, 3 bars, 3% leg gain) are starting values. Option candles for past sessions are not available for replay, so this setup is validated by paper trading.
+* The ATM strike can change during the day; each strike has its own full-day exchange series, so the straddle is always built from the current ATM pair.
