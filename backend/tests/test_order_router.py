@@ -596,3 +596,67 @@ async def test_routing_off_leaves_paper_trading_untouched(env):
     engine.close_position(pos.id, reason="x", real_bid_price=189.0, real_opt_price=190.0)
     assert router.orders() == [] and broker.placed == []
     assert engine.get_portfolio().closed_trades[-1].status == "CLOSED"
+
+
+# ---------------------------------------------------------------- review fixes 2026-10-17
+@pytest.mark.asyncio
+async def test_limit_exit_reprices_from_fresh_bid_and_widens_after_each_unfilled_attempt(env):
+    engine, broker, alerts, router, _ = env
+    engine.runtime.set("live_exit_order_type", "LIMIT")
+    engine.runtime.set("live_exit_limit_buffer_pct", 2.0)
+    quotes = {"bid": 100.0}
+    router._quote_fn = lambda sec_id: (quotes["bid"], None)
+    await go_live(router)
+    await router.enter(ctx())
+    from types import SimpleNamespace
+    # the paper position closed at 100; its price never moves again
+    router._engine_position = lambda pid: (SimpleNamespace(current_option_price=100.0, quantity=100,
+                                                           option_security_id="555"), True)
+    broker.fill = "none"
+    await router.sync_position("P1")
+    assert broker.placed[-1].price == 98.0          # fresh bid 100 - 2%
+    quotes["bid"] = 90.0                             # market keeps falling
+    await router.sync_position("P1")
+    assert broker.placed[-1].price == round_tick(90.0 * 0.96, up=False)  # fresh bid, buffer widened to 4%
+    assert "live_exit_unfilled" in alerts.events()
+    broker.fill = "full"
+    await router.sync_position("P1")
+    assert router._row("P1")["state"] == "CLOSED"
+
+
+@pytest.mark.asyncio
+async def test_exit_buffer_is_capped(env):
+    engine, broker, alerts, router, _ = env
+    engine.runtime.set("live_exit_order_type", "LIMIT")
+    engine.runtime.set("live_exit_limit_buffer_pct", 15.0)
+    await go_live(router)
+    await router.enter(ctx())
+    from types import SimpleNamespace
+    router._engine_position = lambda pid: (SimpleNamespace(current_option_price=100.0, quantity=100), True)
+    broker.fill = "none"
+    await router.sync_position("P1")
+    await router.sync_position("P1")
+    assert broker.placed[-1].price == 80.0  # 15% x 2 = 30%, capped at 20%
+
+
+def test_live_needs_an_alert_channel(env, tmp_path):
+    engine, broker, alerts, router, db = env
+    quiet = OrderRouter(db, engine.runtime, engine.telemetry, engine, broker, notify_fn=alerts, sleep=_nosleep,
+                        alerts_enabled=lambda: False)
+    problems = quiet.live_preconditions(check_session=True)
+    assert any("alerts are not configured" in p for p in problems)
+    with pytest.raises(PermissionError):
+        quiet.arm()
+    assert not any("alerts" in p for p in router.live_preconditions(check_session=True))
+
+
+@pytest.mark.asyncio
+async def test_second_routed_entry_on_the_same_contract_is_refused(env):
+    engine, broker, alerts, router, _ = env
+    engine.runtime.set("live_allowed_setups", "5,11")
+    await go_live(router)
+    await router.enter(ctx("P1"))
+    assert await router.enter(ctx("P2", setup="Setup 11: Filtered Option Chart Scalp")) is None
+    assert router.orders()[0]["message"].startswith("SAME_CONTRACT")
+    assert len([o for o in broker.placed if o.side == "BUY"]) == 1
+    assert router.open_routed_count() == 1

@@ -40,7 +40,7 @@ from app.services.broker_adapter import (
     BrokerAuthExpired, BrokerError, BrokerNotSent, BrokerRejected, BrokerTimeout, Contract, OrderRequest,
     OrderResult,
 )
-from app.services.notifier import notify
+from app.services.notifier import notifier, notify
 from app.services import db
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,7 @@ CONFIRM_ENV = "LIVE_TRADING_CONFIRM"
 ARM_TTL_SECONDS = 120
 CLOSED_STATUSES = ("STOPPED_OUT", "TARGET_2", "CLOSED")
 MAX_AUTO_EXIT_FAILURES = 3
+MAX_EXIT_BUFFER_PCT = 20.0  # a re-sent LIMIT exit widens its buffer per unfilled attempt, up to this
 _OPEN_ORDER_STATES = ("SENDING", NEW, OPEN, UNKNOWN)
 
 
@@ -80,7 +81,9 @@ def parse_allowed_setups(text: str) -> set[int]:
 
 class OrderRouter:
     def __init__(self, db_path: str, runtime: Any, telemetry: Any, engine: Any, broker: BrokerAdapter, *,
-                 notify_fn: Callable[..., Any] = notify, sleep: Callable[[float], Any] = asyncio.sleep) -> None:
+                 notify_fn: Callable[..., Any] = notify, sleep: Callable[[float], Any] = asyncio.sleep,
+                 quote_fn: Optional[Callable[[str], Optional[tuple[Optional[float], Optional[float]]]]] = None,
+                 alerts_enabled: Optional[Callable[[], bool]] = None) -> None:
         self.db_path = db_path
         self.runtime = runtime
         self.telemetry = telemetry
@@ -88,6 +91,10 @@ class OrderRouter:
         self.broker = broker
         self._notify = notify_fn
         self._sleep = sleep
+        # (bid, ltp) of an option security id from the live feed, or None when no fresh quote exists.
+        self._quote_fn = quote_fn
+        # Live is refused while alerts reach nobody. With a test double for notify_fn, alerts count as delivered.
+        self._alerts_enabled = alerts_enabled or ((lambda: notifier.enabled) if notify_fn is notify else (lambda: True))
         self._dblock = threading.RLock()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._entry_lock: Optional[asyncio.Lock] = None
@@ -254,6 +261,8 @@ class OrderRouter:
             out.append("live_allowed_setups is empty")
         if float(self.runtime.get("live_daily_loss_limit")) <= 0 and float(self.runtime.get("daily_loss_limit")) <= 0:
             out.append("no daily loss limit is set")
+        if not self._alerts_enabled():
+            out.append("alerts are not configured (set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID on the server)")
         if check_session and not self.broker.has_session():
             out.append("no broker session; log in first")
         return out
@@ -482,6 +491,11 @@ class OrderRouter:
             if contract.lot_size != int(ctx["lot_size"]):
                 self._record_block(ctx, "LOT_MISMATCH", f"broker lot {contract.lot_size} vs ours {ctx['lot_size']}")
                 return None
+            # Setup 11 shadows Setup 5 on the same contracts: routing both must not buy the same option twice.
+            if self._q("SELECT 1 FROM live_positions WHERE mode=? AND trading_symbol=? AND state IN ('ENTERING','OPEN') "
+                       "AND position_id != ?", (self._label(), contract.trading_symbol, pid)):
+                self._record_block(ctx, "SAME_CONTRACT", f"{contract.trading_symbol} is already held by another routed position")
+                return None
             tag = self._base_tag(pid) + "B"
             if not self._reserve_tag(tag, pid):
                 self._record_block(ctx, "DUPLICATE_BLOCKED", f"tag {tag} already used")
@@ -678,11 +692,21 @@ class OrderRouter:
             if self._exit_failures.get(pid, 0) >= MAX_AUTO_EXIT_FAILURES:
                 return None
             contract = Contract(row["exchange"], row["trading_symbol"], lot)
-            ref = float(pos.current_option_price) if pos is not None else 0.0
             otype = self.runtime.get("live_exit_order_type")
             price = 0.0
+            ref, source = self._exit_reference(pos)
+            unfilled = self._unfilled_exits(pid)
+            if unfilled and row["mode"] != "DRY":
+                self._alert("live_exit_unfilled", f"Live EXIT for {row['strike_symbol']} did not fill {unfilled} time(s); "
+                            f"re-sending {need} at a wider limit. Watch it at the broker.", key=f"xu:{pid}", min_interval=120)
             if otype == "LIMIT" and ref > 0:
-                price = round_tick(ref * (1 - float(self.runtime.get("live_exit_limit_buffer_pct")) / 100.0), up=False)
+                # Price every attempt from the freshest quote, and widen the buffer after each unfilled attempt, so a
+                # falling market cannot leave the exit parked at a level the option has already left.
+                base = float(self.runtime.get("live_exit_limit_buffer_pct"))
+                buf = min(MAX_EXIT_BUFFER_PCT, base * (1 + unfilled) if base > 0 else float(unfilled))
+                price = round_tick(ref * (1 - buf / 100.0), up=False)
+                logger.info("Exit %s: LIMIT %.2f from %s %.2f (buffer %.1f%%, %d unfilled before)",
+                            row["strike_symbol"], price, source, ref, buf, unfilled)
             else:
                 otype = "MARKET"
             sells = int(self._q("SELECT COUNT(*) AS n FROM live_orders WHERE position_id=? AND side='SELL'", (pid,))[0]["n"])
@@ -704,6 +728,29 @@ class OrderRouter:
                             "Log in again or square off manually.", key=f"xs:{pid}", min_interval=300)
                 return None
             return await self._send_and_confirm(pid, req, entry=False)
+
+    def _exit_reference(self, pos: Any) -> tuple[float, str]:
+        """(price, source) a LIMIT exit is priced from: the live bid, else the live LTP, else the engine's last price.
+        For a closed paper position the engine's price is its exit fill, which no longer moves, so the feed comes first."""
+        sec_id = getattr(pos, "option_security_id", None) if pos is not None else None
+        if sec_id and self._quote_fn is not None:
+            try:
+                q = self._quote_fn(str(sec_id))
+            except Exception:
+                q = None
+            if q:
+                bid, ltp = q
+                if bid and float(bid) > 0:
+                    return float(bid), "bid"
+                if ltp and float(ltp) > 0:
+                    return float(ltp), "ltp"
+        ref = float(getattr(pos, "current_option_price", 0.0) or 0.0) if pos is not None else 0.0
+        return ref, "last price"
+
+    def _unfilled_exits(self, pid: str) -> int:
+        """Live SELL orders for this position that ended cancelled before filling completely."""
+        return int(self._q("SELECT COUNT(*) AS n FROM live_orders WHERE position_id=? AND side='SELL' AND mode='LIVE' "
+                           "AND status=? AND filled_qty < qty", (pid, CANCELED))[0]["n"])
 
     async def retry_exit(self, pid: str) -> Optional[str]:
         self._exit_failures.pop(pid, None)
@@ -803,6 +850,10 @@ class OrderRouter:
             "realized_today": self.realized_today(),
             "positions": positions,
         }
+
+    def open_routed_count(self) -> int:
+        """Positions held for real at the broker (or whose live entry is still settling). Dry-run rows do not count."""
+        return int(self._q("SELECT COUNT(*) AS n FROM live_positions WHERE mode='LIVE' AND state IN ('ENTERING','OPEN')")[0]["n"])
 
     def orders(self, limit: int = 100, day: Optional[str] = None) -> list[dict]:
         if day:

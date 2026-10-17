@@ -80,6 +80,12 @@ class PaperPersistenceMixin:
                 future.set_result(True)
             return
 
+        # The worker writes from a thread while the event loop keeps changing open positions: hand it a snapshot,
+        # so a row is never written half-way through an update.
+        if op == "upsert" and isinstance(arg, BaseModel):
+            arg = arg.model_copy(deep=True)
+        elif op == "batch_upsert":
+            arg = [p.model_copy(deep=True) if isinstance(p, BaseModel) else p for p in arg]
         gen = generation if generation is not None else self._portfolio_generation
         if generation is not None and generation < self._portfolio_generation and op != "clear_all":
             if future and not future.done():

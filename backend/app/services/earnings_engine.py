@@ -448,14 +448,16 @@ class EarningsEngine:
                     logger.warning("Earnings cycle failed: %s", exc, exc_info=True)
                     result["status"] = "error"
                     result["error"] = str(exc)
-            try:  # after the exits, so a slow NSE never delays them; needs no broker session
-                sync = await self.sync_calendar(today)
-                if sync["status"] != "skipped":
-                    result["calendar_sync"] = sync
-            except Exception:
-                logger.warning("calendar sync crashed", exc_info=True)
             self.last_cycle = result
-            return result
+        # Outside the lock and after the exits: a slow NSE download must delay neither the exits nor a kill-switch
+        # square-off (which waits for this lock). Needs no broker session.
+        try:
+            sync = await self.sync_calendar(today)
+            if sync["status"] != "skipped":
+                result["calendar_sync"] = sync
+        except Exception:
+            logger.warning("calendar sync crashed", exc_info=True)
+        return result
 
     async def _record_iv(self, today: date, result: dict) -> None:
         """Once a day, store ATM IV for stocks with earnings coming up, so IV percentile / rank have history."""

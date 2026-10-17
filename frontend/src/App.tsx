@@ -432,7 +432,7 @@ const DashboardContent: React.FC = () => {
   };
 
   const handleResetPortfolio = async () => {
-    if (!window.confirm('Are you sure you want to reset all forward-testing paper trade logs?')) return;
+    if (!window.confirm('Reset the paper portfolio? Every trade is archived (hidden, not deleted) and today\'s loss cap stays as it is. It is refused while a live position is open.')) return;
     try {
       const res = await apiFetch('/api/paper/reset', { method: 'POST' });
       if (res.status === 401) {
@@ -441,7 +441,8 @@ const DashboardContent: React.FC = () => {
         return;
       }
       if (!res.ok) {
-        setActionError('Failed to reset paper portfolio. Please try again.');
+        const body = await res.json().catch(() => ({}));
+        setActionError(typeof body?.detail === 'string' ? body.detail : 'Failed to reset paper portfolio. Please try again.');
         return;
       }
       const portRes = await apiFetch('/api/paper/portfolio');

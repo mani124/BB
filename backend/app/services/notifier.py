@@ -78,7 +78,7 @@ class Notifier:
             self._last_sent[key] = now
             self._pending += 1
         try:
-            self._pool.submit(self._deliver, event, text)
+            self._pool.submit(self._deliver, event, text, key, now)
         except Exception:
             with self._lock:
                 self._pending -= 1
@@ -86,17 +86,22 @@ class Notifier:
             return False
         return True
 
-    def _deliver(self, event: str, text: str) -> None:
+    def _deliver(self, event: str, text: str, key: Optional[str] = None, stamped: Optional[float] = None) -> None:
+        delivered = False
         try:
             for ch in self._channels:
                 try:
                     ch.send(text)
+                    delivered = True
                 except Exception as exc:
                     # Type only: the exception text can contain the request URL, which holds the token.
                     logger.warning("Alert '%s' not delivered via %s: %s", event, type(ch).__name__, type(exc).__name__)
         finally:
             with self._lock:
                 self._pending -= 1
+                # Nothing got through: forget the dedupe stamp so the next identical alert is not suppressed.
+                if not delivered and key is not None and self._last_sent.get(key) == stamped:
+                    self._last_sent.pop(key, None)
 
 
 notifier = Notifier()

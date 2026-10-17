@@ -36,7 +36,7 @@ from app.services.telemetry import Telemetry
 logger = logging.getLogger(__name__)
 BOOK = "swing"
 HISTORY_CALENDAR_DAYS = 560  # first fetch: enough for a 200-day average plus the Supertrend window
-MAX_CATCH_UP_DAYS = 5
+MAX_CATCH_UP_DAYS = 30  # missed days are replayed in order so stops on them are still checked
 BAR_COLUMNS = ["date", "open", "high", "low", "close", "volume"]
 
 
@@ -448,7 +448,7 @@ class SwingEngine:
         # a day counts as available once at least half of the requested symbols have its bar
         counts: dict[str, int] = {}
         for df in bars.values():
-            for d in df["date"].astype(str).str[:10].tail(15):
+            for d in df["date"].astype(str).str[:10].tail(MAX_CATCH_UP_DAYS + 10):
                 counts[d] = counts.get(d, 0) + 1
         available = sorted(d for d, n in counts.items() if n * 2 >= len(bars) and d <= today.isoformat())
         last = self.store.get_meta("last_processed_day")

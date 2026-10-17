@@ -15,9 +15,14 @@ market-data feed. Another broker is one more adapter class.
   An unfilled entry is cancelled after `live_order_timeout_seconds`; a partial fill is kept and later exits are
   scaled to what was actually bought.
 * **Exit.** Whenever the paper position shrinks (Target 1 half) or closes (stop, Target 2, manual, kill switch,
-  end of day, reset), the router sells whatever the broker still holds for it (a LIMIT below the bid by default; MARKET is a setting). Exits are
+  end of day), the router sells whatever the broker still holds for it (a LIMIT below the live bid by default; MARKET is a
+  setting). Each attempt is priced from a fresh quote; an unfilled LIMIT is cancelled, alerted, and re-sent with the
+  buffer widened by `live_exit_limit_buffer_pct` again (capped at 20%). Exits are
   **never blocked** by the kill switch, a halt, the loss cap, the caps below, or the mode being switched off. A
   position bought for real is always exited for real.
+* **One routed position per contract.** Setup 11 shadows Setup 5 on the same contracts; with both allowed, the
+  second entry on a contract that is already routed is refused (`SAME_CONTRACT`).
+* **Reset.** The paper portfolio cannot be reset while a live-feed paper position or a routed position is open.
 * **Reconcile.** Every `live_reconcile_seconds` the router refreshes unsettled orders from the broker and compares
   net positions with what it expects. A difference raises an alert and halts new entries until you resume.
 
@@ -30,7 +35,8 @@ market-data feed. Another broker is one more adapter class.
 | `live` | Orders go to the broker. |
 
 Live is not a setting. To enable it all of these must hold: the server has `LIVE_TRADING_CONFIRM=CONFIRMED`; the
-Algo ID, allowed setups and a daily loss limit are set; the kill switch is off; no halt; a broker session is logged
+Algo ID, allowed setups and a daily loss limit are set; Telegram alerts are configured (`TELEGRAM_BOT_TOKEN` and
+`TELEGRAM_CHAT_ID`); the kill switch is off; no halt; a broker session is logged
 in and accepted by the broker; **step 1** `Go live...` issues a one-time 6-digit code (valid 2 minutes); **step 2**
 you type that code and the phrase `ENABLE LIVE TRADING`. Live drops back to `dry_run` on every restart, and every
 mode change is written to the audit log (`GET /api/live/audit`).
@@ -63,7 +69,7 @@ Only entries are limited by the caps. Exits are exempt.
   (`LIVE_*` codes in Telemetry).
 * **No secrets in the repo, logs or API.** The Definedge API token and secret come from the server environment; the
   session key exists only in memory; the login URL is hidden from the HTTP client's request log.
-* **Paper reset** while a live position is open exits that position at the broker within one reconcile interval (exits always go through).
+* **Paper reset** is refused while a live-feed paper position or a routed position is open; close or square them off first.
 
 ## Setting it up (server)
 
@@ -106,7 +112,7 @@ This is not legal advice and nothing here is Definedge-specific: confirm each po
 * **Daily login.** 2FA once per trading day, no long-lived sessions. The TOTP login in the dashboard matches this.
 * **Market orders.** Brokers now convert market orders to market-price-protection orders and exchanges often refuse
   plain market orders on options. The default exit type is therefore LIMIT, priced below the bid by `live_exit_limit_buffer_pct`
-  (an unfilled one is cancelled and re-sent). Test one exit in the 1-lot check; only switch `live_exit_order_type`
+  (an unfilled one is cancelled and re-sent from a fresh quote with a wider buffer). Test one exit in the 1-lot check; only switch `live_exit_order_type`
   to MARKET if Definedge accepts it for options.
 * **Your own account only.** Do not route orders for anyone else's account from this app.
 

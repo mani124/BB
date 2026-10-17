@@ -50,6 +50,17 @@ run() {
 }
 content() { cat "$T/app/backend/app/main.py"; }
 
+# Fake venv python: logs pip calls; "pip freeze" prints the old pins; install fails if $T/pip_broken exists.
+cat > "$T/py" <<PYF
+#!/usr/bin/env bash
+echo "\$*" >> "$T/pip.log"
+[ "\$3" = freeze ] && { echo "fastapi==0.1"; exit 0; }
+[ -e "$T/pip_broken" ] && grep -q -- "-r $T/bk" <<<"\$*" && exit 0
+[ -e "$T/pip_broken" ] && exit 1
+exit 0
+PYF
+chmod +x "$T/py"
+
 echo "== happy path"
 make_world; make_bundle a 100; NOW=20:00 run >/dev/null 2>&1
 check "new code deployed"            '[ "$(content)" = new-a ]'
@@ -122,6 +133,25 @@ check "failed commit remembered"     '[ -f "$T/state/failed" ]'
 rm -f "$T/svc_broken"; : > "$T/systemctl.log"; NOW=20:00 run >/dev/null 2>&1
 check "failed commit not retried"    '[ "$(content)" = old ] && ! grep -q restart "$T/systemctl.log"'
 
+echo "== dependencies changed, deploy fails health check"
+make_world; make_bundle 8 100; : > "$T/pip.log"; rm -f "$T/pip_broken"
+echo "fastapi>=1" > "$T/b/deploy-main/backend/requirements.txt"; tar -C "$T/b" -czf "$T/remote/bundle.tgz" deploy-main
+touch "$T/svc_broken"; NOW=20:00 PIP_PYTHON="$T/py" run >/dev/null 2>&1; rm -f "$T/svc_broken"
+check "packages frozen before install"  'grep -q "pip freeze" "$T/pip.log"'
+check "rollback reinstalls old packages" 'grep -q "pip install -q -r $T/bk/deploy-.*/pip-freeze.txt" "$T/pip.log"'
+check "old requirements restored"       '[ "$(cat "$T/app/backend/requirements.txt")" = fastapi ]'
+echo "== constraints.txt alone changed"
+make_world; make_bundle 9 100; : > "$T/pip.log"
+echo "fastapi==2.0" > "$T/b/deploy-main/backend/constraints.txt"; tar -C "$T/b" -czf "$T/remote/bundle.tgz" deploy-main
+NOW=20:00 PIP_PYTHON="$T/py" run >/dev/null 2>&1
+check "constraints change triggers install" 'grep -q -- "-c .*constraints.txt" "$T/pip.log"'
+check "constraints copied into the app"   '[ "$(cat "$T/app/backend/constraints.txt")" = fastapi==2.0 ]'
+echo "== pip install fails"
+make_world; make_bundle 6 100; : > "$T/pip.log"; touch "$T/pip_broken"
+echo "fastapi>=1" > "$T/b/deploy-main/backend/requirements.txt"; tar -C "$T/b" -czf "$T/remote/bundle.tgz" deploy-main
+NOW=20:00 PIP_PYTHON="$T/py" run >/dev/null 2>&1; rm -f "$T/pip_broken"
+check "code not swapped when pip fails"  '[ "$(content)" = old ] && ! grep -q restart "$T/systemctl.log"'
+check "packages restored when pip fails" 'grep -q "pip-freeze.txt" "$T/pip.log"'
 echo "== dry run"
 make_world; make_bundle 9 100; NOW=20:00 run --dry-run >/dev/null 2>&1
 check "dry run changes nothing"      '[ "$(content)" = old ] && ! grep -q restart "$T/systemctl.log"'

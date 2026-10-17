@@ -234,6 +234,13 @@ class PaperExitsMixin:
                 pending_reason = pos.pending_spot_exit
                 theo_exit = pos.option_sl if ("Stop-Loss" in pending_reason or "SL" in pending_reason) else pos.option_target_2
                 status_to_set = "STOPPED_OUT" if ("Stop-Loss" in pending_reason or "SL" in pending_reason) else "TARGET_2"
+                if status_to_set == "TARGET_2":
+                    # The exit still happens (spot touched Target 2), but a quote that has since fallen back below the
+                    # target is not a Target 2 trade: record it as a plain close so stats and labels stay honest.
+                    px = real_bid_price if (real_bid_price and float(real_bid_price) > 0) else real_opt_price
+                    if px and float(px) < float(theo_exit):
+                        status_to_set = "CLOSED"
+                        pending_reason = f"{pending_reason} (Late Fill: quote {float(px):.2f} below target {float(theo_exit):.2f})"
                 self._finalize_closed_position(
                     pos=pos,
                     theoretical_exit=theo_exit,

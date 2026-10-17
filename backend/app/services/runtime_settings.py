@@ -62,7 +62,9 @@ G_SWING = "Swing equity book (Setup 15)"
 DEFINITIONS: tuple[SettingDef, ...] = (
     # ---- RMS ----
     _d(key="daily_loss_limit", label="Daily loss limit", group=G_RISK, type="float", unit="INR",
-       description="New entries stop for the rest of the IST day once the day's net P&L reaches minus this amount.",
+       description="New entries stop for the rest of the IST day once the day's net P&L reaches minus this amount. "
+                   "It is checked separately for the main options setups, for Setup 11 and for the earnings book, so the "
+                   "most all paper books together can lose in a day is about three times this.",
        env_attr="DAILY_LOSS_LIMIT", min=0, zero_disables=True),
     _d(key="max_open_positions", label="Max open positions", group=G_RISK, type="int",
        description="Most positions that may be open at once in one book.", env_attr="MAX_OPEN_POSITIONS",
@@ -124,8 +126,9 @@ DEFINITIONS: tuple[SettingDef, ...] = (
        zero_disables=True),
     # ---- live broker routing (order_router.py). Mode and arming are NOT settings: see /api/live. ----
     _d(key="live_allowed_setups", label="Setups allowed to route", group=G_LIVE, type="str",
-       description="Setup numbers whose entries may be sent to the broker, comma separated (for example 5 or 5,11). "
-                   "Empty routes nothing. Start with one.", default=""),
+       description="Setup numbers whose entries may be sent to the broker, comma separated (for example 5 or 12). "
+                   "Empty routes nothing. Start with one. Setup 11 trades the same contracts as Setup 5, so with both "
+                   "listed the second entry on a contract is refused.", default=""),
     _d(key="live_max_lots_per_order", label="Max lots per order", group=G_LIVE, type="int", unit="lots",
        description="An entry above this many lots is refused, not trimmed (the paper position keeps its size).",
        default=2, min=1, max=100),
@@ -148,11 +151,13 @@ DEFINITIONS: tuple[SettingDef, ...] = (
        description="A LIMIT entry is priced this far above the ask so it fills but cannot chase far.",
        default=1.0, min=0, max=10),
     _d(key="live_exit_order_type", label="Exit order type", group=G_LIVE, type="str",
-       description="LIMIT uses the bid minus the buffer and is cancelled and re-sent if it does not fill (brokers and "
-                   "exchanges often refuse plain MARKET orders on options). MARKET gets out for sure where allowed.",
+       description="LIMIT is priced from the live bid (else the last trade) minus the buffer; if it does not fill it is "
+                   "cancelled and re-sent from a fresh quote with a wider buffer each time (brokers and exchanges often "
+                   "refuse plain MARKET orders on options). MARKET gets out for sure where allowed.",
        default="LIMIT", choices=("MARKET", "LIMIT")),
     _d(key="live_exit_limit_buffer_pct", label="Exit limit buffer", group=G_LIVE, type="float", unit="%",
-       description="A LIMIT exit is priced this far below the bid.", default=2.0, min=0, max=20),
+       description="A LIMIT exit is priced this far below the bid. Each unfilled attempt adds this much again, "
+                   "up to 20%.", default=2.0, min=0, max=20),
     _d(key="live_product_type", label="Product type", group=G_LIVE, type="str",
        description="INTRADAY squares off at the broker's cutoff; NORMAL carries overnight.",
        default="INTRADAY", choices=("INTRADAY", "NORMAL")),

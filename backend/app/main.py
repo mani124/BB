@@ -68,8 +68,13 @@ from app.services.broker_definedge import DefinedgeBroker
 from app.services.order_router import OrderRouter, set_router
 
 # Live broker routing. Off by default: with mode "off" both hooks return at once and paper trading is unchanged.
+def _live_option_quote(sec_id: str):
+    q = worker.get_option_quote(sec_id, max_age_s=15.0)
+    return (q.bid, q.ltp) if q else None
+
+
 live_router = OrderRouter(settings.DB_PATH, paper_trader.runtime, paper_trader.telemetry, paper_trader,
-                          broker=DefinedgeBroker(settings.DATA_DIR))
+                          broker=DefinedgeBroker(settings.DATA_DIR), quote_fn=_live_option_quote)
 set_router(live_router)
 paper_trader.on_live_entry = live_router.on_entry
 paper_trader.on_position_update = live_router.on_position_update

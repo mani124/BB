@@ -151,6 +151,7 @@ mkdir -p "$bk" || die "cannot create backup dir $bk"
 cp -a "$APP_DIR/backend/app" "$bk/app" || die "backup of backend/app failed"
 [ -d "$FRONTEND_DIST" ] && { cp -a "$FRONTEND_DIST" "$bk/dist" || die "backup of frontend dist failed"; }
 cp -a "$APP_DIR/backend/requirements.txt" "$bk/requirements.txt" 2>/dev/null || true
+cp -a "$APP_DIR/backend/constraints.txt" "$bk/constraints.txt" 2>/dev/null || true
 if [ -f "$DB_FILE" ]; then
   python3 -I - "$DB_FILE" "$bk/trades.db" <<'PY' || die "backup of trades.db failed"
 import sqlite3, sys
@@ -164,19 +165,35 @@ log "backup written to $bk"
 
 owner="$(stat -c '%U:%G' "$APP_DIR")"
 
-# 8. Dependencies, only if requirements.txt changed.
-if ! cmp -s "$work/src/backend/requirements.txt" "$APP_DIR/backend/requirements.txt"; then
-  py="$PIP_PYTHON"
+# 8. Dependencies, only if requirements.txt or constraints.txt changed. The installed set is frozen first, so a failed
+#    install or a rollback can put the old versions back (the venv is shared with the running service).
+DEPS_CHANGED=0
+py="$PIP_PYTHON"
+restore_venv() {
+  [ "$DEPS_CHANGED" = 1 ] && [ -s "$bk/pip-freeze.txt" ] || return 0
+  log "restoring the previous package versions"
+  "$py" -m pip install -q -r "$bk/pip-freeze.txt" || log "WARNING: could not restore packages from $bk/pip-freeze.txt"
+}
+deps_differ() {
+  ! cmp -s "$work/src/backend/requirements.txt" "$APP_DIR/backend/requirements.txt" && return 0
+  if [ -f "$work/src/backend/constraints.txt" ] || [ -f "$APP_DIR/backend/constraints.txt" ]; then
+    ! cmp -s "$work/src/backend/constraints.txt" "$APP_DIR/backend/constraints.txt" && return 0
+  fi
+  return 1
+}
+if deps_differ; then
   if [ -z "$py" ]; then
     for c in "$APP_DIR/venv/bin/python" "$APP_DIR/backend/venv/bin/python" "$APP_DIR/.venv/bin/python"; do
       [ -x "$c" ] && { py="$c"; break; }
     done
   fi
-  [ -n "$py" ] || { log "requirements.txt changed but no virtualenv found; set PIP_PYTHON in $CONF_DIR/config. Not deploying."; exit 1; }
-  log "requirements.txt changed, installing with $py"
+  [ -n "$py" ] || { log "requirements changed but no virtualenv found; set PIP_PYTHON in $CONF_DIR/config. Not deploying."; exit 1; }
+  "$py" -m pip freeze > "$bk/pip-freeze.txt" || die "cannot record the installed packages (nothing was changed)"
+  DEPS_CHANGED=1
+  log "requirements changed, installing with $py"
   pip_args=(-q -r "$work/src/backend/requirements.txt")
   [ -f "$work/src/backend/constraints.txt" ] && pip_args+=(-c "$work/src/backend/constraints.txt")
-  "$py" -m pip install "${pip_args[@]}" || die "pip install failed (nothing was swapped)"
+  "$py" -m pip install "${pip_args[@]}" || { restore_venv; die "pip install failed (packages restored, code not swapped)"; }
 fi
 
 # 9. Swap the code in (each swap is two renames, so the old copy stays for rollback).
@@ -188,12 +205,15 @@ rollback() {
   [ -d "$APP_DIR/backend/app.old" ] && { rm -rf "$APP_DIR/backend/app"; mv "$APP_DIR/backend/app.old" "$APP_DIR/backend/app"; }
   [ -d "$FRONTEND_DIST.old" ] && { rm -rf "$FRONTEND_DIST"; mv "$FRONTEND_DIST.old" "$FRONTEND_DIST"; }
   [ -f "$bk/requirements.txt" ] && cp -a "$bk/requirements.txt" "$APP_DIR/backend/requirements.txt"
+  if [ -f "$bk/constraints.txt" ]; then cp -a "$bk/constraints.txt" "$APP_DIR/backend/constraints.txt"; else rm -f "$APP_DIR/backend/constraints.txt"; fi
+  restore_venv
   "$SYSTEMCTL" restart "$SERVICE"
   echo "$remote_sha" > "$STATE_DIR/failed"
   log "rolled back; ${remote_sha:0:7} will not be retried"
 }
 
 cp -a "$work/src/backend/requirements.txt" "$APP_DIR/backend/requirements.txt"
+[ -f "$work/src/backend/constraints.txt" ] && cp -a "$work/src/backend/constraints.txt" "$APP_DIR/backend/constraints.txt"
 cp -r "$work/src/backend/app" "$work/app.new"
 cp -r "$work/src/frontend/dist" "$work/dist.new"
 chown -R "$owner" "$work/app.new" "$work/dist.new" 2>/dev/null || true
