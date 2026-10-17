@@ -663,6 +663,9 @@ A separate paper book (`earnings` in the decision trail), **paper only**, off by
 
 ### Notes
 * Thresholds (6-bar warm-up, 1 to 5 dip bars, 3-bar volume average, 1,000 contracts, 1% stop buffer, 30% stop cap, 14:25 cutoff) are starting values. Past option candles are not available for replay, so this setup is validated by paper trading.
+
+---
+
 ## 19. Setup 14: PCR / OI Wall Bounce
 
 * **Setup Enum:** `SetupType.SETUP_14_OI_WALL_BOUNCE`; code in `backend/app/services/setup14.py`, wired in `scanner_worker` right after the option chain is fetched (before live strike enrichment). Signal is on the underlying (like Setups 1-4 and 12); the traded leg is picked by the usual strike selector.
