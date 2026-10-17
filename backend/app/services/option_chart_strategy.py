@@ -1,0 +1,260 @@
+import logging
+import math
+import time
+from typing import Literal, Optional
+from datetime import datetime
+import pandas as pd
+from app.services import market_hours
+from app.services.strategy_engine import Signal, SetupType
+from app.services.strike_selector import OptionStrikeRecommendation, is_lot_size_known, _opt_float
+
+logger = logging.getLogger(__name__)
+
+def _quote_num(quote, key):
+    return _opt_float(quote.get(key)) if isinstance(quote, dict) else None
+
+
+def evaluate_option_chart_signal(
+    symbol: str,
+    strike_symbol: str,
+    option_type: Literal["CE", "PE"],
+    option_df: pd.DataFrame,
+    underlying_price: float,
+    strike_price: float,
+    expiry_date: Optional[str] = None,
+    lot_size: int = 50,
+    option_security_id: Optional[str] = None,
+    timeframe: str = "5m",
+    current_quote: Optional[dict] = None
+) -> Optional[Signal]:
+    """
+    Setup 5: Standalone Option Chart Bollinger Scalper.
+    Applies technical analysis directly to the option premium candle chart:
+    1. Premium closes above Option Upper Bollinger Band (Expansion).
+    2. Premium strictly above Option Session VWAP (Buyers in control).
+    3. Volume Surge: Candle volume >= 1.2x 20-period average (Illiquid filter).
+    4. Option RSI >= 58.0.
+    """
+    required_cols = {"close", "bb_upper", "vwap", "volume", "rsi", "ema_9"}
+    if option_df.empty or len(option_df) < 20 or not required_cols.issubset(option_df.columns):
+        return None
+
+    # Exchange-session guard: no Setup 5 entries outside the session or after the entry cutoff
+    if not market_hours.is_entry_allowed():
+        return None
+
+    last_idx = len(option_df) - 1
+    curr = option_df.iloc[last_idx]
+
+    # Volume must be a real per-bar figure. Bars whose volume could not be derived
+    # (flagged volume_known=False) or that are NaN never pass the volume filter.
+    vol_known_col = option_df["volume_known"] if "volume_known" in option_df.columns else None
+    if vol_known_col is not None:
+        flag = vol_known_col.iloc[last_idx]
+        if not pd.isna(flag) and not bool(flag):
+            return None
+    if pd.isna(curr["volume"]):
+        return None
+
+    close = float(curr["close"])
+    bb_upper = float(curr["bb_upper"])
+    vwap = float(curr["vwap"])
+    rsi = float(curr["rsi"])
+    volume = float(curr["volume"])
+    ema_9 = float(curr["ema_9"])
+
+    # 1. Option Upper BB Breakout
+    if close <= bb_upper:
+        return None
+
+    # 2. Option VWAP Confirmation (Sellers in control if below VWAP)
+    if close <= vwap:
+        return None
+
+    # 3. Momentum Confirmation (Wilder's RSI >= 58)
+    if rsi < 58.0:
+        return None
+
+    # 4. Volume Surge Liquidity Filter: Volume must be >= 1.2x 20-bar avg and >= 1000 contracts
+    lookback = min(20, len(option_df) - 1)
+    if lookback > 0:
+        hist_vol = option_df["volume"].iloc[last_idx - lookback:last_idx]
+        if vol_known_col is not None:
+            hist_vol = hist_vol.where(vol_known_col.iloc[last_idx - lookback:last_idx] != False)  # noqa: E712
+        avg_vol = float(hist_vol.mean())
+        if math.isnan(avg_vol):
+            return None
+    else:
+        avg_vol = volume
+
+    if volume < max(1000.0, avg_vol * 1.2):
+        return None
+
+    return build_option_chart_signal(
+        setup_type=SetupType.SETUP_5_OPTION_BB,
+        rationale="Option BB Upper expansion with VWAP & volume surge",
+        tag="S5",
+        curr=curr,
+        last_idx=last_idx,
+        symbol=symbol,
+        strike_symbol=strike_symbol,
+        option_type=option_type,
+        underlying_price=underlying_price,
+        strike_price=strike_price,
+        expiry_date=expiry_date,
+        lot_size=lot_size,
+        option_security_id=option_security_id,
+        timeframe=timeframe,
+        current_quote=current_quote,
+    )
+
+
+def build_option_chart_signal(
+    *,
+    setup_type: SetupType,
+    rationale: str,
+    tag: str,
+    curr,
+    last_idx: int,
+    symbol: str,
+    strike_symbol: str,
+    option_type: Literal["CE", "PE"],
+    underlying_price: float,
+    strike_price: float,
+    expiry_date: Optional[str],
+    lot_size: int,
+    option_security_id: Optional[str],
+    timeframe: str,
+    current_quote: Optional[dict],
+    extra_snapshot: Optional[dict] = None,
+    stop_price: Optional[float] = None,
+) -> Optional[Signal]:
+    """Risk, targets, time guards and Signal assembly shared by the option-premium setups (5 and 10).
+
+    ``curr`` is the last completed bar of the traded option's indicator frame. ``stop_price`` overrides the
+    default stop distance (Setups 5, 10 and 11 leave it unset).
+    """
+    close = float(curr["close"])
+    bb_upper = float(curr["bb_upper"])
+    vwap = float(curr["vwap"])
+    rsi = float(curr["rsi"])
+    volume = float(curr["volume"])
+    ema_9 = float(curr["ema_9"])
+
+    # Dynamic Option Risk and Targets directly on Option Premium points
+    bar_range = max(float(curr.get("high", close)) - float(curr.get("low", close)), close * 0.04)
+    # Stop loss placed below 9 EMA or breakout bar low, with min 4% buffer
+    if stop_price is not None:
+        # Setup-supplied stop (Setup 13): still never tighter than 4% of the premium
+        risk_pts = round(max(close - stop_price, close * 0.04), 1)
+    else:
+        risk_pts = round(max(close - ema_9, bar_range * 0.5, close * 0.04), 1)
+    opt_sl = round(max(0.5, close - risk_pts), 1)
+    actual_risk = round(close - opt_sl, 1)
+
+    opt_t1 = round(close + (actual_risk * 1.5), 1)
+    opt_t2 = round(close + (actual_risk * 2.5), 1)
+
+    ts_raw = curr.get("timestamp", last_idx)
+    try:
+        candle_dt = pd.to_datetime(ts_raw)
+        if candle_dt.date() < market_hours.now_ist().date():
+            # Finding 1 & 2: Prior session breakout candles must not trigger signals
+            return None
+        if candle_dt.time() > market_hours.entry_cutoff_time():
+            return None
+        # P2-7: on expiry day premiums decay/gap violently late in the session; stop earlier
+        if expiry_date and str(expiry_date)[:10] == market_hours.now_ist().date().isoformat() \
+                and candle_dt.time() > market_hours.expiry_day_cutoff_time():
+            return None
+    except Exception:
+        pass
+
+    ts_str = str(ts_raw)
+    ts_clean = ts_str.replace(":", "").replace("-", "").replace(" ", "_").replace(".", "")
+    # Identity = stock + side + contract + bar open time, so a re-evaluation of the same bar
+    # on the same contract always yields the same id (and a different contract never collides).
+    contract_part = f"{option_security_id}_" if option_security_id else ""
+    sig_id = f"{symbol}_{timeframe}_{tag}_{option_type}_{contract_part}{ts_clean}"
+
+    # Finding 2: Require authentic current live quote before labelling as live quote
+    is_live = False
+    real_ltp = None
+    real_ask = None
+    real_bid = None
+    if current_quote and isinstance(current_quote, dict):
+        q_ltp = float(current_quote.get("last_price", 0.0) or 0.0)
+        q_ask = float(current_quote.get("ask_price", 0.0) or current_quote.get("top_ask_price", 0.0) or 0.0)
+        q_bid = float(current_quote.get("bid_price", 0.0) or current_quote.get("top_bid_price", 0.0) or 0.0)
+        q_is_live = bool(current_quote.get("is_live_quote", False))
+        if q_is_live or q_ask > 0 or q_ltp > 0:
+            is_live = q_is_live
+            real_ltp = q_ltp if q_ltp > 0 else close
+            real_ask = q_ask if q_ask > 0 else None
+            real_bid = q_bid if q_bid > 0 else None
+
+    rec = OptionStrikeRecommendation(
+        symbol=symbol,
+        underlying_price=round(underlying_price, 2),
+        option_type=option_type,
+        atm_strike=int(strike_price),
+        recommended_strike=int(strike_price),
+        strike_symbol=strike_symbol,
+        lot_size=lot_size,
+        lot_size_known=is_lot_size_known(symbol),
+        risk=actual_risk,
+        stop_loss=opt_sl,
+        target_1=opt_t1,
+        target_2=opt_t2,
+        estimated_option_entry=close,
+        option_sl_pts=actual_risk,
+        option_target_1_pts=round(actual_risk * 1.5, 1),
+        option_target_2_pts=round(actual_risk * 2.5, 1),
+        option_sl_price=opt_sl,
+        option_target_1_price=opt_t1,
+        option_target_2_price=opt_t2,
+        option_security_id=option_security_id,
+        expiry_date=expiry_date,
+        real_ltp=real_ltp,
+        real_ask_price=real_ask,
+        real_bid_price=real_bid,
+        real_volume=_quote_num(current_quote, "day_volume"),
+        real_oi=_quote_num(current_quote, "oi"),
+        real_bid_qty=_quote_num(current_quote, "top_bid_quantity"),
+        real_ask_qty=_quote_num(current_quote, "top_ask_quantity"),
+        is_live_quote=is_live,
+        quote_age_s=(float(current_quote["quote_age_s"]) if (current_quote and current_quote.get("quote_age_s") is not None) else None),
+        quote_as_of=(time.time() - float(current_quote["quote_age_s"]) if (current_quote and current_quote.get("quote_age_s") is not None) else None),
+    )
+
+    indicators_snap = {
+        "option_close": close,
+        "option_bb_upper": bb_upper,
+        "option_vwap": vwap,
+        "option_rsi": rsi,
+        "option_volume": volume,
+        "option_ema_9": ema_9,
+        "rsi": rsi,
+        "bandwidth": round(((bb_upper - float(curr.get("bb_lower", close * 0.9))) / max(0.1, float(curr.get("bb_middle", close)))) * 100, 2),
+        "percent_b": round(float(curr.get("percent_b", 1.05)), 2),
+        "vwap": vwap,
+        "close": close
+    }
+    if extra_snapshot:
+        indicators_snap.update(extra_snapshot)
+
+    return Signal(
+        id=sig_id,
+        symbol=symbol,
+        timeframe=timeframe,
+        setup_type=setup_type,
+        option_type=option_type,
+        timestamp=ts_str,
+        entry_price=close,
+        stop_loss=opt_sl,
+        target_1=opt_t1,
+        target_2=opt_t2,
+        strike_recommendation=rec,
+        indicators_snapshot=indicators_snap,
+        rationale=rationale
+    )

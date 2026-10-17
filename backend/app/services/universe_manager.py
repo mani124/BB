@@ -1,0 +1,175 @@
+from pydantic import BaseModel
+from typing import Literal, Optional
+
+class Instrument(BaseModel):
+    symbol: str
+    name: str
+    security_id: str
+    exchange_segment: str
+    instrument_type: Literal["INDEX", "EQUITY"]
+    default_timeframe: str  # "5m" for indices and momentum stocks
+    sector: str
+
+class UniverseManager:
+    """Manages the 4 major indices and the top curated high-beta liquid F&O momentum stocks."""
+    
+    INDICES: list[Instrument] = [
+        Instrument(
+            symbol="NIFTY 50",
+            name="Nifty 50 Index",
+            security_id="13",
+            exchange_segment="IDX_I",
+            instrument_type="INDEX",
+            default_timeframe="5m",
+            sector="Benchmark"
+        ),
+        Instrument(
+            symbol="NIFTY BANK",
+            name="Bank Nifty Index",
+            security_id="25",
+            exchange_segment="IDX_I",
+            instrument_type="INDEX",
+            default_timeframe="5m",
+            sector="Banking"
+        ),
+        Instrument(
+            symbol="FINNIFTY",
+            name="Nifty Financial Services",
+            security_id="27",
+            exchange_segment="IDX_I",
+            instrument_type="INDEX",
+            default_timeframe="5m",
+            sector="Financials"
+        ),
+        Instrument(
+            symbol="SENSEX",
+            name="BSE Sensex Index",
+            security_id="51",
+            exchange_segment="IDX_I",
+            instrument_type="INDEX",
+            default_timeframe="5m",
+            sector="Benchmark"
+        ),
+        # Thin option chains: monthly expiry only, wide spreads. Security ids are from Dhan's
+        # published index list and should be checked against the instrument master.
+        Instrument(
+            symbol="MIDCPNIFTY",
+            name="Nifty Midcap Select Index",
+            security_id="442",
+            exchange_segment="IDX_I",
+            instrument_type="INDEX",
+            default_timeframe="5m",
+            sector="Midcap"
+        ),
+        Instrument(
+            symbol="NIFTYNXT50",
+            name="Nifty Next 50 Index",
+            security_id="38",
+            exchange_segment="IDX_I",
+            instrument_type="INDEX",
+            default_timeframe="5m",
+            sector="Benchmark"
+        ),
+    ]
+
+    MOMENTUM_STOCKS: list[Instrument] = [
+        # Banking & Financials (7)
+        Instrument(symbol="HDFCBANK", name="HDFC Bank", security_id="1333", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Banking"),
+        Instrument(symbol="ICICIBANK", name="ICICI Bank", security_id="4963", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Banking"),
+        Instrument(symbol="SBIN", name="State Bank of India", security_id="3045", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Banking"),
+        Instrument(symbol="AXISBANK", name="Axis Bank", security_id="5900", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Banking"),
+        Instrument(symbol="KOTAKBANK", name="Kotak Mahindra Bank", security_id="1922", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Banking"),
+        Instrument(symbol="BAJFINANCE", name="Bajaj Finance", security_id="317", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Financials"),
+        Instrument(symbol="BAJAJFINSV", name="Bajaj Finserv", security_id="16669", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Financials"),
+        # IT (5)
+        Instrument(symbol="INFY", name="Infosys", security_id="1594", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="IT"),
+        Instrument(symbol="TCS", name="Tata Consultancy Services", security_id="11536", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="IT"),
+        Instrument(symbol="HCLTECH", name="HCL Technologies", security_id="7229", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="IT"),
+        Instrument(symbol="TECHM", name="Tech Mahindra", security_id="13538", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="IT"),
+        Instrument(symbol="WIPRO", name="Wipro", security_id="3787", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="IT"),
+        # Auto & Mobility (5)
+        Instrument(symbol="TATAMOTORS", name="Tata Motors", security_id="3456", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Auto"),
+        Instrument(symbol="MARUTI", name="Maruti Suzuki", security_id="10999", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Auto"),
+        Instrument(symbol="M&M", name="Mahindra & Mahindra", security_id="2031", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Auto"),
+        Instrument(symbol="BAJAJ-AUTO", name="Bajaj Auto", security_id="16675", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Auto"),
+        Instrument(symbol="EICHERMOT", name="Eicher Motors", security_id="910", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Auto"),
+        # Energy, Metals & Infra (10)
+        Instrument(symbol="RELIANCE", name="Reliance Industries", security_id="2885", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Energy"),
+        Instrument(symbol="TATASTEEL", name="Tata Steel", security_id="3499", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Metals"),
+        Instrument(symbol="JSWSTEEL", name="JSW Steel", security_id="11723", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Metals"),
+        Instrument(symbol="HINDALCO", name="Hindalco Industries", security_id="1363", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Metals"),
+        Instrument(symbol="COALINDIA", name="Coal India", security_id="20374", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Energy"),
+        Instrument(symbol="ONGC", name="Oil and Natural Gas Corp", security_id="2475", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Energy"),
+        Instrument(symbol="NTPC", name="NTPC Limited", security_id="11630", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Energy"),
+        Instrument(symbol="LT", name="Larsen & Toubro", security_id="11483", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Infra"),
+        Instrument(symbol="ADANIENT", name="Adani Enterprises", security_id="25", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Diversified"),
+        Instrument(symbol="ADANIPORTS", name="Adani Ports", security_id="15083", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Infra"),
+        # Telecom, Consumer & Pharma (8)
+        Instrument(symbol="BHARTIARTL", name="Bharti Airtel", security_id="10604", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Telecom"),
+        Instrument(symbol="ITC", name="ITC Limited", security_id="1660", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="FMCG"),
+        Instrument(symbol="TITAN", name="Titan Company", security_id="3506", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Consumer"),
+        Instrument(symbol="TRENT", name="Trent Limited", security_id="1964", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Consumer"),
+        Instrument(symbol="SUNPHARMA", name="Sun Pharma", security_id="3351", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Pharma"),
+        Instrument(symbol="CIPLA", name="Cipla", security_id="694", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Pharma"),
+        Instrument(symbol="DRREDDY", name="Dr. Reddy's Laboratories", security_id="881", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="Pharma"),
+        Instrument(symbol="BEL", name="Bharat Electronics", security_id="383", exchange_segment="NSE_EQ", instrument_type="EQUITY", default_timeframe="5m", sector="PSU"),
+    ]
+
+    _FNO_STOCKS: list[Instrument] = []
+    _INSTRUMENT_MAP: dict[str, Instrument] = {}
+
+    def __init__(self):
+        if not UniverseManager._FNO_STOCKS:
+            from pathlib import Path
+            import json
+            fno_file = Path(__file__).resolve().parent.parent / "data" / "fno_universe.json"
+            if fno_file.exists():
+                try:
+                    with open(fno_file, "r") as f:
+                        data = json.load(f)
+                        stocks = []
+                        for sym, item in data.items():
+                            stocks.append(Instrument(
+                                symbol=sym,
+                                name=item.get("name", sym),
+                                security_id=str(item.get("security_id", "")),
+                                exchange_segment=item.get("exchange_segment", "NSE_EQ"),
+                                instrument_type="EQUITY",
+                                default_timeframe=item.get("default_timeframe", "5m"),
+                                sector=item.get("sector", "F&O")
+                            ))
+                        UniverseManager._FNO_STOCKS = stocks
+                except Exception:
+                    pass
+
+        if not UniverseManager._INSTRUMENT_MAP:
+            for inst in self.INDICES:
+                UniverseManager._INSTRUMENT_MAP[inst.symbol] = inst
+            for inst in self.MOMENTUM_STOCKS:
+                UniverseManager._INSTRUMENT_MAP[inst.symbol] = inst
+            for inst in UniverseManager._FNO_STOCKS:
+                UniverseManager._INSTRUMENT_MAP[inst.symbol] = inst
+
+    def get_indices(self) -> list[Instrument]:
+        return self.INDICES
+
+    def get_momentum_stocks(self) -> list[Instrument]:
+        return self.MOMENTUM_STOCKS
+
+    def get_fno_stocks(self) -> list[Instrument]:
+        """Returns all official NSE F&O stocks (~213 instruments)."""
+        return self._FNO_STOCKS if self._FNO_STOCKS else self.MOMENTUM_STOCKS
+
+    def get_instrument(self, symbol: str) -> Optional[Instrument]:
+        clean = symbol.strip().upper()
+        for pfx in ("NSE:", "BSE:"):
+            if clean.startswith(pfx):
+                clean = clean[len(pfx):]
+        return self._INSTRUMENT_MAP.get(clean)
+
+    def get_all_instruments(self) -> list[Instrument]:
+        return self.INDICES + self.get_fno_stocks()
+
+    def get_universe(self) -> list[Instrument]:
+        """Returns the full universe (6 Indices + all 213 F&O Stocks)."""
+        return self.get_all_instruments()
