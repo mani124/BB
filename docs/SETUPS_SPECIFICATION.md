@@ -642,7 +642,7 @@ A separate paper book (`earnings` in the decision trail), **paper only**, off by
 
 ---
 
-## 17. Setup 14: PCR / OI Wall Bounce
+## 18. Setup 14: PCR / OI Wall Bounce
 
 * **Setup Enum:** `SetupType.SETUP_14_OI_WALL_BOUNCE`; code in `backend/app/services/setup14.py`, wired in `scanner_worker` right after the option chain is fetched (before live strike enrichment). Signal is on the underlying (like Setups 1-4 and 12); the traded leg is picked by the usual strike selector.
 * **Underlying Principle:** open interest (OI) in the option chain shows where large positions sit. The strike with the most put OI below spot tends to act as support (writers defend it) and the strike with the most call OI above spot as resistance. The setup buys the first rejection of such a wall, so the stop is close and the level is clear.

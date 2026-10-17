@@ -4,7 +4,7 @@ The Dhan option chain gives open interest (OI) at every strike. The strike with 
 is the support wall and the strike with the largest call OI above spot is the resistance wall. A wall only
 counts when its OI is at least 1.5x each neighbouring strike. The setup buys the first 5m rejection of a wall,
 with the total put-call ratio (PCR) as the bias: >= 1.2 for support bounces (calls), <= 0.8 for resistance
-rejections (puts). Evaluated on completed 5m spot bars. See docs/SETUPS_SPECIFICATION.md section 17.
+rejections (puts). Evaluated on completed 5m spot bars. See docs/SETUPS_SPECIFICATION.md section 18.
 """
 from dataclasses import dataclass
 from datetime import time as dtime
