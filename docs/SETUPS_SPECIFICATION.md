@@ -610,7 +610,7 @@ Entry, stop, T1 (1.5R), T2 (2.5R), sizing and the option-chart-only exits are id
 3. **Reclaim:** the signal bar closes above the option's session VWAP (the Section 1 VWAP of the option chart).
 4. **Volume lift:** per-bar volume of the signal bar is at least 1,000 contracts and above the average of the prior 3 bars. Option volume from the feed is cumulative for the day; the scanner turns it into per-bar volume (difference of day totals) and flags bars where that is unknown (`volume_known=False`), which never pass.
 5. **Spot agrees:** the underlying's completed bar at the same time closes above its own VWAP for calls, below it for puts. For an index the spot VWAP is the session mean of typical price (indices have no volume, Section 1).
-6. **Window:** at least 20 bars of the current session on the option chart (first entry about 10:55 IST), bar start no later than 14:25 (confirms at 14:30), plus the shared option-chart guards (today's bar only, entry cutoff, expiry-day cutoff).
+6. **Window:** at least 6 bars of the current session on the option chart (first entry about 09:45 IST; VWAP restarts every session, so earlier days' bars cannot help it and are not counted), bar start no later than 14:25 (confirms at 14:30), plus the shared option-chart guards (today's bar only, entry cutoff, expiry-day cutoff).
 
 ### Risk and management
 * Strike: ATM, the bought leg only; entry is the signal close. Stop: `max(pullback low, VWAP) - 1% of the close`, never tighter than 4% of the close; the signal is skipped if the stop would be more than 30% below the close. T1 1.5R (book half, stop to breakeven), T2 2.5R, sizing, caps and the option-chart-only exits are the Setup 5 ones.
@@ -619,5 +619,5 @@ Entry, stop, T1 (1.5R), T2 (2.5R), sizing and the option-chart-only exits are id
 * The signal's indicator snapshot logs `dip_bars`, `pullback_low`, `volume_avg_prior_3`, `spot_close` and `spot_vwap` so thresholds can be tuned from paper trades.
 
 ### Notes
-* Thresholds (1 to 5 dip bars, 3-bar volume average, 1,000 contracts, 1% stop buffer, 30% stop cap, 14:25 cutoff) are starting values. Past option candles are not available for replay, so this setup is validated by paper trading.
+* Thresholds (6-bar warm-up, 1 to 5 dip bars, 3-bar volume average, 1,000 contracts, 1% stop buffer, 30% stop cap, 14:25 cutoff) are starting values. Past option candles are not available for replay, so this setup is validated by paper trading.
 * Setups 1 and 5 are unchanged.

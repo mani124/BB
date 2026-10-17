@@ -16,7 +16,7 @@ from app.services.strategy_engine import Signal, SetupType, _session_bars
 
 logger = logging.getLogger(__name__)
 
-MIN_SESSION_BARS = 20        # first entry about 10:55 IST
+MIN_SESSION_BARS = 6         # first entry about 09:45 IST; VWAP resets daily, so only today's bars count
 MIN_DIP_BARS = 1             # consecutive closes below VWAP before the reclaim bar
 MAX_DIP_BARS = 5
 VOLUME_LOOKBACK = 3          # reclaim bar volume must beat the average of this many prior bars

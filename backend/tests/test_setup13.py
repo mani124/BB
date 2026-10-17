@@ -106,9 +106,11 @@ def test_unknown_volume_blocks():
     assert _eval(opt, _spot(opt)) is None
 
 
-def test_session_warmup_20_bars():
-    opt = _opt(n=19)
+def test_session_warmup_6_bars():
+    opt = _opt(n=5, dip=2)
     assert _eval(opt, _spot(opt)) is None
+    opt = _opt(n=6, dip=2)
+    assert _eval(opt, _spot(opt)) is not None
 
 
 def test_no_entries_after_1430():
