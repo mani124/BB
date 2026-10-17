@@ -56,6 +56,9 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         self.momentum_ranker = MomentumRanker(top_n=10)
         self._state = ScannerState(universe_count=len(universe_mgr.get_universe()))
         self._listeners: list[asyncio.Queue] = []
+        self._last_tick_broadcast: dict[str, float] = {}
+        self._last_portfolio_publish: float = 0.0
+        self._portfolio_publish_pending: bool = False
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._session_credentials: Optional[tuple[str, str]] = None
@@ -331,10 +334,13 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         """Execute scan cycle with guaranteed is_scanning = False reset via finally block."""
         self._state.is_scanning = True
         self._state.scan_progress = 0.0
+        started = time.monotonic()
         try:
             return await self._run_scan_cycle_body(client_id, access_token)
         finally:
             self._state.is_scanning = False
+            self._state.last_scan_seconds = round(time.monotonic() - started, 2)
+            logger.info("Scan cycle %d took %.2fs", self._state.scan_cycle_count, self._state.last_scan_seconds)
 
     async def _run_scan_cycle_body(
         self,

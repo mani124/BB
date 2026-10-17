@@ -185,6 +185,19 @@ const DashboardContent: React.FC = () => {
         }
       });
 
+      // Throttled open-position and totals updates between full scans (about once a second)
+      eventSource.addEventListener('portfolio', (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data?.paper_portfolio) {
+            lastMessageAt.current = Date.now();
+            setState((prev) => ({ ...prev, paper_portfolio: data.paper_portfolio }));
+          }
+        } catch (err) {
+          console.error('Failed to parse SSE portfolio', err);
+        }
+      });
+
       // Default stream state snapshot updates
       eventSource.onmessage = (event) => {
         try {

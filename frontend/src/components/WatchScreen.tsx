@@ -83,7 +83,7 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
             <h2 id="signals-title">Active Strategy Signals</h2>
             <span className="desk-pill desk-num">{filteredSignals.length} active</span>
             <span className="text-xs desk-muted ml-auto">
-              {wsConnected ? 'Real-time ticks' : 'Scanned every ~8s'} · confirm on candle close
+              {wsConnected ? 'Real-time ticks' : (state.last_scan_seconds ? `Scanned (last scan ${state.last_scan_seconds.toFixed(1)}s)` : 'Scanned')} · confirm on candle close
             </span>
           </div>
           <div className="px-3.5 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs" style={{ borderBottom: '1px solid var(--line)' }}>

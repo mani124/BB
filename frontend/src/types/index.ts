@@ -216,6 +216,7 @@ export interface ScannerState {
   paper_portfolio?: PaperPortfolio;
   last_scan_time: string;
   scan_cycle_count: number;
+  last_scan_seconds?: number;
   is_scanning: boolean;
   scan_progress: number;
   universe_count: number;
