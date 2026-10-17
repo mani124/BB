@@ -43,3 +43,30 @@ describe('SettingsPanel', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('must be at least 0');
   });
 });
+
+describe('SettingsPanel navigation', () => {
+  const multi: RuntimeSettingsPayload = {
+    groups: ['Risk limits (RMS)', 'Alerts'],
+    settings: [
+      ...payload.settings,
+      { key: 'tg_on', label: 'Telegram alerts', group: 'Alerts', type: 'bool', unit: '', description: 'Send messages', value: false, default: false, overridden: false, min: null, max: null, choices: [], zero_disables: false },
+    ],
+  };
+
+  it('shows one group at a time and switches with the group list', () => {
+    render(<SettingsPanel initial={multi} initialAudit={[]} />);
+    expect(screen.queryByLabelText('Telegram alerts')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Alerts' }));
+    expect(screen.getByLabelText('Telegram alerts')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Max lots per trade')).toBeNull();
+  });
+
+  it('search finds settings across groups and flags unsaved ones on the group tab', () => {
+    render(<SettingsPanel initial={multi} initialAudit={[]} />);
+    fireEvent.change(screen.getByLabelText('Max lots per trade'), { target: { value: '3' } });
+    expect(screen.getByRole('tab', { name: /Risk limits \(RMS\), 1 unsaved/ })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Find a setting'), { target: { value: 'telegram' } });
+    expect(screen.getByLabelText('Telegram alerts')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Daily loss limit')).toBeNull();
+  });
+});

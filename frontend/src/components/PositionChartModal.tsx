@@ -14,6 +14,7 @@ import {
 import { apiFetch } from '../api/client';
 import type { PaperPosition } from '../types';
 import { setupCode } from './setupCode';
+import { Dialog } from './Dialog';
 import { ReplayControls, sliceSeries, startIndex, useReplay } from './ReplayControls';
 
 interface Point { time: number; value: number }
@@ -211,20 +212,14 @@ export const PositionChartModal: React.FC<{ position: PaperPosition; onClose: ()
   };
 
   return (
-    <div className="desk-overlay" onClick={onClose}>
-      <div
-        className="desk-modal flex flex-col"
-        style={{ maxWidth: '60rem', height: 'min(90vh, 640px)' }}
-        role="dialog"
-        aria-label={`${position.strike_symbol} chart`}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog label={`${position.strike_symbol} chart`} onClose={onClose} className="flex flex-col" style={{ maxWidth: '60rem', height: 'min(90vh, 640px)' }}>
+      <>
         <div className="flex items-start justify-between gap-2 p-3" style={{ borderBottom: '1px solid var(--line)' }}>
           <div className="min-w-0">
             <h4 className="text-sm font-semibold">
               {position.strike_symbol} <span className="desk-muted font-normal">· {setupCode(position.setup_type)} {position.setup_type.replace(/^Setup \d: /, '')}</span>
             </h4>
-            <p className="text-[11px] desk-muted">
+            <p className="text-xs desk-muted">
               {which === 'option' ? 'Option premium' : `${position.symbol} spot`} · {series?.interval ?? ''} candles ·{' '}
               {indicators.map((k) => legend[k]).join(', ')}
               {setupCode(position.setup_type) === 'S8' ? ' · RSI divergence not plotted' : ''}
@@ -266,7 +261,7 @@ export const PositionChartModal: React.FC<{ position: PaperPosition; onClose: ()
             onExit={() => setReplaying(false)}
           />
         )}
-      </div>
-    </div>
+      </>
+    </Dialog>
   );
 };

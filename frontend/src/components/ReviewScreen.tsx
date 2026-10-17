@@ -3,6 +3,7 @@ import { PaperPortfolio, PaperPosition, SetupMode } from '../types';
 import { PaperPortfolioView } from './PaperPortfolioView';
 import { JournalPanel } from './JournalPanel';
 import { TelemetryPanel } from './TelemetryPanel';
+import { Tabs } from './Tabs';
 
 export type ReviewTab = 'today' | 'trades' | 'setups' | 'costs' | 'analytics';
 
@@ -29,14 +30,8 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({ portfolio, closedTra
   const [tab, setTab] = useState<ReviewTab>('today');
   return (
     <div className="flex flex-col gap-2 lg:flex-1 lg:min-h-0">
-      <nav className="desk-subtabs" aria-label="Review sections">
-        {TABS.map((t) => (
-          <button key={t.id} type="button" className="desk-subtab" aria-current={tab === t.id} onClick={() => setTab(t.id)}>
-            {t.label}
-          </button>
-        ))}
-      </nav>
-      <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto pb-3">
+      <Tabs<ReviewTab> idPrefix="review" label="Review sections" className="desk-subtabs" tabClassName="desk-subtab" items={TABS} value={tab} onChange={setTab} />
+      <div id="review-panel" role="tabpanel" aria-labelledby={`review-tab-${tab}`} className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto pb-3">
         {tab === 'analytics' ? (
           <TelemetryPanel />
         ) : (

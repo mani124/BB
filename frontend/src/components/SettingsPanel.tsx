@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
+import { Tabs } from './Tabs';
 import type { RuntimeSetting, RuntimeSettingsPayload, SettingAuditRow } from '../types';
 
 type Draft = string | boolean;
@@ -13,6 +14,8 @@ export const SettingsPanel: React.FC<{ initial?: RuntimeSettingsPayload; initial
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [group, setGroup] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -79,7 +82,7 @@ export const SettingsPanel: React.FC<{ initial?: RuntimeSettingsPayload; initial
     const d = s.key in drafts ? drafts[s.key] : asDraft(s);
     const set = (v: Draft) => setDrafts((p) => ({ ...p, [s.key]: v }));
     if (s.type === 'bool') {
-      return <input type="checkbox" aria-label={s.label} checked={Boolean(d)} onChange={(e) => set(e.target.checked)} />;
+      return <input type="checkbox" className="h-5 w-5" style={{ accentColor: 'var(--accent)' }} aria-label={s.label} checked={Boolean(d)} onChange={(e) => set(e.target.checked)} />;
     }
     if (s.choices.length > 0) {
       return (
@@ -98,66 +101,110 @@ export const SettingsPanel: React.FC<{ initial?: RuntimeSettingsPayload; initial
     );
   };
 
+  const q = query.trim().toLowerCase();
+  const activeGroup = group && data.groups.includes(group) ? group : data.groups[0];
+  const visible = q
+    ? data.settings.filter((x) => `${x.label} ${x.description} ${x.key}`.toLowerCase().includes(q))
+    : data.settings.filter((x) => x.group === activeGroup);
+  const dirtyIn = (g: string) => data.settings.filter((x) => x.group === g && dirty(x)).length;
+  const shownGroups = q ? data.groups.filter((g) => visible.some((x) => x.group === g)) : [activeGroup];
+
   return (
-    <div className="flex flex-col gap-3" data-testid="settings-panel">
-      <div className="desk-panel">
+    <div className="flex flex-col gap-2 lg:flex-1 lg:min-h-0" data-testid="settings-panel">
+      <div className="desk-panel shrink-0">
         <div className="desk-ph">
           <h2>Runtime settings</h2>
           <span className="desk-muted text-xs">Changes apply to the next decision. No restart needed. 0 switches a limit off where marked.</span>
-          <button type="button" className="desk-btn solid ml-auto" disabled={busy || dirtyKeys.length === 0} onClick={save}>
+          <input
+            type="search"
+            className="desk-input ml-auto"
+            style={{ width: '14rem' }}
+            placeholder="Find a setting"
+            aria-label="Find a setting"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <button type="button" className="desk-btn solid" disabled={busy || dirtyKeys.length === 0} onClick={save}>
             Save {dirtyKeys.length > 0 ? `${dirtyKeys.length} change${dirtyKeys.length > 1 ? 's' : ''}` : 'changes'}
           </button>
         </div>
         {error && <div className="desk-alert m-3" role="alert">{error}</div>}
       </div>
 
-      {data.groups.map((g) => (
-        <section key={g} className="desk-panel" aria-label={g}>
-          <div className="desk-ph"><h3>{g}</h3></div>
-          <div className="overflow-x-auto">
-            <table className="desk-table">
-              <tbody>
-                {data.settings.filter((s) => s.group === g).map((s) => (
-                  <tr key={s.key}>
-                    <td style={{ whiteSpace: 'normal', minWidth: 220 }}>
-                      <div className="font-medium">{s.label}</div>
-                      <div className="desk-muted text-xs">{s.description}</div>
-                    </td>
-                    <td style={{ width: 170 }}>
-                      <div className="flex items-center gap-2">{control(s)}{s.unit && <span className="desk-muted text-xs">{s.unit}</span>}</div>
-                      {s.zero_disables && Number(s.value) === 0 && <span className="desk-pill warn">off</span>}
-                    </td>
-                    <td className="desk-muted text-xs">default {String(s.default)}</td>
-                    <td className="r">
-                      {s.overridden && (
-                        <button type="button" className="desk-btn" disabled={busy} onClick={() => reset(s.key)} aria-label={`Reset ${s.label}`}>
-                          Reset
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ))}
+      <div className="grid grid-cols-1 lg:grid-cols-[15rem_minmax(0,1fr)] gap-3 lg:flex-1 lg:min-h-0">
+        <Tabs<string>
+          idPrefix="settings"
+          orientation="vertical"
+          label="Setting groups"
+          className="desk-panel p-1.5 flex lg:flex-col gap-0.5 overflow-x-auto lg:overflow-y-auto lg:self-start lg:max-h-full"
+          tabClassName="desk-tab justify-between text-left whitespace-nowrap"
+          value={activeGroup}
+          onChange={(g) => { setGroup(g); setQuery(''); }}
+          items={data.groups.map((g) => ({
+            id: g,
+            name: dirtyIn(g) ? `${g}, ${dirtyIn(g)} unsaved` : g,
+            label: (
+              <>
+                <span>{g}</span>
+                {dirtyIn(g) > 0 && <span className="desk-pill warn desk-num" aria-hidden="true">{dirtyIn(g)}</span>}
+              </>
+            ),
+          }))}
+        />
 
-      <section className="desk-panel" aria-label="Change history">
-        <div className="desk-ph"><h3>Recent changes</h3></div>
-        {audit.length === 0 ? <div className="p-4 text-xs desk-muted">No changes yet.</div> : (
-          <div className="overflow-x-auto">
-            <table className="desk-table">
-              <thead><tr><th>When</th><th>Setting</th><th>From</th><th>To</th><th>By</th></tr></thead>
-              <tbody>
-                {audit.map((a, i) => (
-                  <tr key={i}><td className="desk-num">{a.changed_at}</td><td>{a.key}</td><td className="desk-num">{a.old_value}</td><td className="desk-num">{a.new_value}</td><td>{a.actor}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+        <div id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${activeGroup}`} className="flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto pb-3">
+          {q && visible.length === 0 && <div className="desk-panel p-6 text-center text-xs desk-muted">No setting matches "{query}".</div>}
+          {shownGroups.map((g) => (
+            <section key={g} className="desk-panel" aria-label={g}>
+              <div className="desk-ph"><h3>{g}</h3></div>
+              <div className="overflow-x-auto">
+                <table className="desk-table">
+                  <tbody>
+                    {visible.filter((x) => x.group === g).map((s) => (
+                      <tr key={s.key}>
+                        <td style={{ whiteSpace: 'normal', minWidth: 220 }}>
+                          <div className="font-medium">{s.label}{dirty(s) && <span className="desk-pill warn ml-2">unsaved</span>}</div>
+                          <div className="desk-muted text-xs">{s.description}</div>
+                        </td>
+                        <td style={{ width: 170 }}>
+                          <div className="flex items-center gap-2">{control(s)}{s.unit && <span className="desk-muted text-xs">{s.unit}</span>}</div>
+                          {s.zero_disables && Number(s.value) === 0 && <span className="desk-pill warn">off</span>}
+                        </td>
+                        <td className="desk-muted text-xs">default {String(s.default)}</td>
+                        <td className="r">
+                          {s.overridden && (
+                            <button type="button" className="desk-btn sm" disabled={busy} onClick={() => reset(s.key)} aria-label={`Reset ${s.label}`}>
+                              Reset
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
+
+          {!q && (
+            <section className="desk-panel" aria-label="Change history">
+              <div className="desk-ph"><h3>Recent changes</h3></div>
+              {audit.length === 0 ? <div className="p-4 text-xs desk-muted">No changes yet.</div> : (
+                <div className="overflow-x-auto">
+                  <table className="desk-table">
+                    <thead><tr><th scope="col">When</th><th scope="col">Setting</th><th scope="col">From</th><th scope="col">To</th><th scope="col">By</th></tr></thead>
+                    <tbody>
+                      {audit.map((a, i) => (
+                        <tr key={i}><td className="desk-num">{a.changed_at}</td><td>{a.key}</td><td className="desk-num">{a.old_value}</td><td className="desk-num">{a.new_value}</td><td>{a.actor}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

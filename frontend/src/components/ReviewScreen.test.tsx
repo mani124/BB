@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ReviewScreen } from './ReviewScreen';
-import { OpenPositionsPanel, CompactStrip } from './PaperPortfolioView';
+import { OpenPositionsPanel, CompactStrip, exitReasonLabel } from './PaperPortfolioView';
 import type { PaperPortfolio, PaperPosition } from '../types';
 
 const trade = (i: number): PaperPosition => ({
@@ -29,7 +29,7 @@ describe('ReviewScreen', () => {
   it('pages the trades tab 25 at a time and opens a drawer on row click', () => {
     const trades = Array.from({ length: 60 }, (_, i) => trade(i));
     render(<ReviewScreen portfolio={portfolio} closedTrades={trades} {...handlers} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Trades' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Trades' }));
     expect(screen.getByText(/1–25 of 60 trades/)).toBeInTheDocument();
     expect(document.querySelectorAll('tbody tr')).toHaveLength(25);
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
@@ -56,5 +56,13 @@ describe('compact watch components', () => {
     render(<CompactStrip portfolio={{ total_net_pnl: 1200, total_unrealized_net: 300, win_rate_pct: 50, winning_trades_count: 1, losing_trades_count: 1, active_positions: [open] } as unknown as PaperPortfolio} />);
     expect(screen.getByText('+₹1,200.00')).toBeInTheDocument();
     expect(screen.getByText('50.0%')).toBeInTheDocument();
+  });
+});
+
+describe('exitReasonLabel', () => {
+  it('turns engine codes into words and keeps readable reasons', () => {
+    expect(exitReasonLabel('EOD_SQUARE_OFF')).toBe('EOD square-off');
+    expect(exitReasonLabel('LOSS_STREAK_PAUSE')).toBe('Loss streak pause');
+    expect(exitReasonLabel('Target 2 (1:2.5) Hit')).toBe('Target 2 (1:2.5) Hit');
   });
 });

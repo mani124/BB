@@ -6,6 +6,8 @@ interface SignalTableProps {
   signals: Signal[];
   onPaperBuy?: (signal: Signal) => void;
   activeSignalIds?: Set<string>;
+  /** First snapshot has not arrived yet: show placeholder rows instead of the empty state. */
+  loading?: boolean;
 }
 
 // "2026-10-14T10:40:00+05:30" or "10:40:00" -> "10:40"
@@ -15,7 +17,14 @@ const signalTime = (ts?: string): string => {
   return m ? m[1] : ts;
 };
 
-export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, activeSignalIds }) => {
+export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, activeSignalIds, loading = false }) => {
+  if (loading) {
+    return (
+      <div className="p-3 flex flex-col gap-2" role="status" aria-label="Loading signals">
+        {[0, 1, 2, 3, 4].map((i) => <div key={i} className="desk-skel h-9" />)}
+      </div>
+    );
+  }
   if (signals.length === 0) {
     return (
       <div className="p-10 text-center">
@@ -32,14 +41,14 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, a
       <table className="desk-table">
         <thead>
           <tr>
-            <th>Time</th>
-            <th>Instrument</th>
-            <th>Setup</th>
-            <th className="r">Entry</th>
-            <th className="r">SL</th>
-            <th className="r">T1</th>
-            <th className="r">RSI / BW</th>
-            <th />
+            <th scope="col">Time</th>
+            <th scope="col">Instrument</th>
+            <th scope="col">Setup</th>
+            <th scope="col" className="r">Entry</th>
+            <th scope="col" className="r">SL</th>
+            <th scope="col" className="r">T1</th>
+            <th scope="col" className="r">RSI / BW</th>
+            <th scope="col"><span className="sr-only">Action</span></th>
           </tr>
         </thead>
         <tbody>
@@ -79,7 +88,12 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, a
                 </td>
                 <td className="r desk-num">
                   {ind?.rsi != null ? ind.rsi.toFixed(1) : '-'}
-                  <span className="desk-sub">{ind?.bandwidth != null ? `${ind.bandwidth.toFixed(2)}%` : '-'}</span>
+                  {ind?.rsi != null && (
+                    <span className="desk-mini" role="img" aria-label={`RSI ${ind.rsi.toFixed(0)} of 100`}>
+                      <i style={{ width: `${Math.max(0, Math.min(100, ind.rsi))}%` }} />
+                    </span>
+                  )}
+                  <span className="desk-sub">{ind?.bandwidth != null ? `BW ${ind.bandwidth.toFixed(2)}%` : '-'}</span>
                 </td>
                 <td className="r">
                   {onPaperBuy &&
@@ -88,7 +102,7 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, a
                     ) : (
                       <button
                         type="button"
-                        className="desk-btn accent"
+                        className="desk-btn ghost"
                         onClick={() => !unconfirmed && onPaperBuy(sig)}
                         disabled={unconfirmed}
                         title={unconfirmed ? 'Awaiting candle close confirmation' : undefined}

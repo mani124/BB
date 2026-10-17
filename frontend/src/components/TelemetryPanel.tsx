@@ -47,9 +47,9 @@ const PerfTable: React.FC<{ title: string; rows: PerfBucket[] }> = ({ title, row
     <div className="overflow-x-auto">
       <table className="desk-table">
         <thead><tr>
-          <th>{title.replace('By ', '')}</th><th className="r">Trades</th><th className="r">Win %</th><th className="r">Net</th>
-          <th className="r">Expectancy</th><th className="r">PF</th><th className="r">Avg R</th><th className="r">Max DD</th>
-          <th className="r">Avg MFE</th><th className="r">Avg MAE</th><th className="r">Capture</th>
+          <th scope="col">{title.replace('By ', '')}</th><th scope="col" className="r">Trades</th><th scope="col" className="r">Win %</th><th scope="col" className="r">Net</th>
+          <th scope="col" className="r">Expectancy</th><th scope="col" className="r">PF</th><th scope="col" className="r">Avg R</th><th scope="col" className="r">Max DD</th>
+          <th scope="col" className="r">Avg MFE</th><th scope="col" className="r">Avg MAE</th><th scope="col" className="r">Capture</th>
         </tr></thead>
         <tbody>
           {rows.map((r) => (
@@ -153,7 +153,7 @@ export const TelemetryPanel: React.FC<{ initial?: TelemetryInitial }> = ({ initi
             {!dec.data ? <div className="p-6 text-center text-xs desk-muted">{dec.failed ? 'Could not load decisions.' : 'Loading...'}</div> : (
               <div className="overflow-x-auto">
                 <table className="desk-table">
-                  <thead><tr><th>Time</th><th>Book</th><th>Strategy</th><th>Symbol</th><th>Decision</th><th>Reason</th><th>Detail</th></tr></thead>
+                  <thead><tr><th scope="col">Time</th><th scope="col">Book</th><th scope="col">Strategy</th><th scope="col">Symbol</th><th scope="col">Decision</th><th scope="col">Reason</th><th scope="col">Detail</th></tr></thead>
                   <tbody>
                     {dec.data.filter((d) => decisionFilter === 'ALL' || d.decision === decisionFilter).map((d) => (
                       <tr key={d.id}>
@@ -180,7 +180,7 @@ export const TelemetryPanel: React.FC<{ initial?: TelemetryInitial }> = ({ initi
             <div className="p-6 text-center text-xs desk-muted">MFE / MAE appear after trades close.</div>
           ) : (
             <table className="desk-table">
-              <thead><tr><th>Strategy</th><th className="r">Trades</th><th className="r">Avg MFE (best open profit)</th><th className="r">Avg MAE (worst open loss)</th><th className="r">Avg final</th></tr></thead>
+              <thead><tr><th scope="col">Strategy</th><th scope="col" className="r">Trades</th><th scope="col" className="r">Avg MFE (best open profit)</th><th scope="col" className="r">Avg MAE (worst open loss)</th><th scope="col" className="r">Avg final</th></tr></thead>
               <tbody>
                 {ins.data.excursions.map((e) => (
                   <tr key={e.strategy}><td>{e.strategy}</td><td className="r desk-num">{e.trades}</td>
@@ -205,7 +205,7 @@ export const TelemetryPanel: React.FC<{ initial?: TelemetryInitial }> = ({ initi
             <div className="p-6 text-center text-xs desk-muted">No errors in this window.</div>
           ) : (
             <table className="desk-table">
-              <thead><tr><th>Time</th><th>Code</th><th>Component</th><th>Message</th></tr></thead>
+              <thead><tr><th scope="col">Time</th><th scope="col">Code</th><th scope="col">Component</th><th scope="col">Message</th></tr></thead>
               <tbody>
                 {errs.data.map((e) => (
                   <React.Fragment key={e.id}>
