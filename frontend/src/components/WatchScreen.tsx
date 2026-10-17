@@ -118,7 +118,7 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
             onSelectTimeframe={(v) => onFilters({ timeframe: v })}
             totalSignals={filteredSignals.length}
           />
-          <div className="desk-scroll">
+          <div className="desk-scroll" tabIndex={0} aria-label="Signals list">
             <SignalTable signals={shown} onPaperBuy={onPaperBuy} activeSignalIds={activeSignalIds} loading={!loaded} />
             {sorted.length > SIGNALS_SHOWN && (
               <button

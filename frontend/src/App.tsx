@@ -511,7 +511,8 @@ const DashboardContent: React.FC = () => {
       />
       <LiveAnnouncer message={announcement} />
 
-      <main id="main-panel" role="tabpanel" aria-labelledby={`main-tab-${activeTab}`} className="flex-1 min-h-0 w-full px-4 sm:px-6 py-2 flex flex-col gap-2">
+      <main className="flex-1 min-h-0 w-full px-4 sm:px-6 py-2 flex flex-col gap-2">
+        <div id="main-panel" role="tabpanel" aria-labelledby={`main-tab-${activeTab}`} className="contents">
         {actionError && (
           <div className="desk-alert flex items-center justify-between gap-3" role="alert">
             <div className="flex items-center gap-2">
@@ -570,6 +571,7 @@ const DashboardContent: React.FC = () => {
             onClose={() => setCapabilityModalOpen(false)}
           />
         )}
+        </div>
       </main>
 
     </div>
