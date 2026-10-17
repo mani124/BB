@@ -195,10 +195,11 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         saved_modes = self._portfolio.setup_modes
         self._portfolio = PaperPortfolio(setup_modes=saved_modes)
         self._sync_portfolio_from_runtime()
-        self._processed_signal_ids.clear()
+        # Processed signal ids are kept: clearing them would let signals still on the radar open again at once.
         self.__dict__.pop("_last_spot", None)
-        self._loss_cap_trips = {}  # a reset empties the day's P&L, so a stored trip no longer applies
-        self._enqueue_write("save_setting", ("loss_cap_trips", "{}"))  # ...and must not come back on restart
+        # A loss cap tripped today stays tripped: a reset must not be a way to trade on after the day's limit.
+        self._loss_cap_trips = self._todays_loss_cap_trips()
+        self._enqueue_write("save_setting", ("loss_cap_trips", json.dumps(self._loss_cap_trips)))
         if self._write_queue is not None:
             try:
                 loop = asyncio.get_running_loop()
@@ -219,12 +220,25 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             saved_modes = self._portfolio.setup_modes
             self._portfolio = PaperPortfolio(setup_modes=saved_modes)
             self._sync_portfolio_from_runtime()
-            self._processed_signal_ids.clear()
             self.__dict__.pop("_last_spot", None)
-            self._loss_cap_trips = {}
+            self._loss_cap_trips = self._todays_loss_cap_trips()
             if self.storage:
                 self.storage.clear_all()
-                self.storage.save_setting("loss_cap_trips", "{}")
+                self.storage.save_setting("loss_cap_trips", json.dumps(self._loss_cap_trips))
+
+    def _todays_loss_cap_trips(self) -> dict[str, str]:
+        today = self._today_iso()
+        return {k: v for k, v in self._loss_cap_trips.items() if v == today}
+
+    def reset_block_reason(self, routed_open: int = 0) -> Optional[str]:
+        """Why a portfolio reset must be refused right now, else None. A reset archives open positions without an exit
+        and, with live routing on, makes the router sell what it holds, so it waits until nothing real is open."""
+        live_open = sum(1 for p in self._portfolio.active_positions if getattr(p, "feed_mode", "demo") == "live")
+        if live_open:
+            return f"{live_open} live position(s) are open; close them (or use the kill switch) before resetting"
+        if routed_open:
+            return f"{routed_open} routed position(s) are open at the broker; wait until they are closed"
+        return None
 
     def reset_portfolio(self) -> None:
         self.reset_sync()

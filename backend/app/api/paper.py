@@ -209,6 +209,15 @@ async def update_settings(body: SettingsRequest):
 
 @router.post("/reset")
 async def reset_portfolio():
+    routed_open = 0
+    try:
+        from app.services.order_router import get_router
+        routed_open = get_router().open_routed_count()
+    except RuntimeError:
+        pass  # router not initialised (tests, or a build without live routing)
+    blocked = paper_trader.reset_block_reason(routed_open)
+    if blocked:
+        raise HTTPException(status_code=409, detail=f"Reset refused: {blocked}.")
     await paper_trader.reset()
     return {"status": "portfolio_reset"}
 

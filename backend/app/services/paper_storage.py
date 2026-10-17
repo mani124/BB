@@ -442,7 +442,7 @@ class PaperStorage:
     def clear_all(self):
         """Portfolio reset. Nothing is deleted from the journal: a backup copy is written to
         <db dir>/backups/ and every current row is stamped archived_at, which hides it from
-        the dashboard. Only processed signal ids (no trade data) are cleared."""
+        the dashboard. Processed signal ids are kept, so signals already handled cannot open again."""
         from app.services.market_hours import now_ist
         now = now_ist().replace(microsecond=0)
         stamp = now.strftime("%Y%m%d-%H%M%S")
@@ -454,5 +454,4 @@ class PaperStorage:
                 "UPDATE positions SET archived_at = ? WHERE archived_at IS NULL;",
                 (now.isoformat(),),
             )
-            cursor.execute("DELETE FROM processed_signals;")
             conn.commit()

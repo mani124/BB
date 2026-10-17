@@ -197,7 +197,8 @@ def test_api_paper_settings():
     client.post("/api/paper/settings", json={"auto_trade_enabled": False, "default_lots": 2})
 
 def test_api_paper_reset():
-    sig = create_test_signal(symbol="NIFTY 50", opt="CE")
+    client.post("/api/paper/reset")
+    sig = create_test_signal(symbol="NIFTY 50", opt="CE", entry=25010.0, sl=24960.0)  # ids stay processed across resets
     client.post("/api/paper/trade", json={"signal": sig.model_dump(), "lots": 1})
     port_before = client.get("/api/paper/portfolio").json()
     assert len(port_before["active_positions"]) == 1
@@ -288,7 +289,7 @@ async def test_api_signals_stream_disconnect_breaks_loop():
 
 def test_api_manual_trade_defaults_to_two_lots():
     client.post("/api/paper/reset")
-    sig = create_test_signal(symbol="NIFTY 50", opt="CE")
+    sig = create_test_signal(symbol="NIFTY 50", opt="CE", entry=25020.0, sl=24970.0)
     res = client.post("/api/paper/trade", json={"signal": sig.model_dump()})
     assert res.status_code == 200
     assert res.json()["initial_lots"] == 2

@@ -447,9 +447,12 @@ $$\text{Risk per Lot (₹)} = (\text{Option Entry} - \text{Option SL}) \times \t
 ### 2a. Entry Validity and End-of-Day Fill
 * **Entry validity (live book, Setups other than 5):** a signal is skipped (reason `SETUP_NO_LONGER_VALID`) when the latest underlying price (at most 2 minutes old) is already at or beyond the signal's stop, or at or beyond Target 1. Setup 5 levels are option premiums and are not checked this way.
 * **EOD square-off:** live positions still open at the square-off time exit at the cycle's bid (as other live exits do); the last traded price is used only when no bid is known.
+* **Late Target 2 fill (live book, Setups 1-4 and the other spot-managed setups):** when spot touches Target 2 but no fresh option quote exists, the exit waits for the next quote (as before). If that quote is already below the option Target 2 level, the trade still exits but is recorded as `CLOSED` with reason `(Late Fill: ...)`, not as `TARGET_2`. Only the label changes; when and at what price the trade exits does not.
+* **Feed lost with live positions open:** stops and targets are only checked while the Dhan feed is live. During the session, if the feed drops while live positions are open, a `live_positions_unmanaged` alert repeats every 10 minutes until the feed is back; the 15:20 square-off still runs.
 
 ### 3. Persistent SQLite Storage
 * Realized trades, active positions, performance metrics, and processed signal IDs are committed atomically to SQLite (`data/trades.db`).
+* **Portfolio reset** archives every row (hidden, not deleted) and is refused while a live-feed position or a routed broker position is open. Processed signal IDs and a daily loss cap tripped today survive a reset.
 * System restarts or server reboots reload portfolio state cleanly with zero data loss.
 
 ---
@@ -726,7 +729,7 @@ A separate paper book (`earnings` in the decision trail), **paper only**, off by
 * **Costs:** `calculate_equity_delivery_charges`: STT 0.1% each side, NSE fee 0.00307%, SEBI Rs 10/crore, stamp 0.015% on the buy, GST 18% on brokerage and fees, DP Rs 15.34 per sell day (`swing_dp_charge`), brokerage `swing_brokerage_per_order` (0: unverified for Dhan). About 0.24% of the position value round trip, before slippage.
 
 ### Operation
-* `run_cycle` runs every `swing_poll_seconds` (600); after `swing_scan_time` (16:00 IST) on a trading day it fetches the finished bars, processes each missed trading day (at most 5) in order and scans only the latest. Days count as available once half the requested symbols have their bar. The first run starts today, with no replay of the past. Open positions are always managed even when the book is switched off.
+* `run_cycle` runs every `swing_poll_seconds` (600); after `swing_scan_time` (16:00 IST) on a trading day it fetches the finished bars, processes each missed trading day (at most 30, so stops on missed days are still checked) in order and scans only the latest. Days count as available once half the requested symbols have their bar. The first run starts today, with no replay of the past. Open positions are always managed even when the book is switched off.
 * Endpoints: `GET /swing/summary`, `/positions`, `/candidates` (signals on the latest bar, nothing queued), `POST /swing/run`. The deploy gate (`deploy/vm/bb-deploy.sh`) counts OPEN and PENDING swing rows.
 * Replay: `python -m scripts.swing_backtest DATA_DIR` runs the production engine over per-symbol daily CSVs and reports trades, win rate with a Wilson interval, expectancy in R with a bootstrap interval, profit factor, drawdown, a walk-forward split and a double-slippage run. Under 100 trades it says so. The symbol list given is survivor-biased if it is today's F&O list.
 

@@ -108,6 +108,11 @@ def parse_order_row(row: dict) -> OrderResult:
     )
 
 
+def _strike_key(strike: float) -> int:
+    """Strike in paise. Whole rupees would map 13.5 and 14 to the same key on half-rupee chains."""
+    return int(round(float(strike) * 100))
+
+
 class MasterIndex:
     """Option rows of Definedge's public instrument master, keyed for exact lookup."""
 
@@ -128,14 +133,14 @@ class MasterIndex:
                 if expiry is None:
                     continue
                 lot = int(float(line[7]))
-                self.rows[(segment, symbol, expiry, int(round(strike)), opt)] = Contract(segment, trading_symbol, lot)
+                self.rows[(segment, symbol, expiry, _strike_key(strike), opt)] = Contract(segment, trading_symbol, lot)
             except (IndexError, ValueError, ZeroDivisionError):
                 continue
         self.loaded_on = date.today()
         return len(self.rows)
 
     def find(self, segment: str, underlying: str, expiry: date, strike: float, option_type: str) -> Optional[Contract]:
-        return self.rows.get((segment, underlying.upper(), expiry, int(round(strike)), option_type.upper()))
+        return self.rows.get((segment, underlying.upper(), expiry, _strike_key(strike), option_type.upper()))
 
 
 class DefinedgeBroker:

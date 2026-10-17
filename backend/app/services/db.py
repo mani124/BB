@@ -19,8 +19,19 @@ _wal_done: set[str] = set()
 _lock = threading.Lock()
 
 
+class ClosingConnection(sqlite3.Connection):
+    """A plain ``with sqlite3.connect(...) as c`` commits or rolls back but leaves the connection open until the
+    garbage collector finds it. Every caller here opens one connection per ``with`` block, so close it there."""
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            return super().__exit__(exc_type, exc, tb)
+        finally:
+            self.close()
+
+
 def connect(path: str, *, timeout: float = BUSY_TIMEOUT_S) -> sqlite3.Connection:
-    conn = sqlite3.connect(path, timeout=timeout)
+    conn = sqlite3.connect(path, timeout=timeout, factory=ClosingConnection)
     conn.execute(f"PRAGMA busy_timeout = {int(timeout * 1000)}")
     with _lock:
         first = path not in _wal_done

@@ -1076,12 +1076,42 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
 
         return results
 
+    def check_unmanaged_live_positions(self) -> int:
+        """Stops and targets of live-feed positions are only checked while the feed is live. When the feed has
+        dropped during the session with live positions open, say so loudly: nothing manages them until it is back
+        (the 15:20 square-off still runs, at the last stored price). Returns how many positions are unmanaged."""
+        if self._state.active_mode == "live" or not market_hours.is_market_open():
+            self._unmanaged_since = None
+            return 0
+        live = [p for p in paper_trader._portfolio.active_positions if getattr(p, "feed_mode", "demo") == "live"]
+        if not live:
+            self._unmanaged_since = None
+            return 0
+        now = time.monotonic()
+        if getattr(self, "_unmanaged_since", None) is None:
+            self._unmanaged_since = now
+        mins = int((now - self._unmanaged_since) // 60)
+        names = ", ".join(sorted({p.strike_symbol or p.symbol for p in live}))[:300]
+        if now - getattr(self, "_unmanaged_logged_at", 0.0) >= 60:  # once a minute, not every scan
+            self._unmanaged_logged_at = now
+            logger.error("LIVE_POSITIONS_UNMANAGED %d live position(s) have no live feed (%d min): %s", len(live), mins, names)
+        notifier.notify(
+            "live_positions_unmanaged",
+            f"{len(live)} live position(s) are NOT being managed: the Dhan feed is down ({mins} min). Stops and targets "
+            f"are not checked until you log in again. Open: {names}. Square off at the broker if needed.",
+            dedupe_key="live_positions_unmanaged", min_interval=600)
+        return len(live)
+
     async def _loop(self):
         while self._running:
             try:
                 await self.run_single_scan_cycle()
             except Exception as e:
                 logger.error(f"Error in scanner worker loop: {e}")
+            try:
+                self.check_unmanaged_live_positions()
+            except Exception:
+                logger.warning("unmanaged-position check failed", exc_info=True)
             await asyncio.sleep(settings.SCAN_INTERVAL_SECONDS)
 
     def start(self):
