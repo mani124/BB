@@ -641,8 +641,11 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                     logger.warning(f"Setup 12 evaluation failed for {inst.symbol}: {e}")
                     s12_signals = []
                 for s in s12_signals:
-                    if pd.to_datetime(s.timestamp).date() == today_date:
-                        confirmed_signals.append(s)
+                    try:
+                        if pd.to_datetime(s.timestamp).date() == today_date:
+                            confirmed_signals.append(s)
+                    except Exception:
+                        pass
 
                 # Setup 9 (relative strength vs NIFTY) only fires on completed bars
                 nifty_bars = self._candle_history.get(NIFTY_SYMBOL, [])

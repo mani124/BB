@@ -585,7 +585,7 @@ Entry, stop, T1 (1.5R), T2 (2.5R), sizing and the option-chart-only exits are id
 1. **Cross:** previous close <= previous EMA 20 and close > EMA 20 (Pine `ta.crossover`), and close > previous close. EMA 20 is `close.ewm(span=20)`.
 2. **ADX gate (always on):** ADX >= 20 (Pine "strong" level) and ADX > its value 3 bars earlier, and +DI > -DI (PE: -DI > +DI). ADX/DI are the engine's Wilder values (Section 1), not the script's plain 14-bar average, so numbers differ slightly from the Pine plot. ADX is neutral (20) until 28 bars exist, so it cannot rise before then.
 3. **Distance:** close - EMA 20 must be between 0.1 and 1.0 ATR(14). Drops marginal crosses and chases.
-4. **Window:** at least 20 bars of the current session (first entry about 10:55 IST) and bar start no later than 14:25 (signal confirms at 14:30).
+4. **Window:** at least 20 bars of the current session (first entry about 10:55 IST) and bar start no later than 14:25 (signal confirms at 14:30). Needs at least 30 bars of history so ADX is real (not the neutral 20.0 warm-up fill); only evaluated on the 5m timeframe.
 
 ### Risk
 * Stop: `min(EMA 20, bar low) - max(0.25 x bar range, 0.05% of close)` (PE mirrored), the Setup 2 formula on the 20 EMA. Targets T1 1.5R / T2 2.5R on spot, strike 1 ITM, partial booking at T1, sizing, risk cap and chop-box re-entry gate as for Setups 1 to 4.

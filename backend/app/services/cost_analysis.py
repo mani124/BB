@@ -92,7 +92,7 @@ def _finish(t: CostTotals) -> None:
 
 
 def _setup_key(raw: Optional[str]) -> str:
-    m = re.search(r"SETUP[_ ]?(\d)", (raw or "").upper())
+    m = re.search(r"SETUP[_ ]?(\d+)", (raw or "").upper())
     return f"Setup {m.group(1)}" if m else (raw or "unknown")
 
 
