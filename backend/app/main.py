@@ -18,6 +18,7 @@ from app.api.journal import router as journal_router
 from app.api.runtime_config import router as runtime_config_router
 from app.api.telemetry import router as telemetry_router
 from app.api.earnings import router as earnings_router
+from app.api.live import router as live_router_api
 
 setup_security_logging()
 
@@ -42,6 +43,16 @@ earnings_engine = EarningsEngine(
 )
 earnings_registry.set_engine(earnings_engine)
 
+from app.services.broker_definedge import DefinedgeBroker
+from app.services.order_router import OrderRouter, set_router
+
+# Live broker routing. Off by default: with mode "off" both hooks return at once and paper trading is unchanged.
+live_router = OrderRouter(settings.DB_PATH, paper_trader.runtime, paper_trader.telemetry, paper_trader,
+                          broker=DefinedgeBroker(settings.DATA_DIR))
+set_router(live_router)
+paper_trader.on_live_entry = live_router.on_entry
+paper_trader.on_position_update = live_router.on_position_update
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cap = settings.DASHBOARD_CAPABILITY.strip()
@@ -62,12 +73,16 @@ async def lifespan(app: FastAPI):
     notify("service_started", f"{settings.APP_NAME} started (v{settings.VERSION}).", min_interval=60)
     worker.start()
     earnings_task = asyncio.create_task(earnings_registry.poll_loop(earnings_engine))
+    live_router.bind_loop(asyncio.get_running_loop())
+    live_task = asyncio.create_task(live_router.run_loop())
     yield
+    live_task.cancel()
     earnings_task.cancel()
-    try:
-        await earnings_task
-    except asyncio.CancelledError:
-        pass
+    for task in (earnings_task, live_task):
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     await worker.stop()
     await paper_trader.stop_persistence_worker()
 
@@ -190,6 +205,7 @@ def create_app() -> FastAPI:
     app.include_router(runtime_config_router, prefix=settings.API_PREFIX)
     app.include_router(telemetry_router, prefix=settings.API_PREFIX)
     app.include_router(earnings_router, prefix=settings.API_PREFIX)
+    app.include_router(live_router_api, prefix=settings.API_PREFIX)
 
     return app
 

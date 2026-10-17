@@ -39,6 +39,9 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         self._processed_signal_ids: set[str] = set()
         self.storage = None
         self.on_position_opened: Optional[Callable[[PaperPosition], Any]] = None
+        # Live order routing (order_router.py). Both stay None, and cost nothing, unless the router is wired in.
+        self.on_live_entry: Optional[Callable[[PaperPosition, Any], Any]] = None
+        self.on_position_update: Optional[Callable[[PaperPosition], Any]] = None
         self._write_queue: Optional[asyncio.Queue] = None
         self._writer_task: Optional[asyncio.Task] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -501,6 +504,11 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                         pass
             except Exception as e:
                 logger.warning(f"Error executing on_position_opened callback: {e}")
+        if self.on_live_entry:
+            try:
+                self.on_live_entry(pos, rec)
+            except Exception:
+                logger.error("Live routing entry hook failed for %s", pos.id, exc_info=True)
         return pos
 
     def on_signals_cycle(self, signals: list[Signal], feed_mode: str = "demo"):

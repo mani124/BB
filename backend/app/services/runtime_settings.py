@@ -54,6 +54,7 @@ G_SIZE = "Position sizing"
 G_QUALITY = "Entry quality guards"
 G_TELE = "Telemetry"
 G_EARN = "Earnings options strategy"
+G_LIVE = "Live broker routing"
 
 DEFINITIONS: tuple[SettingDef, ...] = (
     # ---- RMS ----
@@ -111,6 +112,52 @@ DEFINITIONS: tuple[SettingDef, ...] = (
        min=0, zero_disables=True),
     _d(key="telemetry_excursion_flush_seconds", label="Excursion save interval", group=G_TELE, type="int",
        unit="seconds", description="How often running MFE / MAE values are written to the database.", default=15, min=1),
+    # ---- live broker routing (order_router.py). Mode and arming are NOT settings: see /api/live. ----
+    _d(key="live_allowed_setups", label="Setups allowed to route", group=G_LIVE, type="str",
+       description="Setup numbers whose entries may be sent to the broker, comma separated (for example 5 or 5,11). "
+                   "Empty routes nothing. Start with one.", default=""),
+    _d(key="live_max_lots_per_order", label="Max lots per order", group=G_LIVE, type="int", unit="lots",
+       description="An entry above this many lots is refused, not trimmed (the paper position keeps its size).",
+       default=2, min=1, max=100),
+    _d(key="live_max_order_value", label="Max value per entry order", group=G_LIVE, type="float", unit="INR",
+       description="Quantity x limit price may not exceed this.", default=150000.0, min=1),
+    _d(key="live_max_entries_per_day", label="Max entry orders per day", group=G_LIVE, type="int",
+       description="Most entry orders sent in one IST day. Exits are never counted or blocked.", default=6, min=1),
+    _d(key="live_max_orders_per_day", label="Max orders per day (all)", group=G_LIVE, type="int",
+       description="Circuit breaker on every order sent in one IST day. Past it new entries stop; exits still go.",
+       default=40, min=1),
+    _d(key="live_max_open_positions", label="Max open live positions", group=G_LIVE, type="int",
+       description="Entries are refused while this many routed positions are open.", default=2, min=1),
+    _d(key="live_daily_loss_limit", label="Live daily loss limit", group=G_LIVE, type="float", unit="INR",
+       description="Entries stop once today's routed P&L reaches minus this. 0 uses the general daily loss limit; "
+                   "if both are 0 live entries are refused.", default=0.0, min=0),
+    _d(key="live_entry_order_type", label="Entry order type", group=G_LIVE, type="str",
+       description="LIMIT places at the ask plus the buffer below. MARKET is not recommended for options.",
+       default="LIMIT", choices=("LIMIT", "MARKET")),
+    _d(key="live_entry_limit_buffer_pct", label="Entry limit buffer", group=G_LIVE, type="float", unit="%",
+       description="A LIMIT entry is priced this far above the ask so it fills but cannot chase far.",
+       default=1.0, min=0, max=10),
+    _d(key="live_exit_order_type", label="Exit order type", group=G_LIVE, type="str",
+       description="LIMIT uses the bid minus the buffer and is cancelled and re-sent if it does not fill (brokers and "
+                   "exchanges often refuse plain MARKET orders on options). MARKET gets out for sure where allowed.",
+       default="LIMIT", choices=("MARKET", "LIMIT")),
+    _d(key="live_exit_limit_buffer_pct", label="Exit limit buffer", group=G_LIVE, type="float", unit="%",
+       description="A LIMIT exit is priced this far below the bid.", default=2.0, min=0, max=20),
+    _d(key="live_product_type", label="Product type", group=G_LIVE, type="str",
+       description="INTRADAY squares off at the broker's cutoff; NORMAL carries overnight.",
+       default="INTRADAY", choices=("INTRADAY", "NORMAL")),
+    _d(key="live_algo_id", label="Algo ID", group=G_LIVE, type="str",
+       description="The algo identifier your broker registered for this strategy (Definedge refuses orders without it). "
+                   "Empty refuses every live order.", default=""),
+    _d(key="live_order_timeout_seconds", label="Fill wait", group=G_LIVE, type="int", unit="seconds",
+       description="How long to wait for an order to fill before cancelling an entry's unfilled part.",
+       default=15, min=3, max=120),
+    _d(key="live_reconcile_seconds", label="Reconcile interval", group=G_LIVE, type="int", unit="seconds",
+       description="How often routed orders and positions are checked against the broker while anything is routed.",
+       default=30, min=10, max=600),
+    _d(key="live_halt_on_mismatch", label="Halt entries on position mismatch", group=G_LIVE, type="bool",
+       description="Stop new entries when the broker's positions differ from what the router expects, until you resume.",
+       default=True),
     # ---- earnings strategy ----
     _d(key="earnings_enabled", label="Earnings strategy enabled", group=G_EARN, type="bool",
        description="Allow the earnings paper book to open new positions.", default=False),

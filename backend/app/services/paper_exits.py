@@ -114,6 +114,16 @@ class PaperExitsMixin:
                 min_interval=3600,
             )
 
+    def _emit_position_update(self, pos: PaperPosition) -> None:
+        """Tell live order routing (if wired in) that a position changed size or closed."""
+        cb = self.on_position_update
+        if cb is None:
+            return
+        try:
+            cb(pos)
+        except Exception:
+            logger.error("Live routing update hook failed for %s", pos.id, exc_info=True)
+
     @staticmethod
     def _mark_open_estimates(pos: PaperPosition) -> None:
         """Unrealised P&L of the open lots and the net result if the trade closed now, using the
@@ -147,6 +157,7 @@ class PaperExitsMixin:
         now_str = _now_stamp()[0]
         still_active = []
         changed_active: list[PaperPosition] = []
+        closed_before = len(self._portfolio.closed_trades)
 
         for pos in self._portfolio.active_positions:
             orig_state = (
@@ -455,6 +466,11 @@ class PaperExitsMixin:
         self._recalculate_metrics()
         if changed_active:
             self._enqueue_write("batch_upsert", list(changed_active))
+        if self.on_position_update is not None:
+            for p in self._portfolio.closed_trades[closed_before:]:
+                self._emit_position_update(p)
+            for p in still_active:
+                self._emit_position_update(p)
 
     def close_position(
         self,
@@ -494,6 +510,7 @@ class PaperExitsMixin:
                 self._portfolio.closed_trades.append(closed)
                 self._recalculate_metrics()
                 self._enqueue_write("upsert", closed)
+                self._emit_position_update(closed)
                 return closed
         return None
 
