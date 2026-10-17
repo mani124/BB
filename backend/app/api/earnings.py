@@ -65,7 +65,15 @@ async def sync_calendar() -> dict:
 @router.post("/calendar")
 async def add_calendar(body: CalendarBulk) -> list[dict]:
     store = get_engine().store
+    from datetime import date
     try:
+        # Validate every row before writing any, so a bad row never leaves the calendar half-updated.
+        for r in body.rows:
+            date.fromisoformat(r.earnings_date)
+            if not r.symbol.strip():
+                raise ValueError("symbol is required")
+            if (r.session or "").strip().upper() not in ("", "BMO", "AMC"):
+                raise ValueError("session must be BMO, AMC or empty")
         for r in body.rows:
             store.upsert_calendar(r.symbol, r.earnings_date, r.session, r.sector, r.note)
     except ValueError as exc:
@@ -91,8 +99,9 @@ async def import_iv_history(body: IvBulk) -> dict:
     store = get_engine().store
     n = 0
     try:
-        for p in body.points:
-            store.record_iv(p.symbol.strip().upper(), date.fromisoformat(p.day), p.iv, p.spot)
+        parsed = [(p.symbol.strip().upper(), date.fromisoformat(p.day), p.iv, p.spot) for p in body.points]
+        for sym, day, iv, spot in parsed:
+            store.record_iv(sym, day, iv, spot)
             n += 1
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

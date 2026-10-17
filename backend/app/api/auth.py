@@ -20,9 +20,11 @@ class SessionAuthRequest(BaseModel):
 
 
 # Wrong-key attempts per client in a sliding window. Behind the reverse proxy every client may share one address, so
-# this also acts as a global brake on guessing; the window is short so the owner is never locked out for long.
+# this also acts as a global brake on guessing. The key is checked first, so the correct key always gets in and a
+# stranger's wrong guesses can never lock the owner out.
 _SESSION_FAIL_LIMIT = 10
 _SESSION_FAIL_WINDOW_S = 300
+_SESSION_FAIL_MAX_CLIENTS = 1000
 _session_failures: dict[str, list[float]] = {}
 
 
@@ -41,11 +43,16 @@ def create_dashboard_session(body: SessionAuthRequest, request: Request, respons
     import time
     client = request.client.host if request.client else "unknown"
     now = time.monotonic()
-    if len(_recent_failures(client, now)) >= _SESSION_FAIL_LIMIT:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                            detail="Too many wrong keys, try again in a few minutes")
     expected = settings.DASHBOARD_CAPABILITY.strip()
     if not expected or not hmac.compare_digest(body.secret.strip(), expected):
+        if len(_recent_failures(client, now)) >= _SESSION_FAIL_LIMIT:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                                detail="Too many wrong keys, try again in a few minutes")
+        if len(_session_failures) >= _SESSION_FAIL_MAX_CLIENTS:
+            for stale in list(_session_failures):
+                _recent_failures(stale, now)
+            if len(_session_failures) >= _SESSION_FAIL_MAX_CLIENTS:
+                _session_failures.clear()
         _session_failures.setdefault(client, []).append(now)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

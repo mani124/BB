@@ -91,7 +91,15 @@ def resolve_dashboard_capability(cfg: Settings) -> str:
         pass
     key = secrets.token_urlsafe(32)
     os.makedirs(cfg.DATA_DIR, exist_ok=True)
-    fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        # O_EXCL: if another process created the file first, use its key instead of overwriting it.
+        fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        with open(key_path) as f:
+            stored = f.read().strip()
+        if stored and stored != cfg.DEFAULT_DASHBOARD_CAPABILITY:
+            return stored
+        fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(key + "\n")
     log.warning("SECURITY: generated a new dashboard key in %s; enter it in the dashboard to sign in.", key_path)
