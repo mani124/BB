@@ -16,6 +16,7 @@ export function Tabs<T extends string>({
   className,
   tabClassName,
   idPrefix,
+  orientation = 'horizontal',
 }: {
   items: TabItem<T>[];
   value: T;
@@ -25,6 +26,7 @@ export function Tabs<T extends string>({
   tabClassName: string;
   /** Tab ids become `${idPrefix}-tab-${id}`; panels should use aria-labelledby with that id. */
   idPrefix: string;
+  orientation?: 'horizontal' | 'vertical';
 }) {
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
   const move = (to: number) => {
@@ -33,13 +35,15 @@ export function Tabs<T extends string>({
     refs.current[next.id]?.focus();
   };
   const onKeyDown = (e: React.KeyboardEvent, index: number) => {
-    if (e.key === 'ArrowRight') { e.preventDefault(); move(index + 1); }
-    else if (e.key === 'ArrowLeft') { e.preventDefault(); move(index - 1); }
+    const next = orientation === 'vertical' ? 'ArrowDown' : 'ArrowRight';
+    const prev = orientation === 'vertical' ? 'ArrowUp' : 'ArrowLeft';
+    if (e.key === next) { e.preventDefault(); move(index + 1); }
+    else if (e.key === prev) { e.preventDefault(); move(index - 1); }
     else if (e.key === 'Home') { e.preventDefault(); move(0); }
     else if (e.key === 'End') { e.preventDefault(); move(items.length - 1); }
   };
   return (
-    <div role="tablist" aria-label={label} className={className}>
+    <div role="tablist" aria-orientation={orientation} aria-label={label} className={className}>
       {items.map((t, i) => (
         <button
           key={t.id}

@@ -532,9 +532,9 @@ const DashboardContent: React.FC = () => {
             onChangeLots={handleChangeLots}
           />
         ) : activeTab === 'earnings' ? (
-          <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto pb-3"><EarningsPanel /></div>
+          <div className="flex flex-col lg:flex-1 lg:min-h-0"><EarningsPanel /></div>
         ) : activeTab === 'settings' ? (
-          <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto pb-3"><SettingsPanel /></div>
+          <div className="flex flex-col lg:flex-1 lg:min-h-0"><SettingsPanel /></div>
         ) : (
           <ReviewScreen
             portfolio={state.paper_portfolio}
