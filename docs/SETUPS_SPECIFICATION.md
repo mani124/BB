@@ -595,3 +595,29 @@ Entry, stop, T1 (1.5R), T2 (2.5R), sizing and the option-chart-only exits are id
 * Thresholds (ADX 20, 3-bar rise, 0.1 to 1.0 ATR, 14:25 cutoff) are starting values chosen before any replay; tune them from paper trades. The Pine script's 8-bar highest/lowest close lines are plot-only and not used.
 * Option fills, slippage and costs cannot be tested from past data (no past option candles). The spot signal can be replayed on past 5m index candles.
 
+
+
+---
+
+## 16. Setup 13: Option VWAP Reclaim
+
+* **Setup Enum:** `SetupType.SETUP_13_OPTION_VWAP_RECLAIM`; code in `backend/app/services/setup13.py`, wired in `scanner_worker._evaluate_option_chart_setups`; signal assembly shared with Setups 5, 10 and 11 (`build_option_chart_signal`, with an optional `stop_price` that Setups 5, 10 and 11 do not pass, so their stops are unchanged).
+* **Underlying Principle:** VWAP of the option's own premium is the average price its buyers paid today. A premium above it means buyers are in profit; a dip below it and a close back above it means buyers have retaken control. Buying that reclaim enters a pullback inside an existing trend at a level many traders watch, instead of chasing a spike (Setup 5 buys the spike).
+
+### Qualification (CE shown; PE is the same on the put's own premium), all on completed 5m bars
+1. **Prior trend:** the bar before the dip closed above the option's session VWAP.
+2. **Dip:** 1 to 5 consecutive bars immediately before the signal bar closed below VWAP (a longer dip is a failed trend; no dip is not a pullback).
+3. **Reclaim:** the signal bar closes above the option's session VWAP (the Section 1 VWAP of the option chart).
+4. **Volume lift:** per-bar volume of the signal bar is at least 1,000 contracts and above the average of the prior 3 bars. Option volume from the feed is cumulative for the day; the scanner turns it into per-bar volume (difference of day totals) and flags bars where that is unknown (`volume_known=False`), which never pass.
+5. **Spot agrees:** the underlying's completed bar at the same time closes above its own VWAP for calls, below it for puts. For an index the spot VWAP is the session mean of typical price (indices have no volume, Section 1).
+6. **Window:** at least 20 bars of the current session on the option chart (first entry about 10:55 IST), bar start no later than 14:25 (confirms at 14:30), plus the shared option-chart guards (today's bar only, entry cutoff, expiry-day cutoff).
+
+### Risk and management
+* Strike: ATM, the bought leg only; entry is the signal close. Stop: `max(pullback low, VWAP) - 1% of the close`, never tighter than 4% of the close; the signal is skipped if the stop would be more than 30% below the close. T1 1.5R (book half, stop to breakeven), T2 2.5R, sizing, caps and the option-chart-only exits are the Setup 5 ones.
+* Setup 13 never enters the same side as Setup 5 or Setup 10 in one scan.
+* Default per-setup switch: `index`. Stock option premiums are too thin for a stable VWAP.
+* The signal's indicator snapshot logs `dip_bars`, `pullback_low`, `volume_avg_prior_3`, `spot_close` and `spot_vwap` so thresholds can be tuned from paper trades.
+
+### Notes
+* Thresholds (1 to 5 dip bars, 3-bar volume average, 1,000 contracts, 1% stop buffer, 30% stop cap, 14:25 cutoff) are starting values. Past option candles are not available for replay, so this setup is validated by paper trading.
+* Setups 1 and 5 are unchanged.

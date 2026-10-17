@@ -29,6 +29,7 @@ export const SETUP_FILTERS: { key: string; label: string; title: string }[] = [
   { key: 'Setup 10: ATM Straddle Premium Squeeze', label: 'S10 Straddle Squeeze', title: 'Setup 10: ATM Straddle Premium Squeeze' },
   { key: 'Setup 11: Filtered Option Chart Scalp', label: 'S11 Filtered Scalp', title: 'Setup 11: Filtered Option Chart Scalp (Setup 5 shadow)' },
   { key: 'Setup 12: ADX + EMA 20 Trend Cross', label: 'S12 ADX EMA Cross', title: 'Setup 12: ADX + EMA 20 Trend Cross' },
+  { key: 'Setup 13: Option VWAP Reclaim', label: 'S13 Option VWAP', title: 'Setup 13: Option VWAP Reclaim' },
 ];
 
 const Seg: React.FC<{

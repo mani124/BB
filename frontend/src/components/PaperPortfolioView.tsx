@@ -82,6 +82,7 @@ const SETUP_FILTER_OPTIONS = [
   { id: 'SETUP_10', label: 'S10 Straddle Squeeze' },
   { id: 'SETUP_11', label: 'S11 Filtered Scalp' },
   { id: 'SETUP_12', label: 'S12 ADX EMA Cross' },
+  { id: 'SETUP_13', label: 'S13 Option VWAP' },
 ];
 
 const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
@@ -322,6 +323,7 @@ const SETUP_SWITCH_ROWS: { key: string; label: string }[] = [
   { key: '10', label: 'Setup 10 · Straddle Squeeze' },
   { key: '11', label: 'Setup 11 · Filtered Option Scalp' },
   { key: '12', label: 'Setup 12 · ADX EMA Cross' },
+  { key: '13', label: 'Setup 13 · Option VWAP Reclaim' },
 ];
 
 const SETUP_MODE_OPTIONS: { mode: SetupMode; label: string; title: string }[] = [
