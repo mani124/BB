@@ -87,8 +87,10 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         if (savedId && savedToken) {
           if (savedToken.includes('*') || savedToken === 'server_active') {
-            setClientId(savedId);
-            setAccessToken(savedToken);
+            // The server says there is no session (restart, expiry), so a masked token must not look logged in.
+            sessionStorage.removeItem('dhan_client_id');
+            sessionStorage.removeItem('dhan_access_token');
+            sessionStorage.removeItem('dhan_token_expiry');
           } else {
             connect(savedId, savedToken);
           }
@@ -132,7 +134,7 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // Store in sessionStorage for zero-token persistence guarantee
       const expiryMs = Date.now() + 24 * 3600 * 1000;
       sessionStorage.setItem('dhan_client_id', id.trim());
-      sessionStorage.setItem('dhan_access_token', token.trim());
+      sessionStorage.setItem('dhan_access_token', 'server_active');
       sessionStorage.setItem('dhan_token_expiry', expiryMs.toString());
 
       setClientId(id.trim());

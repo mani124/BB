@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 import logging
 from datetime import datetime, timedelta
@@ -155,6 +156,11 @@ class PaperExitsMixin:
         """Update active positions with current underlying prices and live option prices from Dhan."""
         delta = 0.55
         now_str = _now_stamp()[0]
+        if feed_mode is not None:
+            spots = self.__dict__.setdefault("_last_spot", {})
+            for sym, px in price_map.items():
+                if px:
+                    spots[(feed_mode, sym)] = (float(px), time.monotonic())
         still_active = []
         changed_active: list[PaperPosition] = []
         closed_before = len(self._portfolio.closed_trades)

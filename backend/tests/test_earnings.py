@@ -366,7 +366,7 @@ def test_api_calendar_and_summary():
     from app.services.earnings_registry import get_engine
 
     async def no_events():
-        return []
+        return [{"symbol": "NOSUCH", "purpose": "Dividend", "date": "01-Jan-2027"}]  # non-empty, matches nothing
     get_engine().events_fetcher = no_events  # never reach NSE from tests
     d = (TODAY + timedelta(days=30)).isoformat()
     try:

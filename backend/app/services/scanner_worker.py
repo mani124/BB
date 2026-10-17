@@ -838,7 +838,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         # P0-5: in every mode (a demo scan after a disconnect too) close positions carried over
         # from an earlier date (both books) and square off live positions at the EOD time.
         paper_trader.flag_stale_carryover()
-        paper_trader.square_off_if_due(feed_mode="live")
+        paper_trader.square_off_if_due(feed_mode="live", option_bid_map=option_bid_map)
         self.persist_trade_candles()
         if mode in ("live", "demo"):
             paper_trader.on_signals_cycle(new_signals, feed_mode=mode)

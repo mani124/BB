@@ -21,6 +21,8 @@ from typing import Any, Awaitable, Callable, Optional, Set, Tuple
 
 import websockets
 
+from app.services import market_hours
+
 from app.services.dhan_packet_codec import (
     decode_packet,
     encode_subscription_json,
@@ -31,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 
 class DhanWebSocketManager:
+    STALE_TICK_RECONNECT_S = 90.0
+
     """
     Manages persistent binary streaming connection to Dhan WebSocket feed.
     """
@@ -298,6 +302,15 @@ class DhanWebSocketManager:
                     except Exception as ping_err:
                         logger.debug("WebSocket keepalive ping error: %s", ping_err)
                         break
+                # Half-open TCP connections never raise in recv(): force a reconnect when ticks stop in market hours.
+                if self._last_tick_time is not None and market_hours.is_market_open() \
+                        and asyncio.get_running_loop().time() - self._last_tick_time > self.STALE_TICK_RECONNECT_S:
+                    logger.warning("Dhan WebSocket silent for over %ss in market hours; reconnecting", self.STALE_TICK_RECONNECT_S)
+                    try:
+                        await self._ws.close()  # the reader then raises and schedules the reconnect
+                    except Exception:
+                        pass
+                    break
         except asyncio.CancelledError:
             return
 

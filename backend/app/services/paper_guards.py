@@ -153,15 +153,20 @@ class PaperGuardsMixin:
             self._recalculate_metrics()
         return stale
 
-    def square_off_if_due(self, feed_mode: Optional[str] = "live") -> list[PaperPosition]:
-        """P0-5: close open positions once the EOD square-off time is reached."""
+    def square_off_if_due(self, feed_mode: Optional[str] = "live", option_bid_map: Optional[dict] = None) -> list[PaperPosition]:
+        """P0-5: close open positions once the EOD square-off time is reached.
+
+        Live positions fill at this cycle's bid when one is known (like every other live exit), else at the last price."""
         if not market_hours.is_square_off_due():
             return []
         closed = []
         for pos in list(self._portfolio.active_positions):
             if feed_mode is not None and getattr(pos, "feed_mode", "demo") != feed_mode:
                 continue
-            res = self.close_position(pos.id, reason=EOD_SQUARE_OFF)
+            bid = None
+            if option_bid_map and getattr(pos, "feed_mode", "demo") == "live":
+                bid = option_bid_map.get(str(pos.option_security_id)) or option_bid_map.get(pos.id)
+            res = self.close_position(pos.id, reason=EOD_SQUARE_OFF, real_bid_price=bid if bid and bid > 0 else None)
             if res:
                 closed.append(res)
         return closed
