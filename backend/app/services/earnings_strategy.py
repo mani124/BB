@@ -357,7 +357,9 @@ def close_value_per_unit(legs: list[dict]) -> float:
     total = 0.0
     for lg in legs:
         px = _f(lg.get("current_bid" if lg["side"] == "BUY" else "current_ask"))
-        if px <= 0:
+        if px <= 0 and lg["side"] == "BUY" and lg.get("current_bid") is not None and _f(lg.get("current_ask")) > 0:
+            px = 0.0  # a quoted market with no bid: the bought leg is worth nothing to sell, not its stale last price
+        elif px <= 0:
             px = _f(lg.get("current_ltp")) or _f(lg.get("entry_price"))
         total += px if lg["side"] == "BUY" else -px
     return total

@@ -16,6 +16,7 @@ import logging
 import os
 import sqlite3
 import threading
+import time
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Any, Callable, Optional, Protocol
@@ -29,6 +30,7 @@ from app.services import db
 
 logger = logging.getLogger(__name__)
 BOOK = "earnings"
+SYNC_RETRY_BACKOFF_S = 30 * 60  # after a failed NSE sync, wait this long before asking again
 
 
 def _hhmm_minutes(s: str) -> int:
@@ -172,6 +174,9 @@ class EarningsStore:
     # ---- positions ----
     def save_position(self, pos: dict) -> None:
         with self._lock:
+            # A cycle holding a stale copy must never turn a closed position back into an open one.
+            if pos.get("status") != "CLOSED" and self.position_status(pos["id"]) == "CLOSED":
+                return
             if not self.db_path:
                 self._mem_pos[pos["id"]] = json.loads(json.dumps(pos, default=str))
                 return
@@ -179,6 +184,15 @@ class EarningsStore:
                 c.execute("INSERT OR REPLACE INTO earnings_positions (id, symbol, mode, status, earnings_date, opened_at, body) VALUES (?,?,?,?,?,?,?)",
                           (pos["id"], pos["symbol"], pos["mode"], pos["status"], pos["earnings_date"], pos["opened_at"],
                            json.dumps(pos, default=str)))
+
+    def position_status(self, pos_id: str) -> Optional[str]:
+        with self._lock:
+            if not self.db_path:
+                p = self._mem_pos.get(pos_id)
+                return p["status"] if p else None
+            with self._conn() as c:
+                r = c.execute("SELECT status FROM earnings_positions WHERE id = ?", (pos_id,)).fetchone()
+                return r["status"] if r else None
 
     def positions(self) -> list[dict]:
         with self._lock:
@@ -276,6 +290,7 @@ class EarningsEngine:
         self.kill_switch = kill_switch or (lambda: False)
         self._lock = asyncio.Lock()
         self.last_cycle: dict = {"status": "never_run"}
+        self._last_sync_failure: Optional[float] = None
 
     # ---------------------------------------------------------------- calendar sync
     def _fno_symbols(self) -> set:
@@ -290,12 +305,18 @@ class EarningsEngine:
         today = today or market_hours.now_ist().date()
         if not force and (not self.runtime.get("earnings_auto_sync") or self.store.get_meta("last_sync") == today.isoformat()):
             return {"status": "skipped"}
+        if not force and self._last_sync_failure is not None and time.monotonic() - self._last_sync_failure < SYNC_RETRY_BACKOFF_S:
+            return {"status": "skipped"}
         fetch = self.events_fetcher or fetch_nse_events
         try:
             events = await fetch()
+            if not events:  # NSE answers [] when it throttles; treating that as truth would wipe the calendar
+                raise ValueError("NSE returned no events; keeping the existing calendar")
         except Exception as exc:
+            self._last_sync_failure = time.monotonic()
             logger.warning("Earnings calendar sync failed: %s", exc)
             return {"status": "error", "error": str(exc)}
+        self._last_sync_failure = None
         horizon = int(self.runtime.get("earnings_sync_horizon_days"))
         rows = parse_results_rows(events, self._fno_symbols(), today, horizon)
         res = self.store.sync_rows(rows, today, horizon)
@@ -408,19 +429,18 @@ class EarningsEngine:
             now = now or market_hours.now_ist()
             today = now.date()
             result: dict = {"at": now.isoformat(), "status": "ok", "opened": [], "closed": [], "skipped": 0}
-            try:  # the NSE calendar needs no broker session, so it syncs even before Dhan is connected
-                sync = await self.sync_calendar(today)
-                if sync["status"] != "skipped":
-                    result["calendar_sync"] = sync
-            except Exception:
-                logger.warning("calendar sync crashed", exc_info=True)
             if self.provider is None or not self.provider.has_credentials():
                 result["status"] = "no_credentials"
+                if any(p["status"] == "OPEN" for p in self.store.positions()):
+                    from app.services import notifier  # open positions are unmanaged until someone logs in again
+                    notifier.notify("earnings_unmanaged", "Earnings positions are open but no broker session is connected, so they are not being managed. Log in to the dashboard.",
+                                    dedupe_key="earnings_unmanaged", min_interval=3600)
             elif not market_hours.is_trading_day(today):
                 result["status"] = "not_a_trading_day"
             else:
                 try:
-                    await self._record_iv(today, result)
+                    if market_hours.is_market_open(now) and now.hour * 60 + now.minute >= 9 * 60 + 30:
+                        await self._record_iv(today, result)  # not on pre-open data, which carries yesterday's closing vols
                     await self._step_positions(now, result)
                     if self.runtime.get("earnings_enabled") and market_hours.is_market_open(now):
                         await self._scan_and_enter(now, result)
@@ -428,6 +448,12 @@ class EarningsEngine:
                     logger.warning("Earnings cycle failed: %s", exc, exc_info=True)
                     result["status"] = "error"
                     result["error"] = str(exc)
+            try:  # after the exits, so a slow NSE never delays them; needs no broker session
+                sync = await self.sync_calendar(today)
+                if sync["status"] != "skipped":
+                    result["calendar_sync"] = sync
+            except Exception:
+                logger.warning("calendar sync crashed", exc_info=True)
             self.last_cycle = result
             return result
 
@@ -601,6 +627,8 @@ class EarningsEngine:
                         lg["current_bid"], lg["current_ask"] = c["bid"], c["ask"]
                         lg["current_ltp"] = c["ltp"] or lg.get("current_ltp")
                 self._reprice(pos)
+            if self.store.position_status(pos["id"]) != "OPEN":
+                continue  # closed (kill switch / manual square-off) while the quotes were being fetched
             have_quote = bool(oc) and bool(spot)
             exit_min = _hhmm_minutes(g("earnings_exit_time") if pos["mode"] == es.MODE_A else g("earnings_mode_b_exit_time"))
             reason = es.exit_reason(
@@ -633,9 +661,10 @@ class EarningsEngine:
 
     async def square_off_all(self, reason: str = "KILL_SWITCH") -> int:
         """Close every open earnings position at the last known prices (paper)."""
-        now = market_hours.now_ist()
-        n = 0
-        for pos in [p for p in self.store.positions() if p["status"] == "OPEN"]:
-            self._close(pos, now, reason)
-            n += 1
-        return n
+        async with self._lock:  # waits for a running cycle so the two never act on the same position
+            now = market_hours.now_ist()
+            n = 0
+            for pos in [p for p in self.store.positions() if p["status"] == "OPEN"]:
+                self._close(pos, now, reason)
+                n += 1
+            return n

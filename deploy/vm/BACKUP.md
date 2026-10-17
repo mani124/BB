@@ -18,7 +18,7 @@ A failed run leaves `/var/lib/bb-backup/last_failure`, shows `bb-backup.service`
 ## Restore
     gcloud storage ls gs://<bucket>/trades/
     gcloud storage cp gs://<bucket>/trades/trades-<time>.db.gz /var/tmp/ && gunzip /var/tmp/trades-<time>.db.gz
-    sqlite3 /var/tmp/trades-<time>.db 'PRAGMA integrity_check; select count(*) from trades;'   # python3 sqlite3 also works
+    sqlite3 /var/tmp/trades-<time>.db 'PRAGMA integrity_check; select count(*) from positions;'   # python3 sqlite3 also works
 Then stop `bb-options.service`, keep the current db as `trades.db.bad`, copy the restored file to
 `backend/data/trades.db` (owner mani_vutla7), start the service. Restore only outside 09:15-15:30 IST.
 

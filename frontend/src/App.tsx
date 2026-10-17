@@ -365,6 +365,13 @@ const DashboardContent: React.FC = () => {
         setActionError('Kill switch request failed. Please try again.');
         return;
       }
+      if (engage) {
+        const body = await res.json().catch(() => ({}));
+        const failed: string[] = Array.isArray(body?.failed) ? body.failed : [];
+        if (failed.length > 0) {
+          setActionError(`Kill switch engaged, but ${failed.length} position(s) could not be closed: ${failed.join(', ')}. Close them by hand.`);
+        }
+      }
       const portRes = await apiFetch('/api/paper/portfolio');
       if (portRes.ok) applyPortfolio(await portRes.json());
     } catch (e) {

@@ -1,4 +1,5 @@
 import asyncio
+import time
 import json
 import os
 import uuid
@@ -195,6 +196,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         self._portfolio = PaperPortfolio(setup_modes=saved_modes)
         self._sync_portfolio_from_runtime()
         self._processed_signal_ids.clear()
+        self.__dict__.pop("_last_spot", None)
         self._loss_cap_trips = {}  # a reset empties the day's P&L, so a stored trip no longer applies
         self._enqueue_write("save_setting", ("loss_cap_trips", "{}"))  # ...and must not come back on restart
         if self._write_queue is not None:
@@ -218,6 +220,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             self._portfolio = PaperPortfolio(setup_modes=saved_modes)
             self._sync_portfolio_from_runtime()
             self._processed_signal_ids.clear()
+            self.__dict__.pop("_last_spot", None)
             self._loss_cap_trips = {}
             if self.storage:
                 self.storage.clear_all()
@@ -316,7 +319,9 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         # Check re-entry gate: prevent consecutive stop-out churn in the same chop box
         last_closed = next(
             (p for p in reversed(self._portfolio.closed_trades) if p.symbol == signal.symbol and p.option_type == signal.option_type and not p.quarantine_reason
-             and is_setup11(p.setup_type) == is_setup11(signal.setup_type)),
+             and is_setup11(p.setup_type) == is_setup11(signal.setup_type)
+             and getattr(p, "feed_mode", "demo") == feed_mode
+             and str(getattr(p, "exit_datetime", "") or "")[:10] == _now_stamp()[1][:10]),
             None
         )
         if last_closed and last_closed.status == "STOPPED_OUT":
@@ -351,6 +356,22 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                     self._processed_signal_ids.add(signal.id)
                     self._log_skip(signal, feed_mode, "REENTRY_CHOP_GATE", "price not beyond the previous stopped-out entry")
                     return None
+
+        # The signal is only worth trading while price is still inside its stop and short of target 1.
+        # Setup 5 levels are option premiums, so it is skipped here.
+        spot_seen = getattr(self, "_last_spot", {}).get((feed_mode, signal.symbol))
+        spot_now = spot_seen[0] if spot_seen and time.monotonic() - spot_seen[1] <= 120 else None  # ignore a stale spot
+        if feed_mode == "live" and spot_now and not is_setup5(signal.setup_type) and signal.stop_loss and signal.target_1:
+            if signal.option_type == "CE":
+                invalid = spot_now <= signal.stop_loss or spot_now >= signal.target_1
+            else:
+                invalid = spot_now >= signal.stop_loss or spot_now <= signal.target_1
+            if invalid:
+                logger.info("Entry skipped for %s %s: spot %s already beyond stop %s or target 1 %s",
+                            signal.symbol, signal.option_type, spot_now, signal.stop_loss, signal.target_1)
+                self._processed_signal_ids.add(signal.id)
+                self._log_skip(signal, feed_mode, "SETUP_NO_LONGER_VALID", f"spot {spot_now} is beyond the stop {signal.stop_loss} or target 1 {signal.target_1}")
+                return None
 
         rec = signal.strike_recommendation
         if feed_mode == "live":

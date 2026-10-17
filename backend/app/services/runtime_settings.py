@@ -262,6 +262,8 @@ def coerce(defn: SettingDef, raw: Any) -> Any:
             if isinstance(raw, bool):
                 raise SettingError(f"{defn.label}: expected a number")
             val: Any = float(raw)
+            if val != val or val in (float("inf"), float("-inf")):
+                raise SettingError(f"{defn.label}: expected a finite number")
             if defn.type == "int":
                 if val != int(val):
                     raise SettingError(f"{defn.label}: expected a whole number")

@@ -441,6 +441,11 @@ $$\text{Risk per Lot (₹)} = (\text{Option Entry} - \text{Option SL}) \times \t
   * **Setups 1–4 (CE):** New trade blocked unless $\text{Spot Entry} > \text{Previous Stopped-Out Entry}$.
   * **Setups 1–4 (PE):** New trade blocked unless $\text{Spot Entry} < \text{Previous Stopped-Out Entry}$.
   * **Setup 5:** New trade blocked unless $\text{Option Entry} > \text{Previous Stopped-Out Option Entry}$.
+  * The gate only looks at a stop-out **from the same IST day and the same book** (demo or live); an older or other-book stop-out never blocks a new entry.
+
+### 2a. Entry Validity and End-of-Day Fill
+* **Entry validity (live book, Setups other than 5):** a signal is skipped (reason `SETUP_NO_LONGER_VALID`) when the latest underlying price (at most 2 minutes old) is already at or beyond the signal's stop, or at or beyond Target 1. Setup 5 levels are option premiums and are not checked this way.
+* **EOD square-off:** live positions still open at the square-off time exit at the cycle's bid (as other live exits do); the last traded price is used only when no bid is known.
 
 ### 3. Persistent SQLite Storage
 * Realized trades, active positions, performance metrics, and processed signal IDs are committed atomically to SQLite (`data/trades.db`).

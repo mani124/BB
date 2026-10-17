@@ -47,13 +47,13 @@ def is_valid_dashboard_capability(request: Request) -> bool:
         return False
 
     cap_header = (request.headers.get("X-Dashboard-Capability") or request.headers.get("x-dashboard-capability") or "").strip()
-    if cap_header and hmac.compare_digest(cap_header, expected):
+    if cap_header and hmac.compare_digest(cap_header.encode(), expected.encode()):
         return True
 
     auth_header = (request.headers.get("Authorization") or request.headers.get("authorization") or "").strip()
     if auth_header.startswith("Bearer "):
         token = auth_header[7:].strip()
-        if token and hmac.compare_digest(token, expected):
+        if token and hmac.compare_digest(token.encode(), expected.encode()):
             return True
 
     cookie_token = (request.cookies.get("dashboard_session") or "").strip()
