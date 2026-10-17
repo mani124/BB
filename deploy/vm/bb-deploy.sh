@@ -76,8 +76,10 @@ if [ "$(to_min "$now_ist")" -ge "$(to_min "$MARKET_START")" ] && [ "$(to_min "$n
   exit 0
 fi
 
-# 4. No open live paper position (fail safe: if we cannot tell, we do not deploy).
-#    Demo rows are synthetic and archived rows are hidden, so neither blocks a deploy.
+# 4. No open live paper position and nothing live at the broker (fail safe: if we cannot tell, we do not deploy).
+#    Demo rows are synthetic and archived rows are hidden, so neither blocks a deploy. Real-money routing
+#    (live_positions / live_orders written by the order router) also blocks: a restart must not interrupt a
+#    position held at the broker or an order whose status is still unsettled. Dry-run rows do not block.
 if [ -f "$DB_FILE" ]; then
   open_count="$(python3 -I - "$DB_FILE" <<'PY' 2>/dev/null
 import sqlite3, sys
@@ -88,14 +90,26 @@ if "feed_mode" in cols:
     sql += " AND COALESCE(feed_mode, 'demo') = 'live'"
 if "archived_at" in cols:
     sql += " AND archived_at IS NULL"
-print(con.execute(sql).fetchone()[0])
+paper = con.execute(sql).fetchone()[0]
+tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+routed = orders = 0
+if "live_positions" in tables:
+    routed = con.execute("SELECT COUNT(*) FROM live_positions WHERE mode='LIVE' AND state IN ('ENTERING','OPEN')").fetchone()[0]
+if "live_orders" in tables:
+    orders = con.execute("SELECT COUNT(*) FROM live_orders WHERE mode='LIVE' AND status IN ('SENDING','NEW','OPEN','UNKNOWN')").fetchone()[0]
+print(paper, routed, orders)
 PY
 )" || open_count=""
-  case "$open_count" in
+  read -r open_count routed_count order_count <<<"$open_count"
+  case "$open_count$routed_count$order_count" in
     ''|*[!0-9]*) log "wait: could not read open positions from $DB_FILE, will retry"; exit 0 ;;
   esac
   if [ "$open_count" -gt 0 ]; then
     log "wait: $open_count open position(s), will retry"
+    exit 0
+  fi
+  if [ "$routed_count" -gt 0 ] || [ "$order_count" -gt 0 ]; then
+    log "wait: live routing busy ($routed_count position(s) at the broker, $order_count unsettled order(s)), will retry"
     exit 0
   fi
 fi
