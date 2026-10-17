@@ -15,7 +15,7 @@ market-data feed. Another broker is one more adapter class.
   An unfilled entry is cancelled after `live_order_timeout_seconds`; a partial fill is kept and later exits are
   scaled to what was actually bought.
 * **Exit.** Whenever the paper position shrinks (Target 1 half) or closes (stop, Target 2, manual, kill switch,
-  end of day, reset), the router sells whatever the broker still holds for it (MARKET by default). Exits are
+  end of day, reset), the router sells whatever the broker still holds for it (a LIMIT below the bid by default; MARKET is a setting). Exits are
   **never blocked** by the kill switch, a halt, the loss cap, the caps below, or the mode being switched off. A
   position bought for real is always exited for real.
 * **Reconcile.** Every `live_reconcile_seconds` the router refreshes unsettled orders from the broker and compares
@@ -105,8 +105,9 @@ This is not legal advice and nothing here is Definedge-specific: confirm each po
   `live_algo_id` must be non-empty or every live order is refused.
 * **Daily login.** 2FA once per trading day, no long-lived sessions. The TOTP login in the dashboard matches this.
 * **Market orders.** Brokers now convert market orders to market-price-protection orders and exchanges often refuse
-  plain market orders on options. The default exit type is MARKET. Test one exit in the 1-lot check; if it is rejected,
-  set `live_exit_order_type` to LIMIT (priced below the bid by `live_exit_limit_buffer_pct`).
+  plain market orders on options. The default exit type is therefore LIMIT, priced below the bid by `live_exit_limit_buffer_pct`
+  (an unfilled one is cancelled and re-sent). Test one exit in the 1-lot check; only switch `live_exit_order_type`
+  to MARKET if Definedge accepts it for options.
 * **Your own account only.** Do not route orders for anyone else's account from this app.
 
 ## Not covered

@@ -138,8 +138,9 @@ DEFINITIONS: tuple[SettingDef, ...] = (
        description="A LIMIT entry is priced this far above the ask so it fills but cannot chase far.",
        default=1.0, min=0, max=10),
     _d(key="live_exit_order_type", label="Exit order type", group=G_LIVE, type="str",
-       description="MARKET gets out for sure. LIMIT uses the bid minus the buffer and is re-sent if it does not fill.",
-       default="MARKET", choices=("MARKET", "LIMIT")),
+       description="LIMIT uses the bid minus the buffer and is cancelled and re-sent if it does not fill (brokers and "
+                   "exchanges often refuse plain MARKET orders on options). MARKET gets out for sure where allowed.",
+       default="LIMIT", choices=("MARKET", "LIMIT")),
     _d(key="live_exit_limit_buffer_pct", label="Exit limit buffer", group=G_LIVE, type="float", unit="%",
        description="A LIMIT exit is priced this far below the bid.", default=2.0, min=0, max=20),
     _d(key="live_product_type", label="Product type", group=G_LIVE, type="str",
