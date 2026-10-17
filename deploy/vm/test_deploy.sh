@@ -85,6 +85,21 @@ echo "== unreadable db (fail safe)"
 echo garbage > "$T/app/backend/data/trades.db"; NOW=20:00 run >/dev/null 2>&1
 check "not deployed if db unreadable" '[ "$(content)" = old ]'
 
+echo "== live routing state"
+mk_live() {  # $1 positions row, $2 orders row (either may be empty)
+  python3 -c "
+import sqlite3;c=sqlite3.connect('$T/app/backend/data/trades.db')
+c.execute('create table live_positions (position_id text, mode text, state text)')
+c.execute('create table live_orders (id integer, mode text, status text)')
+[c.execute(q) for q in ['''$1''','''$2'''] if q.strip()]
+c.commit()"
+}
+make_world; make_bundle 8 100; mk_live "insert into live_positions values ('p1','LIVE','OPEN')" ""
+NOW=20:00 run >/dev/null 2>&1;  check "position held at broker blocks" '[ "$(content)" = old ]'
+make_world; make_bundle 9 100; mk_live "" "insert into live_orders values (1,'LIVE','UNKNOWN')"
+NOW=20:00 run >/dev/null 2>&1;  check "unsettled live order blocks" '[ "$(content)" = old ]'
+make_world; make_bundle a 100; mk_live "insert into live_positions values ('p2','DRY','OPEN')" "insert into live_orders values (2,'LIVE','COMPLETE')"
+NOW=20:00 run >/dev/null 2>&1;  check "dry-run position and settled order do not block" '[ "$(content)" = new-a ]'
 echo "== kill switch"
 make_world; make_bundle d 100; touch "$T/conf/PAUSE"; NOW=20:00 run >/dev/null 2>&1
 check "PAUSE blocks deploy"          '[ "$(content)" = old ]'
