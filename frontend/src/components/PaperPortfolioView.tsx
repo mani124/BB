@@ -147,6 +147,8 @@ export const PortfolioStrip: React.FC<{ portfolio?: PaperPortfolio }> = ({ portf
   const floatingCharges = portfolio?.total_unrealized_charges ?? 0;
   const floatingNet = portfolio?.total_unrealized_net ?? floating;
   const openCount = portfolio?.active_positions?.length ?? 0;
+  // Profit already booked at Target 1 on trades that are still open: not in Net Realized until they close.
+  const bookedOpen = (portfolio?.active_positions ?? []).reduce((sum, p) => sum + (p.booked_pnl_rupees ?? 0), 0);
 
   return (
     <section
@@ -154,7 +156,7 @@ export const PortfolioStrip: React.FC<{ portfolio?: PaperPortfolio }> = ({ portf
       aria-label="Portfolio performance"
     >
       <div className="col-span-2 md:col-span-3 lg:col-span-1">
-        <div className="desk-label">Net Realized P&L</div>
+        <div className="desk-label" title="Closed trades only, after charges. Open trades are not included.">Net Realized P&L</div>
         <div className={`desk-num text-[26px] font-semibold ${pnlClass(netRealized)}`}>
           {formatCurrency(netRealized, true)}
         </div>
@@ -190,7 +192,9 @@ export const PortfolioStrip: React.FC<{ portfolio?: PaperPortfolio }> = ({ portf
           {formatCurrency(floating, true)}
         </div>
         <div className="text-xs desk-muted">
-          {openCount} open · net if closed now{' '}
+          {openCount} open
+          {bookedOpen !== 0 && <> · booked at T1 <span className={`desk-num ${pnlClass(bookedOpen)}`}>{formatCurrency(bookedOpen, true)}</span> (in Net Realized once closed)</>}
+          {' '}· net if closed now{' '}
           <span className={`desk-num ${pnlClass(floatingNet)}`}>{formatCurrency(floatingNet, true)}</span>
           {floatingCharges > 0 && <> (est. charges ₹{floatingCharges.toLocaleString('en-IN', INR)})</>}
         </div>
