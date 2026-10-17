@@ -7,6 +7,10 @@ class Settings(BaseModel):
     API_PREFIX: str = "/api"
     HOST: str = os.getenv("HOST", "127.0.0.1")
     PORT: int = 8001
+    # Seconds uvicorn waits for open connections (the SSE stream never closes by itself) before cancelling them
+    # on SIGTERM. Without it a restart hangs until systemd sends SIGKILL. Used by `python -m app.main`; for the
+    # service use the `--timeout-graceful-shutdown` flag or UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN (see deploy/vm/README.md).
+    GRACEFUL_SHUTDOWN_SECONDS: int = int(os.getenv("GRACEFUL_SHUTDOWN_SECONDS", "10"))
     DHAN_API_BASE: str = "https://api.dhan.co/v2"
     DHAN_AUTH_BASE: str = os.getenv("DHAN_AUTH_BASE", "https://auth.dhan.co")
     DHAN_LOGIN_URL: str = os.getenv("DHAN_LOGIN_URL", "https://auth.dhan.co/login/consent")

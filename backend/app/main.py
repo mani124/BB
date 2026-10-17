@@ -234,4 +234,5 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=os.getenv("DASH_RELOAD", "0") == "1")
+    uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=os.getenv("DASH_RELOAD", "0") == "1",
+                timeout_graceful_shutdown=settings.GRACEFUL_SHUTDOWN_SECONDS)
