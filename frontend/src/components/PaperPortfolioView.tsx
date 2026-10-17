@@ -398,6 +398,31 @@ export const OpenPositionsPanel: React.FC<{
   );
 };
 
+/* ---------- Exit reason as a readable, toned pill ---------- */
+const REASON_LABELS: Record<string, string> = {
+  EOD_SQUARE_OFF: 'EOD square-off',
+  STALE_CARRYOVER: 'Stale carry-over',
+  KILL_SWITCH: 'Kill switch',
+  MANUAL_OR_RULE_EXIT: 'Manual / rule exit',
+  STOPPED_OUT: 'Stop loss',
+  STOP_LOSS: 'Stop loss',
+  TARGET_1: 'Target 1',
+  TARGET_2: 'Target 2',
+  CLOSED: 'Closed',
+};
+export const exitReasonLabel = (reason: string): string =>
+  REASON_LABELS[reason] ?? (/^[A-Z0-9_]+$/.test(reason) ? reason.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase()) : reason);
+const ExitReason: React.FC<{ reason: string }> = ({ reason }) => {
+  const r = reason.toLowerCase();
+  const tone = r.includes('target') ? 'up' : r.includes('stop') || r.includes('kill') ? 'down' : 'mute';
+  const label = exitReasonLabel(reason);
+  return (
+    <span className={`desk-pill ${tone}`} title={reason} style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      {label}
+    </span>
+  );
+};
+
 /* ---------- Trade drawer (side panel with the full picture of one trade) ---------- */
 const TradeDrawer: React.FC<{
   trade: PaperPosition;
@@ -432,7 +457,7 @@ const TradeDrawer: React.FC<{
       <Row k="Quantity">{trade.quantity} ({trade.lots}L × {trade.lot_size})</Row>
       <Row k="Entry → exit">{trade.option_entry.toFixed(1)} → {trade.current_option_price.toFixed(1)}</Row>
       <Row k="Stop / T1 / T2">{trade.option_sl.toFixed(1)} / {trade.option_target_1.toFixed(1)} / {trade.option_target_2.toFixed(1)}</Row>
-      <Row k="Why it closed">{trade.exit_reason || trade.status}</Row>
+      <Row k="Why it closed"><ExitReason reason={trade.exit_reason || trade.status} /></Row>
       <Row k="Gross P&L"><span className={pnlClass(gross)}>{formatCurrency(gross, true)}</span></Row>
       <Row k="Charges">{formatCurrency(trade.total_charges ?? 0)}</Row>
       <Row k="Slippage cost">{formatCurrency(trade.total_slippage_cost ?? 0)}</Row>
@@ -545,6 +570,16 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
     visibleDays = Array.from(pageMap.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
   }
   const paged = view === 'trades';
+  // Today tab: the summary and title describe the session shown, not the whole journal.
+  const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const shownDay = view === 'today' ? visibleDays[0]?.[0] : undefined;
+  const headSummary = view === 'today' ? summarizeTrades(visibleDays[0]?.[1] ?? []) : summary;
+  const journalTitle =
+    view === 'today'
+      ? shownDay === undefined || shownDay === todayIso
+        ? "Today's closed trades"
+        : `Last session · ${dayLabel(shownDay)}`
+      : `Closed Trades Journal (${filteredTrades.length}${isFiltered ? ` of ${closedTrades.length}` : ''})`;
 
   // Per-setup table over all live trades.
   const bySetup = new Map<string, { trades: number; wins: number; net: number }>();
@@ -662,9 +697,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
       {show('trades', 'today') && (
       <section className="desk-panel" aria-labelledby="journal-title">
         <div className={`desk-ph ${view !== 'all' ? 'sticky top-0 z-[2]' : ''}`} style={view !== 'all' ? { background: 'var(--panel)' } : undefined}>
-          <h2 id="journal-title">
-            Closed Trades Journal ({filteredTrades.length}{isFiltered ? ` of ${closedTrades.length}` : ''})
-          </h2>
+          <h2 id="journal-title">{journalTitle}</h2>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 ml-auto">
             <div className="flex gap-1.5" role="group" aria-label="Journal instrument filter">
               {KIND_FILTER_OPTIONS.map((opt) => (
@@ -710,12 +743,12 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
         </div>
 
         <div className="desk-day text-sm">
-          <span>{summary.count} trades</span>
-          <span className="desk-muted">{summary.winRate}% Win Rate</span>
-          <span>Gross <b className={`desk-num ${pnlClass(summary.gross)}`}>{formatCurrency(summary.gross, true)}</b></span>
-          <span>Net <b className={`desk-num ${pnlClass(summary.net)}`}>{formatCurrency(summary.net, true)}</b></span>
+          <span>{headSummary.count} trades</span>
+          <span className="desk-muted">{headSummary.winRate}% Win Rate</span>
+          <span>Gross <b className={`desk-num ${pnlClass(headSummary.gross)}`}>{formatCurrency(headSummary.gross, true)}</b></span>
+          <span>Net <b className={`desk-num ${pnlClass(headSummary.net)}`}>{formatCurrency(headSummary.net, true)}</b></span>
           <span>Slippage drag <b className="desk-num" style={{ color: 'var(--warn)' }}>
-            {summary.slippage > 0 ? `-₹${summary.slippage.toLocaleString('en-IN', INR)}` : '₹0.00'}
+            {headSummary.slippage > 0 ? `-₹${headSummary.slippage.toLocaleString('en-IN', INR)}` : '₹0.00'}
           </b></span>
         </div>
 
@@ -776,7 +809,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                               </td>
                               <td className={`r desk-num ${pnlClass(grossVal)}`}>{formatCurrency(grossVal, true)}</td>
                               <td className={`r desk-num font-semibold ${pnlClass(netVal)}`}>{formatCurrency(netVal, true)}</td>
-                              <td>{trade.exit_reason || trade.status}</td>
+                              <td><ExitReason reason={trade.exit_reason || trade.status} /></td>
                               <td className="r whitespace-nowrap">
                                 <button
                                   type="button"

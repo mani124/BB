@@ -5,6 +5,11 @@ interface IndexHeroRadarProps {
   radar: Record<string, IndexRadarItem>;
 }
 
+// Short labels so all six indices fit one row on a laptop; the full name is in the tooltip.
+const SHORT_NAMES: Record<string, string> = {
+  'NIFTY 50': 'NIFTY', 'NIFTY BANK': 'BANKNIFTY', FINNIFTY: 'FINNIFTY', SENSEX: 'SENSEX', MIDCPNIFTY: 'MIDCP', NIFTYNXT50: 'NXT50',
+};
+
 export const IndexHeroRadar: React.FC<IndexHeroRadarProps> = ({ radar }) => {
   const indexKeys = ['NIFTY 50', 'NIFTY BANK', 'FINNIFTY', 'SENSEX', 'MIDCPNIFTY', 'NIFTYNXT50'];
 
@@ -30,17 +35,19 @@ export const IndexHeroRadar: React.FC<IndexHeroRadarProps> = ({ radar }) => {
         return (
           <div
             key={key}
-            className="flex items-center gap-x-2 overflow-hidden"
-            title={`%B ${item.percent_b.toFixed(2)} · BW ${item.bandwidth.toFixed(2)}% · RSI ${item.rsi.toFixed(0)} · ${
+            className="flex items-center gap-x-1.5 overflow-hidden"
+            title={`${item.symbol} · %B ${item.percent_b.toFixed(2)} · BW ${item.bandwidth.toFixed(2)}% · RSI ${item.rsi.toFixed(0)} · ${
               isAboveVwap ? 'above' : 'below'
             } VWAP${item.is_squeeze ? ' · squeeze' : ''}`}
           >
-            <b className="font-semibold truncate">{item.symbol}</b>
+            <b className="font-semibold truncate min-w-0">{SHORT_NAMES[key] ?? item.symbol}</b>
             <span className="desk-num">{item.close > 0 ? Math.round(item.close).toLocaleString('en-IN') : '---'}</span>
             <span className={`desk-num ${isPositive ? 'desk-up' : 'desk-down'}`}>
               {isPositive ? '+' : ''}{item.change_pct.toFixed(2)}%
             </span>
-            <span className={`desk-dot ${isAboveVwap ? '' : 'opacity-60'}`} style={{ background: isAboveVwap ? 'var(--up)' : 'var(--down)' }} aria-hidden />
+            <span className={`desk-num text-[11px] ${isAboveVwap ? 'desk-up' : 'desk-down'}`} aria-label={isAboveVwap ? 'above VWAP' : 'below VWAP'}>
+              VW{isAboveVwap ? '▲' : '▼'}
+            </span>
             {item.is_squeeze && <span className="desk-pill">SQ</span>}
           </div>
         );

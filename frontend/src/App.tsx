@@ -453,7 +453,7 @@ const DashboardContent: React.FC = () => {
         onKillSwitch={handleKillSwitch}
       />
 
-      <main className="flex-1 min-h-0 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-2 flex flex-col gap-2">
+      <main className="flex-1 min-h-0 w-full px-4 sm:px-6 py-2 flex flex-col gap-2">
         {actionError && (
           <div className="desk-alert flex items-center justify-between gap-3" role="alert">
             <div className="flex items-center gap-2">
@@ -489,11 +489,13 @@ const DashboardContent: React.FC = () => {
                 >
                   {state.active_mode === 'closed' ? 'MARKET CLOSED' : state.market_bias || 'NEUTRAL'}
                 </span>
+                {Boolean(state.top_bullish?.length) && <span className="desk-label ml-2">Top CE</span>}
                 {state.top_bullish?.map((sym) => (
-                  <span key={sym} className="desk-pill up desk-num" title="Top bullish (CE)">{sym}</span>
+                  <span key={sym} className="desk-pill up desk-num" title="Top bullish (CE)">▲ {sym}</span>
                 ))}
+                {Boolean(state.top_bearish?.length) && <span className="desk-label ml-2">Top PE</span>}
                 {state.top_bearish?.map((sym) => (
-                  <span key={sym} className="desk-pill down desk-num" title="Top bearish (PE)">{sym}</span>
+                  <span key={sym} className="desk-pill down desk-num" title="Top bearish (PE)">▼ {sym}</span>
                 ))}
               </div>
               {state.paper_portfolio && (

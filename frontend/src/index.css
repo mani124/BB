@@ -99,6 +99,9 @@
     white-space: nowrap; vertical-align: middle; color: var(--fg);
   }
   .desk-table tbody tr:nth-child(even) { background: var(--alt); }
+  /* Cells set color: var(--fg); keep P&L tones winning over it. */
+  .desk-table .desk-up { color: var(--up); }
+  .desk-table .desk-down { color: var(--down); }
   .desk-table .r { text-align: right; }
   .desk-day {
     display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 14px;
@@ -122,6 +125,7 @@
   .desk-pill.warn { background: var(--warn-soft); color: var(--warn); }
   .desk-pill.up { background: var(--up-soft); color: var(--up); }
   .desk-pill.down { background: var(--down-soft); color: var(--down); }
+  .desk-pill.mute { background: var(--alt); color: var(--muted); border: 1px solid var(--line); }
   .desk-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: inline-block; }
   .desk-btn {
     border: 1px solid var(--line); background: var(--panel); color: var(--fg);
@@ -191,6 +195,9 @@
   @media (max-width: 1023px) {
     .desk-scroll { max-height: 70vh; }
   }
+  @media (max-width: 640px) {
+    .desk-ticker > * { white-space: normal; flex-wrap: wrap; }
+  }
   .desk-alert {
     border: 1px solid var(--down); background: var(--down-soft); color: var(--down);
     border-radius: 8px; padding: 8px 12px; font-size: 13px;
@@ -202,3 +209,7 @@
 ::-webkit-scrollbar-track { background: var(--alt); }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
