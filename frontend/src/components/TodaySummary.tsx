@@ -33,7 +33,7 @@ export const TodaySummary: React.FC<{ trades: PaperPosition[] }> = ({ trades }) 
           </span>
         )}
       </div>
-      <div className="desk-scroll">
+      <div className="desk-scroll" tabIndex={0} aria-label="Per-setup results">
         {rows.length === 0 ? (
           <div className="p-6 text-center text-xs desk-muted">No closed trades yet this session.</div>
         ) : (

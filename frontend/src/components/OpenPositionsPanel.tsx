@@ -26,7 +26,7 @@ export const OpenPositionsPanel: React.FC<{
         <span className="text-xs desk-muted ml-auto">Books 50% at T1, then trails the rest at breakeven</span>
       )}
     </div>
-    <div className={compact ? 'desk-scroll' : ''}>
+    <div className={compact ? 'desk-scroll' : ''} tabIndex={compact ? 0 : undefined} aria-label={compact ? 'Open positions list' : undefined}>
     {positions.length === 0 ? (
       <div className="p-6 text-center text-xs desk-muted">
         No open paper positions. New signals open trades automatically, or click "Paper buy" on a signal.

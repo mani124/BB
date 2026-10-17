@@ -171,7 +171,7 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
         </form>
         {calendar.length > 0 && (
           <div className="overflow-x-auto"><table className="desk-table">
-            <thead><tr><th scope="col">Symbol</th><th scope="col">Date</th><th scope="col">Session</th><th scope="col">Sector</th><th scope="col">Source</th><th scope="col" /></tr></thead>
+            <thead><tr><th scope="col">Symbol</th><th scope="col">Date</th><th scope="col">Session</th><th scope="col">Sector</th><th scope="col">Source</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>{calendar.map((r) => (
               <tr key={`${r.symbol}-${r.earnings_date}`}><td className="desk-sym">{r.symbol}</td><td>{r.earnings_date}</td><td>
                 <select className="desk-input" aria-label={`Session for ${r.symbol}`} value={r.session} disabled={busy}
