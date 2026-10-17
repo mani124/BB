@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -14,6 +15,9 @@ from app.api.paper import router as paper_router
 from app.api.cost import router as cost_router
 from app.api.position_chart import router as position_chart_router
 from app.api.journal import router as journal_router
+from app.api.runtime_config import router as runtime_config_router
+from app.api.telemetry import router as telemetry_router
+from app.api.earnings import router as earnings_router
 
 setup_security_logging()
 
@@ -22,8 +26,21 @@ from app.services.notifier import notify, risk_event_alert
 
 paper_trader.on_risk_event = risk_event_alert  # loss cap / kill switch -> phone alert
 
+from app.services.telemetry import TelemetryLogHandler
+logging.getLogger().addHandler(TelemetryLogHandler(paper_trader.telemetry))  # warnings/errors -> error_events
+
 universe_mgr = UniverseManager()
 worker = ScannerWorker(universe_mgr=universe_mgr)
+
+from app.services.earnings_engine import EarningsEngine, DhanChainProvider
+from app.services import earnings_registry
+
+earnings_engine = EarningsEngine(
+    settings.DB_PATH, paper_trader.runtime, paper_trader.telemetry,
+    provider=DhanChainProvider(worker.dhan_client, lambda: worker._session_credentials),
+    kill_switch=lambda: paper_trader.risk_status(None).kill_switch_active,
+)
+earnings_registry.set_engine(earnings_engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,9 +55,19 @@ async def lifespan(app: FastAPI):
             "treated as closed until app/services/market_hours.py is updated."
         )
     await paper_trader.start_persistence_worker()
+    try:
+        paper_trader.telemetry.purge()
+    except Exception:
+        logging.getLogger(__name__).warning("telemetry purge failed", exc_info=True)
     notify("service_started", f"{settings.APP_NAME} started (v{settings.VERSION}).", min_interval=60)
     worker.start()
+    earnings_task = asyncio.create_task(earnings_registry.poll_loop(earnings_engine))
     yield
+    earnings_task.cancel()
+    try:
+        await earnings_task
+    except asyncio.CancelledError:
+        pass
     await worker.stop()
     await paper_trader.stop_persistence_worker()
 
@@ -160,6 +187,9 @@ def create_app() -> FastAPI:
     app.include_router(cost_router, prefix=settings.API_PREFIX)
     app.include_router(position_chart_router, prefix=settings.API_PREFIX)
     app.include_router(journal_router, prefix=settings.API_PREFIX)
+    app.include_router(runtime_config_router, prefix=settings.API_PREFIX)
+    app.include_router(telemetry_router, prefix=settings.API_PREFIX)
+    app.include_router(earnings_router, prefix=settings.API_PREFIX)
 
     return app
 

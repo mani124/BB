@@ -115,9 +115,9 @@ export const CostPanel: React.FC<{ refreshKey?: number; initialReport?: CostRepo
             <table className="desk-table">
               <thead>
                 <tr>
-                  <th>{firstCol}</th>
-                  {withTrades && <th className="r">Trades</th>}
-                  <th className="r">Gross</th><th className="r">Slippage</th><th className="r">Charges</th><th className="r">Net</th>
+                  <th scope="col">{firstCol}</th>
+                  {withTrades && <th scope="col" className="r">Trades</th>}
+                  <th scope="col" className="r">Gross</th><th scope="col" className="r">Slippage</th><th scope="col" className="r">Charges</th><th scope="col" className="r">Net</th>
                 </tr>
               </thead>
               <tbody>{body}</tbody>
