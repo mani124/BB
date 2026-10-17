@@ -19,6 +19,7 @@ class SetupType(str, enum.Enum):
     SETUP_10_STRADDLE_SQUEEZE = "Setup 10: ATM Straddle Premium Squeeze"
     SETUP_11_FILTERED_OPTION_BB = "Setup 11: Filtered Option Chart Scalp"
     SETUP_12_ADX_EMA_CROSS = "Setup 12: ADX + EMA 20 Trend Cross"
+    SETUP_13_OPTION_VWAP_RECLAIM = "Setup 13: Option VWAP Reclaim"
     SETUP_14_OI_WALL_BOUNCE = "Setup 14: OI Wall Bounce"
 
 class Signal(BaseModel):
@@ -114,10 +115,12 @@ def is_setup11(setup_type) -> bool:
 
 
 def is_setup5(setup_type) -> bool:
-    """True for setups managed on the option premium chart (Setups 5, 10 and 11), whether given
+    """True for setups managed on the option premium chart (Setups 5, 10, 11 and 13), whether given
     as the enum, its value, or a legacy stored label."""
     if setup_type in (SetupType.SETUP_5_OPTION_BB, SetupType.SETUP_10_STRADDLE_SQUEEZE,
-                      SetupType.SETUP_11_FILTERED_OPTION_BB):
+                      SetupType.SETUP_11_FILTERED_OPTION_BB, SetupType.SETUP_13_OPTION_VWAP_RECLAIM):
+        return True
+    if "Setup 13" in str(getattr(setup_type, "value", setup_type)):
         return True
     if "Setup 11" in str(getattr(setup_type, "value", setup_type)):
         return True

@@ -13,6 +13,7 @@ export type SetupType =
   | 'Setup 10: ATM Straddle Premium Squeeze'
   | 'Setup 11: Filtered Option Chart Scalp'
   | 'Setup 12: ADX + EMA 20 Trend Cross'
+  | 'Setup 13: Option VWAP Reclaim'
   | 'Setup 14: OI Wall Bounce'
   | 'SETUP_1_SQUEEZE_EXPANSION'
   | 'SETUP_2_WALKING_BANDS'
@@ -26,6 +27,7 @@ export type SetupType =
   | 'SETUP_10_STRADDLE_SQUEEZE'
   | 'SETUP_11_FILTERED_OPTION_BB'
   | 'SETUP_12_ADX_EMA_CROSS'
+  | 'SETUP_13_OPTION_VWAP_RECLAIM'
   | 'SETUP_14_OI_WALL_BOUNCE';
 
 export interface OptionStrikeRecommendation {
@@ -218,6 +220,7 @@ export interface ScannerState {
   paper_portfolio?: PaperPortfolio;
   last_scan_time: string;
   scan_cycle_count: number;
+  last_scan_seconds?: number;
   is_scanning: boolean;
   scan_progress: number;
   universe_count: number;

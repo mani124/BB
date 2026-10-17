@@ -109,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({
         className="shrink-0 z-40 px-4 sm:px-6 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2"
         style={{ background: 'var(--bg)', borderBottom: '1px solid var(--line)' }}
       >
-        <span className="font-semibold text-base tracking-tight">BB Options</span>
+        <h1 className="font-semibold text-base tracking-tight m-0">BB Options</h1>
 
         {onTabChange && (
           <Tabs<AppTab>
@@ -141,27 +141,29 @@ export const Header: React.FC<HeaderProps> = ({
           <RiskControls risk={risk ?? undefined} onKillSwitch={onKillSwitch} />
           {/* Feed status */}
           {isWsLive ? (
-            <span className="desk-pill up"><span className="desk-dot" />WS LIVE (sub-second)</span>
+            <span className="desk-pill up"><span className="desk-dot" />WS LIVE</span>
           ) : activeMode === 'live' || feedStatus === 'HTTP_POLLING' || feedStatus === 'LIVE' ? (
             <span className="desk-pill warn"><span className="desk-dot" />HTTP Polling</span>
           ) : activeMode === 'stale' ? (
-            <span className="desk-pill warn"><span className="desk-dot" />Feed Stale (&gt;30s)</span>
+            <span className="desk-pill warn"><span className="desk-dot" />Feed stale</span>
           ) : activeMode === 'error' ? (
-            <span className="desk-pill down"><span className="desk-dot" />Feed Disconnected / Error</span>
+            <span className="desk-pill down"><span className="desk-dot" />Feed error</span>
           ) : (
-            <span className="desk-pill warn"><span className="desk-dot" />Simulated / Demo Feed</span>
+            <span className="desk-pill warn"><span className="desk-dot" />Demo feed</span>
           )}
 
-          {stream && stream.state !== 'connecting' && (
-            <span
-              role="status"
-              className={`desk-pill ${stream.state === 'live' ? 'mute' : stream.state === 'stale' ? 'warn' : 'down'}`}
-              title="Connection between this page and the dashboard server"
-            >
-              <span className="desk-dot" />
-              {stream.state === 'live' ? 'Stream live' : stream.state === 'reconnecting' ? 'Reconnecting…' : `Stream stale ${stream.ageSec}s`}
-            </span>
-          )}
+          {/* Quiet while healthy; the pill only appears when the browser link to the server is not live. */}
+          <span role="status" aria-live="polite">
+            {stream && stream.state !== 'connecting' && stream.state !== 'live' && (
+              <span
+                className={`desk-pill ${stream.state === 'stale' ? 'warn' : 'down'}`}
+                title="Connection between this page and the dashboard server"
+              >
+                <span className="desk-dot" />
+                {stream.state === 'reconnecting' ? 'Reconnecting…' : `Stream stale ${stream.ageSec}s`}
+              </span>
+            )}
+          </span>
 
           <span className="desk-num hidden 2xl:inline" title="Scan cycle and last scan time">
             Cycle {scanCycleCount} · {lastScanTime || 'Ready'}

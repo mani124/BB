@@ -18,7 +18,7 @@ export interface SetupDayStats {
 }
 
 const inr = (n: number) => `${n < 0 ? '-' : ''}₹${Math.abs(Math.round(n)).toLocaleString('en-IN')}`;
-const tone = (n: number) => (n > 0 ? 'text-emerald-500' : n < 0 ? 'text-rose-500' : '');
+const tone = (n: number) => (n > 0 ? 'desk-up' : n < 0 ? 'desk-down' : '');
 
 export function SetupStatsTable({ rows, collapsible = false }: { rows: SetupDayStats[]; collapsible?: boolean }) {
   const [open, setOpen] = useState<Set<string>>(new Set());

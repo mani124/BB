@@ -127,10 +127,12 @@ def build_option_chart_signal(
     timeframe: str,
     current_quote: Optional[dict],
     extra_snapshot: Optional[dict] = None,
+    stop_price: Optional[float] = None,
 ) -> Optional[Signal]:
     """Risk, targets, time guards and Signal assembly shared by the option-premium setups (5 and 10).
 
-    ``curr`` is the last completed bar of the traded option's indicator frame.
+    ``curr`` is the last completed bar of the traded option's indicator frame. ``stop_price`` overrides the
+    default stop distance (Setups 5, 10 and 11 leave it unset).
     """
     close = float(curr["close"])
     bb_upper = float(curr["bb_upper"])
@@ -142,7 +144,11 @@ def build_option_chart_signal(
     # Dynamic Option Risk and Targets directly on Option Premium points
     bar_range = max(float(curr.get("high", close)) - float(curr.get("low", close)), close * 0.04)
     # Stop loss placed below 9 EMA or breakout bar low, with min 4% buffer
-    risk_pts = round(max(close - ema_9, bar_range * 0.5, close * 0.04), 1)
+    if stop_price is not None:
+        # Setup-supplied stop (Setup 13): still never tighter than 4% of the premium
+        risk_pts = round(max(close - stop_price, close * 0.04), 1)
+    else:
+        risk_pts = round(max(close - ema_9, bar_range * 0.5, close * 0.04), 1)
     opt_sl = round(max(0.5, close - risk_pts), 1)
     actual_risk = round(close - opt_sl, 1)
 
