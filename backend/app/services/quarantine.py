@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Optional
 
 from app.services import market_hours
+from app.services import db
 
 OFF_SESSION_ENTRY = "OFF_SESSION_ENTRY"
 STACKED_DUPLICATE = "STACKED_DUPLICATE"
@@ -37,7 +38,7 @@ def find_suspect_rows(db_path: str) -> dict[str, str]:
     """
     from app.services.paper_storage import PaperStorage
     PaperStorage(db_path)  # make sure the schema (archived_at etc.) is current
-    conn = sqlite3.connect(db_path)
+    conn = db.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(

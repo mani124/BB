@@ -41,6 +41,7 @@ from app.services.broker_adapter import (
     OrderResult,
 )
 from app.services.notifier import notify
+from app.services import db
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ class OrderRouter:
 
     # ------------------------------------------------------------------ storage
     def _conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, timeout=5)
+        conn = db.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
 

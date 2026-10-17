@@ -17,6 +17,7 @@ from typing import Any, Callable, Optional
 
 from app.core.config import settings as env_settings
 from app.services import market_hours
+from app.services import db
 
 _TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
@@ -298,7 +299,7 @@ class RuntimeSettings:
 
     # ---- storage ----
     def _conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = db.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
 

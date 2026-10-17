@@ -3,6 +3,7 @@ import sqlite3
 import os
 import json
 from app.services import market_hours
+from app.services import db
 from datetime import datetime, timedelta
 from typing import Optional, TYPE_CHECKING
 
@@ -18,7 +19,7 @@ class PaperStorage:
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = db.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
 
