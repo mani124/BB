@@ -18,6 +18,7 @@ from app.api.journal import router as journal_router
 from app.api.runtime_config import router as runtime_config_router
 from app.api.telemetry import router as telemetry_router
 from app.api.earnings import router as earnings_router
+from app.api.swing import router as swing_router
 from app.api.live import router as live_router_api
 from app.api.readiness import router as readiness_router
 from app.api.recorder import router as recorder_router
@@ -44,6 +45,24 @@ earnings_engine = EarningsEngine(
     kill_switch=lambda: paper_trader.risk_status(None).kill_switch_active,
 )
 earnings_registry.set_engine(earnings_engine)
+
+from app.services.swing_engine import SwingEngine, SwingStore, DhanDailyProvider
+from app.services import swing_registry
+
+
+def _earnings_dates_for(symbol: str) -> list:
+    from datetime import date as _date
+    return [r["earnings_date"] for r in earnings_engine.store.calendar(_date.today()) if r["symbol"] == symbol]
+
+
+_swing_store = SwingStore(settings.DB_PATH)
+swing_engine = SwingEngine(
+    settings.DB_PATH, paper_trader.runtime, paper_trader.telemetry,
+    provider=DhanDailyProvider(worker.dhan_client, lambda: worker._session_credentials, _swing_store),
+    kill_switch=lambda: paper_trader.risk_status(None).kill_switch_active,
+    earnings_dates=_earnings_dates_for,
+)
+swing_registry.set_engine(swing_engine)
 
 from app.services.broker_definedge import DefinedgeBroker
 from app.services.order_router import OrderRouter, set_router
@@ -99,14 +118,16 @@ async def lifespan(app: FastAPI):
     notify("service_started", f"{settings.APP_NAME} started (v{settings.VERSION}).", min_interval=60)
     worker.start()
     earnings_task = asyncio.create_task(earnings_registry.poll_loop(earnings_engine))
+    swing_task = asyncio.create_task(swing_registry.poll_loop(swing_engine))
     live_router.bind_loop(asyncio.get_running_loop())
     live_task = asyncio.create_task(live_router.run_loop())
     readiness_task = asyncio.create_task(readiness_monitor.run())
     yield
     live_task.cancel()
     earnings_task.cancel()
+    swing_task.cancel()
     readiness_task.cancel()
-    for task in (earnings_task, live_task, readiness_task):
+    for task in (earnings_task, swing_task, live_task, readiness_task):
         try:
             await task
         except asyncio.CancelledError:
@@ -236,6 +257,7 @@ def create_app() -> FastAPI:
     app.include_router(runtime_config_router, prefix=settings.API_PREFIX)
     app.include_router(telemetry_router, prefix=settings.API_PREFIX)
     app.include_router(earnings_router, prefix=settings.API_PREFIX)
+    app.include_router(swing_router, prefix=settings.API_PREFIX)
     app.include_router(live_router_api, prefix=settings.API_PREFIX)
     app.include_router(readiness_router, prefix=settings.API_PREFIX)
     app.include_router(recorder_router, prefix=settings.API_PREFIX)

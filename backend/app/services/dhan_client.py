@@ -369,6 +369,62 @@ class DhanClient:
             logger.warning(f"Error assembling DataFrame from Dhan candles: {e}")
             return pd.DataFrame()
 
+    async def fetch_daily_candles(
+        self,
+        client_id: str,
+        access_token: str,
+        security_id: str,
+        exchange_segment: str,
+        instrument_type: str = "EQUITY",
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """
+        Fetch daily candles from Dhan HQ API: POST /charts/historical
+        Body: {"securityId", "exchangeSegment", "instrument", "expiryCode": 0, "oi": false, "fromDate", "toDate"} (YYYY-MM-DD).
+        Returns columns date (YYYY-MM-DD, IST), open, high, low, close, volume; empty on any failure.
+        Whether Dhan adjusts these for splits and bonuses is not documented: check on a known split date before trusting history.
+        """
+        now = market_hours.now_ist_naive()
+        to_date = (to_date or now.strftime("%Y-%m-%d"))[:10]
+        from_date = (from_date or (now - timedelta(days=30)).strftime("%Y-%m-%d"))[:10]
+        headers = {"client-id": client_id, "access-token": access_token,
+                   "Content-Type": "application/json", "Accept": "application/json"}
+        payload = {"securityId": str(security_id), "exchangeSegment": exchange_segment, "instrument": instrument_type,
+                   "expiryCode": 0, "oi": False, "fromDate": from_date, "toDate": to_date}
+        try:
+            client = await self.get_client()
+            async with self._semaphore:
+                await self._throttle()
+                resp = await client.post("/charts/historical", headers=headers, json=payload)
+                if resp.status_code == 429:
+                    logger.warning(f"Dhan rate limit (429) on daily candles for sec_id={security_id}. Retrying after backoff...")
+                    await asyncio.sleep(1.0)
+                    await self._throttle()
+                    resp = await client.post("/charts/historical", headers=headers, json=payload)
+                if resp.status_code != 200:
+                    logger.warning(f"Dhan daily chart error: HTTP {resp.status_code} for sec_id={security_id}: {resp.text[:120]}")
+                    return pd.DataFrame()
+                data = resp.json()
+        except Exception as e:
+            logger.warning(f"Exception fetching daily candles for sec_id={security_id}: {e}")
+            return pd.DataFrame()
+        candles = data.get("data") if isinstance(data, dict) and isinstance(data.get("data"), dict) else data
+        if not isinstance(candles, dict) or not candles.get("close"):
+            return pd.DataFrame()
+        try:
+            timestamps = candles.get("start_Time") or candles.get("timestamp") or candles.get("startTime") or candles.get("time") or []
+            parsed = self._parse_dhan_timestamps(timestamps)
+            df = pd.DataFrame({
+                "date": parsed.strftime("%Y-%m-%d"),
+                "open": candles["open"], "high": candles["high"], "low": candles["low"], "close": candles["close"],
+                "volume": candles.get("volume") or [0] * len(candles["close"]),
+            })
+            return df.dropna().drop_duplicates("date", keep="last").sort_values("date").reset_index(drop=True)
+        except Exception as e:
+            logger.warning(f"Error assembling DataFrame from Dhan daily candles: {e}")
+            return pd.DataFrame()
+
     def _parse_dhan_timestamps(self, timestamps: list) -> pd.DatetimeIndex:
         """
         Convert Dhan timestamps (UTC epoch seconds or strings) to Indian Standard Time (IST) naive datetimes.

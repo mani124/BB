@@ -241,7 +241,14 @@ async def engage_kill_switch(body: KillSwitchRequest):
     except Exception:
         logger.exception("Kill switch could not square off the earnings book")
         failed.append("earnings_book")
-    return {"status": "engaged", "closed": closed, "earnings_closed": earnings_closed, "failed": failed,
+    swing_closed = 0
+    try:
+        from app.services.swing_registry import get_engine as get_swing_engine
+        swing_closed = await get_swing_engine().square_off_all("KILL_SWITCH")
+    except Exception:
+        logger.exception("Kill switch could not square off the swing book")
+        failed.append("swing_book")
+    return {"status": "engaged", "closed": closed, "earnings_closed": earnings_closed, "swing_closed": swing_closed, "failed": failed,
             "risk": paper_trader.risk_status(None)}
 
 

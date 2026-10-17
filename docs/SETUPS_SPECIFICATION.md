@@ -21,6 +21,7 @@
 10. [Architecture Summary & File Map](#10-architecture-summary--file-map)
 16. [Runtime Settings, Entry Limits & Telemetry](#16-runtime-settings-entry-limits--telemetry)
 17. [Stock Earnings Options (paper book)](#17-stock-earnings-options-paper-book)
+20. [Setup 15: ATR Trend Flip (swing equity book)](#20-setup-15-atr-trend-flip-swing-equity-book)
 
 ---
 
@@ -698,3 +699,37 @@ A separate paper book (`earnings` in the decision trail), **paper only**, off by
 * Thresholds (1.5x dominance, 5% range, PCR 1.2 / 0.8, 0.1 ATR touch, 15-minute refresh, 120 s chain age) are starting values chosen before any replay. Past option-chain OI is not stored, so the setup can only be validated by paper trading; store signal snapshots to tune it.
 * It fits expiry week best and is expected to fire only a few times a day. A broken wall can flip into a fast trend, so the stop is firm.
 * Setups 1 and 5 are unchanged.
+
+---
+
+## 20. Setup 15: ATR Trend Flip (swing equity book)
+
+* **Book:** `swing` in the decision trail. A separate **paper-only, long-only, cash-delivery** book on **daily bars**, off by default (`swing_enabled`; Setup 15 itself has `swing_setup15_enabled`). It is not an option setup and does not use the per-setup switches or the intraday scanner. Code: [`swing_signals.py`](backend/app/services/swing_signals.py) (Supertrend and filters, pure), [`swing_engine.py`](backend/app/services/swing_engine.py) (book, Dhan daily provider), [`swing_report.py`](backend/app/services/swing_report.py) and [`scripts/swing_backtest.py`](backend/scripts/swing_backtest.py) (replay). Universe: the F&O stocks in `app/data/fno_universe.json`. Every number below is a runtime setting (`swing_*`, Settings tab).
+* **Underlying principle:** a Supertrend (ATR bands that only tighten toward price) flips from down to up when price closes through the upper band, i.e. a new uptrend starts; the lower band then trails as the stop. It has a low hit rate and relies on winners being larger than losers. It is the only family with swing-horizon NSE numbers in the research (`reports/Indian swing equity strategies.md`: Nifty 500, 2012-2025, ATR 3 / multiplier 1, about 41% wins, average win about 2.3x average loss, about 15 days); that study was a broker blog without costs, taxes or survivorship control, so this setup is a **hypothesis to be tested by `scripts/swing_backtest.py` and paper trading**, not a proven edge.
+* **Data:** daily candles from Dhan `POST /charts/historical`, cached in `swing_daily_bars` (first fetch about 560 calendar days, then incremental). Dhan does not document whether history is adjusted for splits and bonuses: check one known split date before trusting a backtest.
+
+### Signal (on the last finished daily bar, nothing later is read)
+1. Supertrend(`swing_atr_period` = 3, `swing_atr_mult` = 1.0) on high/low/close, Wilder ATR, computed on the last 200 bars; trend flips from down to up on this bar.
+2. Close above its `swing_sma_filter_days` (200) simple average (0 turns it off).
+3. Close at least `swing_min_price` (50) and 20-day average volume at least `swing_min_avg_volume` (100,000).
+4. Stop = the Supertrend line on the signal bar (below the close). Candidates are ranked by 63-day return when more flips occur than free slots (an untested tie-break).
+
+### Entry
+* Queued at the close, filled at the **next trading day's open plus `swing_slippage_bps`** (10). A fill is cancelled if the open is already at or below the stop (`GAP_THROUGH_STOP`) or if the size rounds to under one share.
+* Quantity = `swing_risk_per_trade` (5,000) / (entry - stop), capped by `swing_max_capital_per_trade` (100,000) / entry.
+* **Gates (at the close that queues it):** swing book and Setup 15 enabled, kill switch not engaged, one position per stock, `swing_max_positions` (5) open or queued, `swing_max_new_per_day` (3) per close, and no results inside `swing_earnings_blackout_days` (5; uses the earnings calendar).
+
+### Exit (stops win ties; gaps fill at the open)
+* **Exit mode `stop` (default):** the trailing Supertrend line is a stop order. A bar whose low reaches it exits at the stop; an open at or below it exits at the open (`STOP_GAP`). The stop only ratchets up.
+* **Exit mode `close`:** the line only triggers an exit at the **next open** after a close beyond it (`TREND_FLIP`), as the Indian study did; inside a day only the max-loss stop (`swing_close_mode_max_loss_pct`, 8% below entry) protects the position, and sizing uses the smaller of the line distance and that stop.
+* **Time stop:** at the next open after `swing_max_hold_days` (20) trading days. Kill switch: open positions close at the last close, queued entries are cancelled.
+* **Costs:** `calculate_equity_delivery_charges`: STT 0.1% each side, NSE fee 0.00307%, SEBI Rs 10/crore, stamp 0.015% on the buy, GST 18% on brokerage and fees, DP Rs 15.34 per sell day (`swing_dp_charge`), brokerage `swing_brokerage_per_order` (0: unverified for Dhan). About 0.24% of the position value round trip, before slippage.
+
+### Operation
+* `run_cycle` runs every `swing_poll_seconds` (600); after `swing_scan_time` (16:00 IST) on a trading day it fetches the finished bars, processes each missed trading day (at most 5) in order and scans only the latest. Days count as available once half the requested symbols have their bar. The first run starts today, with no replay of the past. Open positions are always managed even when the book is switched off.
+* Endpoints: `GET /swing/summary`, `/positions`, `/candidates` (signals on the latest bar, nothing queued), `POST /swing/run`. The deploy gate (`deploy/vm/bb-deploy.sh`) counts OPEN and PENDING swing rows.
+* Replay: `python -m scripts.swing_backtest DATA_DIR` runs the production engine over per-symbol daily CSVs and reports trades, win rate with a Wilson interval, expectancy in R with a bootstrap interval, profit factor, drawdown, a walk-forward split and a double-slippage run. Under 100 trades it says so. The symbol list given is survivor-biased if it is today's F&O list.
+
+### Notes
+* With the stop on the Supertrend line, the close that flips the trend has already traded through the stop that day, so in `stop` mode `TREND_FLIP` exits only appear as a safety net. `stop` and `close` modes should both be replayed: the study's numbers belong to `close`.
+* Defaults (3 / 1.0, 200-day filter, 20-day time stop, 10 bps slippage) are starting values from that single study, not optimised. Setups 1 and 5 are unchanged.
