@@ -642,7 +642,7 @@ A separate paper book (`earnings` in the decision trail), **paper only**, off by
 
 ---
 
-## 16. Setup 13: Option VWAP Reclaim
+## 18. Setup 13: Option VWAP Reclaim
 
 * **Setup Enum:** `SetupType.SETUP_13_OPTION_VWAP_RECLAIM`; code in `backend/app/services/setup13.py`, wired in `scanner_worker._evaluate_option_chart_setups`; signal assembly shared with Setups 5, 10 and 11 (`build_option_chart_signal`, with an optional `stop_price` that Setups 5, 10 and 11 do not pass, so their stops are unchanged).
 * **Underlying Principle:** VWAP of the option's own premium is the average price its buyers paid today. A premium above it means buyers are in profit; a dip below it and a close back above it means buyers have retaken control. Buying that reclaim enters a pullback inside an existing trend at a level many traders watch, instead of chasing a spike (Setup 5 buys the spike).

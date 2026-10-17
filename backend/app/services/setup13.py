@@ -3,7 +3,7 @@
 Buys a pullback inside an existing option trend. The ATM option premium (its own session VWAP, from the
 option chart) dips below VWAP for 1 to 5 completed 5m bars after trading above it, then a bar closes back
 above VWAP on a volume lift. The underlying must sit on the same side of its own VWAP (above for calls,
-below for puts). Evaluated on completed option bars only. See docs/SETUPS_SPECIFICATION.md section 16.
+below for puts). Evaluated on completed option bars only. See docs/SETUPS_SPECIFICATION.md section 18.
 """
 import logging
 from datetime import time as dtime
