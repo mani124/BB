@@ -168,6 +168,29 @@
     background: var(--panel); color: var(--fg); border: 1px solid var(--line);
     border-radius: 10px; max-width: 28rem; width: 100%; max-height: 90vh; overflow-y: auto;
   }
+  /* Fixed-height shell: the page never scrolls on desktop, panels scroll inside themselves. */
+  .desk-scroll { overflow: auto; min-height: 0; }
+  .desk-scroll .desk-table thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); }
+  .desk-pane { display: flex; flex-direction: column; min-height: 0; }
+  .desk-pane > .desk-scroll { flex: 1 1 auto; }
+  .desk-ticker {
+    display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+  }
+  .desk-ticker > * { background: var(--panel); padding: 5px 10px; min-width: 0; font-size: 12px; white-space: nowrap; }
+  .desk-subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
+  .desk-subtab {
+    background: none; border: 0; padding: 7px 14px; color: var(--muted); font-weight: 500;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .desk-subtab[aria-current='true'] { color: var(--accent); border-bottom-color: var(--accent); }
+  .desk-drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 50; width: min(26rem, 100vw);
+    background: var(--panel); color: var(--fg); border-left: 1px solid var(--line);
+    box-shadow: -8px 0 24px rgba(8, 14, 20, 0.25); overflow-y: auto;
+  }
+  @media (max-width: 1023px) {
+    .desk-scroll { max-height: 70vh; }
+  }
   .desk-alert {
     border: 1px solid var(--down); background: var(--down-soft); color: var(--down);
     border-radius: 8px; padding: 8px 12px; font-size: 13px;

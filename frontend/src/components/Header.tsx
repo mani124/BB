@@ -99,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <>
       <header
-        className="sticky top-0 z-40 px-4 sm:px-6 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2"
+        className="shrink-0 z-40 px-4 sm:px-6 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2"
         style={{ background: 'var(--bg)', borderBottom: '1px solid var(--line)' }}
       >
         <span className="font-semibold text-base tracking-tight">BB Options</span>
@@ -112,7 +112,8 @@ export const Header: React.FC<HeaderProps> = ({
               aria-current={activeTab === 'scanner'}
               onClick={() => onTabChange('scanner')}
             >
-              Scanner
+              Watch
+              {openPositionsCount > 0 && <span className="desk-pill up desk-num">{openPositionsCount}</span>}
             </button>
             <button
               type="button"
@@ -120,11 +121,7 @@ export const Header: React.FC<HeaderProps> = ({
               aria-current={activeTab === 'paper'}
               onClick={() => onTabChange('paper')}
             >
-              Portfolio
-              {openPositionsCount > 0 && <span className="desk-pill up desk-num">{openPositionsCount}</span>}
-            </button>
-            <button type="button" className="desk-tab" aria-current={activeTab === 'analytics'} onClick={() => onTabChange('analytics')}>
-              Analytics
+              Review
             </button>
             <button type="button" className="desk-tab" aria-current={activeTab === 'earnings'} onClick={() => onTabChange('earnings')}>
               Earnings

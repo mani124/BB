@@ -11,6 +11,8 @@ interface SetupFilterTabsProps {
   onSelectTimeframe: (tf: string) => void;
   totalSignals: number;
   // Kept for compatibility with older callers; the desk layout only has the table view.
+  /** Single-row layout (setup dropdown + segmented filters) for the Watch screen. */
+  compact?: boolean;
   viewMode?: 'grid' | 'table';
   onSelectViewMode?: (mode: 'grid' | 'table') => void;
 }
@@ -59,7 +61,28 @@ export const SetupFilterTabs: React.FC<SetupFilterTabsProps> = ({
   selectedTimeframe,
   onSelectTimeframe,
   totalSignals,
-}) => (
+  compact = false,
+}) => compact ? (
+  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3.5 py-2" style={{ borderBottom: '1px solid var(--line)' }}>
+    <label className="flex items-center gap-2">
+      <span className="desk-label">Setup</span>
+      <select
+        className="desk-input"
+        style={{ width: 'auto', padding: '3px 8px' }}
+        value={selectedSetup}
+        onChange={(e) => onSelectSetup(e.target.value)}
+        aria-label="Setup filter"
+      >
+        {SETUP_FILTERS.map(({ key, label, title }) => (
+          <option key={key} value={key} title={title}>{label}</option>
+        ))}
+      </select>
+    </label>
+    <Seg label="Side" value={selectedOptionType} onChange={onSelectOptionType} options={[{ key: 'ALL', label: 'Both' }, { key: 'CE', label: 'CE' }, { key: 'PE', label: 'PE' }]} />
+    <Seg label="Universe" value={selectedInstrumentType} onChange={onSelectInstrumentType} options={[{ key: 'ALL', label: 'All' }, { key: 'INDEX', label: 'Idx' }, { key: 'STOCK', label: 'Stk' }]} />
+    <Seg label="TF" value={selectedTimeframe} onChange={onSelectTimeframe} options={[{ key: 'ALL', label: 'All' }, { key: '5m', label: '5m' }, { key: '15m', label: '15m' }]} />
+  </div>
+) : (
   <div className="desk-panel px-3.5 py-3 flex flex-col gap-3">
     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Setups">
       {SETUP_FILTERS.map(({ key, label, title }) => (
