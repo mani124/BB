@@ -459,3 +459,17 @@ def test_parse_handles_real_nse_shape():
            "bm_desc": "To consider ...", "date": "19-Oct-2026"}]
     rows = parse_results_rows(ev, {"BAJFINANCE"}, date(2026, 10, 17), 45)
     assert rows == [{"symbol": "BAJFINANCE", "earnings_date": "2026-10-19", "note": "Financial Results"}]
+
+
+def test_bulk_calendar_import_is_all_or_nothing():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.services.earnings_registry import get_engine
+    c = TestClient(app)
+    c.cookies.set("dashboard_session", __import__("app.core.security", fromlist=["x"]).issue_session_token())
+    before = len(get_engine().store.calendar())
+    r = c.post("/api/earnings/calendar", json={"rows": [
+        {"symbol": "OKCO", "earnings_date": "2030-01-15"},
+        {"symbol": "BADCO", "earnings_date": "not-a-date"}]})
+    assert r.status_code == 422
+    assert len(get_engine().store.calendar()) == before

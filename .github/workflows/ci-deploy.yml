@@ -83,6 +83,7 @@ jobs:
           mkdir -p bundle/backend bundle/deploy
           cp -r backend/app bundle/backend/app
           cp backend/requirements.txt bundle/backend/requirements.txt
+          cp backend/constraints.txt bundle/backend/constraints.txt
           cp -r deploy/vm bundle/deploy/vm
           find bundle -name __pycache__ -type d -prune -exec rm -rf {} +
           printf 'sha=%s\nbuilt=%s\n' "$GITHUB_SHA" "$(date +%s)" > bundle/DEPLOY_VERSION

@@ -123,15 +123,11 @@ async def lifespan(app: FastAPI):
     live_task = asyncio.create_task(live_router.run_loop())
     readiness_task = asyncio.create_task(readiness_monitor.run())
     yield
-    live_task.cancel()
-    earnings_task.cancel()
-    swing_task.cancel()
-    readiness_task.cancel()
-    for task in (earnings_task, swing_task, live_task, readiness_task):
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+    tasks = (earnings_task, swing_task, live_task, readiness_task)
+    for task in tasks:
+        task.cancel()
+    # A task that already died with an error must not stop the rest of the shutdown (journal flush below).
+    await asyncio.gather(*tasks, return_exceptions=True)
     await worker.stop()
     await recorder.maybe_flush(force=True)
     await paper_trader.stop_persistence_worker()
