@@ -172,8 +172,9 @@ if ! cmp -s "$work/src/backend/requirements.txt" "$APP_DIR/backend/requirements.
   fi
   [ -n "$py" ] || { log "requirements.txt changed but no virtualenv found; set PIP_PYTHON in $CONF_DIR/config. Not deploying."; exit 1; }
   log "requirements.txt changed, installing with $py"
-  "$py" -m pip install -q -r "$work/src/backend/requirements.txt" \
-    $([ -f "$work/src/backend/constraints.txt" ] && echo "-c $work/src/backend/constraints.txt") || die "pip install failed (nothing was swapped)"
+  pip_args=(-q -r "$work/src/backend/requirements.txt")
+  [ -f "$work/src/backend/constraints.txt" ] && pip_args+=(-c "$work/src/backend/constraints.txt")
+  "$py" -m pip install "${pip_args[@]}" || die "pip install failed (nothing was swapped)"
 fi
 
 # 9. Swap the code in (each swap is two renames, so the old copy stays for rollback).
