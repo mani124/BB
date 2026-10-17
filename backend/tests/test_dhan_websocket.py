@@ -7,6 +7,14 @@ import pytest
 from app.services.dhan_websocket import DhanWebSocketManager
 
 
+async def wait_until(condition, timeout: float = 3.0, interval: float = 0.01) -> None:
+    """Poll instead of sleeping a fixed time, so a slow CI runner cannot make these tests fail."""
+    deadline = asyncio.get_running_loop().time() + timeout
+    while not condition():
+        if asyncio.get_running_loop().time() >= deadline:
+            return  # the assertions that follow report what is missing
+        await asyncio.sleep(interval)
+
 @pytest.mark.asyncio
 async def test_websocket_manager_lifecycle():
     ticks_received = []
@@ -87,8 +95,7 @@ async def test_websocket_reader_dispatches_ticks():
 
     with patch("websockets.connect", return_value=mock_ws):
         await mgr.connect("1000000000", "TEST_TOKEN")
-        # Give reader loop a brief moment to process frames
-        await asyncio.sleep(0.05)
+        await wait_until(lambda: len(ticks_received) == 2)
 
         assert len(ticks_received) == 2
         assert ticks_received[0]["response_code"] == 2
@@ -155,8 +162,8 @@ async def test_websocket_auto_reconnect_and_resubscribe():
         await mgr.connect("1000000000", "TEST_TOKEN")
         await mgr.subscribe([(1, 1330), (2, 44608)])
 
-        # Allow time for first connection failure and auto-reconnect
-        await asyncio.sleep(0.08)
+        # Wait for the first connection to fail and the manager to reconnect and re-subscribe
+        await wait_until(lambda: mgr.is_connected and second_ws.send.call_count >= 1)
 
         # Second websocket should have been connected and re-subscribed
         assert mgr.is_connected is True
@@ -228,7 +235,7 @@ async def test_websocket_code_50_triggers_reconnect():
     with patch("websockets.connect", side_effect=mock_connect):
         await mgr.connect("1000000000", "TEST_TOKEN")
         await mgr.subscribe([(1, 1330)])
-        await asyncio.sleep(0.06)
+        await wait_until(lambda: mgr.is_connected and second_ws.send.called)
 
         assert mgr.is_connected is True
         assert mgr.status == "CONNECTED"
@@ -262,7 +269,7 @@ async def test_websocket_sync_callback_and_callback_exception():
 
     with patch("websockets.connect", return_value=mock_ws):
         await mgr.connect("1000000000", "TEST_TOKEN")
-        await asyncio.sleep(0.05)
+        await wait_until(lambda: len(received) == 2)
 
         # Both ticks should have reached callback despite first one raising exception
         assert len(received) == 2
