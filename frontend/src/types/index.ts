@@ -220,3 +220,99 @@ export interface ScannerState {
   last_quote_time?: string;
 }
 
+
+// ---- runtime settings, telemetry and earnings ----
+export type AppTab = 'scanner' | 'paper' | 'analytics' | 'earnings' | 'settings';
+
+export interface RuntimeSetting {
+  key: string;
+  label: string;
+  group: string;
+  type: 'int' | 'float' | 'bool' | 'str' | 'time';
+  unit: string;
+  description: string;
+  value: number | boolean | string;
+  default: number | boolean | string;
+  overridden: boolean;
+  min: number | null;
+  max: number | null;
+  choices: string[];
+  zero_disables: boolean;
+}
+export interface RuntimeSettingsPayload { groups: string[]; settings: RuntimeSetting[] }
+export interface SettingAuditRow { changed_at: string; key: string; old_value: string; new_value: string; actor: string }
+
+export interface PerfBucket {
+  key?: string;
+  trades: number;
+  wins?: number;
+  losses?: number;
+  win_rate?: number;
+  net_pnl?: number;
+  gross_pnl?: number;
+  charges?: number;
+  slippage_cost?: number;
+  avg_win?: number;
+  avg_loss?: number;
+  expectancy?: number;
+  profit_factor?: number | null;
+  payoff_ratio?: number | null;
+  avg_r?: number | null;
+  max_drawdown?: number;
+  max_consecutive_losses?: number;
+  avg_minutes_held?: number | null;
+  excursion_trades?: number;
+  avg_mfe?: number | null;
+  avg_mae?: number | null;
+  avg_capture_pct?: number | null;
+  losers_that_were_green?: number;
+}
+export interface PerformanceReport {
+  book: string;
+  overall: PerfBucket;
+  by_setup: PerfBucket[];
+  by_symbol: PerfBucket[];
+  by_side: PerfBucket[];
+  by_entry_hour: PerfBucket[];
+  by_exit_reason: PerfBucket[];
+  equity_curve: { t: string; equity: number; id: string }[];
+}
+export interface TelemetryInsights {
+  hours: number;
+  decisions: { ENTERED: number; SKIPPED: number; EXITED: number; HELD: number; total: number };
+  by_strategy: Record<string, Record<string, number>>;
+  top_skip_reasons: { reason: string; strategy: string; n: number }[];
+  errors: { code: string; component: string; severity: string; n: number; last_seen: string }[];
+  excursions: { strategy: string; trades: number; avg_mfe: number; avg_mae: number; avg_final: number }[];
+}
+export interface DecisionRow {
+  id: number; ts: string; book: string; strategy: string; symbol: string; side: string;
+  decision: string; reason: string; metrics: Record<string, unknown>;
+}
+export interface ErrorRow {
+  id: number; ts: string; code: string; component: string; severity: string; message: string; stack: string;
+}
+
+export interface EarningsLeg {
+  security_id: string; opt: 'CE' | 'PE'; strike: number; side: 'BUY' | 'SELL'; entry_price: number;
+  current_bid?: number; current_ask?: number;
+}
+export interface EarningsPosition {
+  id: string; mode: string; symbol: string; sector: string; status: 'OPEN' | 'CLOSED';
+  opened_at: string; closed_at?: string; earnings_date: string; session: string; expiry: string; exit_date: string;
+  lots: number; qty: number; legs: EarningsLeg[]; net_unit: number; max_risk: number;
+  spot_entry: number; spot_current: number; unrealized_net: number; mfe: number; mae: number;
+  exit_reason?: string; net_pnl?: number; charges?: number;
+}
+export interface EarningsSummary {
+  starting_capital: number; realized_net_pnl: number; unrealized_net_pnl: number; equity: number;
+  open_positions: number; closed_trades: number; win_rate: number; profit_factor: number | null;
+  avg_win: number; avg_loss: number; total_charges: number; enabled: boolean;
+  by_mode: Record<string, { trades: number; net_pnl: number; win_rate: number }>;
+  last_cycle: { status?: string; at?: string; error?: string };
+}
+export interface EarningsCandidate {
+  symbol: string; mode: string; ready: boolean; code: string; detail: string;
+  earnings_date?: string; expiry?: string; exit_date?: string; net_unit?: number; max_risk?: number;
+}
+export interface EarningsCalendarRow { symbol: string; earnings_date: string; session: string; sector: string; note: string }

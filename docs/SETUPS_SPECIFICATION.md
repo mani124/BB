@@ -19,6 +19,8 @@
 8. [Strike Selection Architecture & Risk Sizing](#8-strike-selection-architecture--risk-sizing)
 9. [Paper Trading, Partial Booking & Exit Engine](#9-paper-trading-partial-booking--exit-engine)
 10. [Architecture Summary & File Map](#10-architecture-summary--file-map)
+11. [Runtime Settings, Entry Limits & Telemetry](#11-runtime-settings-entry-limits--telemetry)
+12. [Stock Earnings Options (paper book)](#12-stock-earnings-options-paper-book)
 
 ---
 
@@ -519,3 +521,46 @@ Trades stocks that move on their own momentum: rising while NIFTY is flat or fal
 ### Notes
 * The NIFTY market-bias veto used by Setups 1–8 is deliberately **not** applied: this setup wants the stock to diverge from NIFTY.
 * The thresholds (0.75%, 0.15%) are starting values, not tuned on recorded candles.
+
+---
+
+## 11. Runtime Settings, Entry Limits & Telemetry
+
+Every limit below is a **runtime setting**: editable from the dashboard's Settings tab (or `PUT /api/settings`), validated, saved in the database, written to an audit trail (`settings_audit`) and applied to the next decision with no restart. A saved value wins; otherwise the environment default (`app/core/config.py`) applies. Definitions live in [`runtime_settings.py`](backend/app/services/runtime_settings.py).
+
+### New entry limits (all apply to Setups 1–9 in each book; 0 switches a limit off)
+| Setting | Effect |
+|---|---|
+| `max_lots_per_trade` | Hard ceiling on lots per entry, applied after the risk-based sizing in section 8. Default 0 (off). |
+| `max_entries_per_day` | Most entries per book per IST day across all symbols. Default 0 (off). |
+| `max_consecutive_losses` | After this many losing trades in a row today, new entries in that book pause until a winner closes or the next IST day. Default 0 (off). |
+
+Existing limits are now runtime settings too, with the same defaults as before: `daily_loss_limit`, `max_open_positions`, `max_open_notional`, `max_entries_per_symbol_per_day`, `reentry_cooldown_seconds`, `default_lots`, `max_risk_per_trade`, `max_quote_age_seconds`, `max_entry_spread_pct`, `gap_exit_pct`.
+
+### Telemetry (no change to any setup rule)
+* `strategy_decisions`: every ENTERED / SKIPPED / EXITED decision with a reason code (e.g. `MAX_OPEN_POSITIONS`, `SPREAD_TOO_WIDE`, `LOSS_CAP`, `SETUP_SWITCHED_OFF`) and the numbers behind it.
+* `trade_excursions`: per trade MFE (best open profit) and MAE (worst open loss) in rupees, plus final P&L.
+* `error_events`: warnings and errors from the app's loggers, grouped under a short code.
+* `GET /api/telemetry/performance` reports expectancy, profit factor, drawdown, longest loss streak, MFE capture, by setup, symbol, entry hour and exit reason. Switches: `telemetry_enabled`, `telemetry_jsonl_enabled`, `telemetry_skip_logging`, `telemetry_retention_days`.
+
+---
+
+## 12. Stock Earnings Options (paper book)
+
+A separate paper book (`earnings` in the decision trail), **paper only**, off by default (`earnings_enabled`). Code: [`earnings_strategy.py`](backend/app/services/earnings_strategy.py) (rules), [`earnings_engine.py`](backend/app/services/earnings_engine.py) (book, Dhan chain provider). Stocks, lot sizes and security ids come from `backend/app/data/fno_universe.json`; the earnings calendar (symbol, date, session BMO/AMC, sector) is entered in the Earnings tab. Every number below is a runtime setting (`earnings_*`).
+
+**Timing.** The market reacts on the announcement day for BMO (before open) and on the next trading day for AMC (after close) or a non-trading date. The last safe close is the trading day before the reaction day. Calendar rows with no session follow `earnings_default_session` (default SKIP: not traded).
+
+**Mode A, pre-earnings run-up (long ATM straddle).**
+* Entry: earnings between `earnings_mode_a_near_days` and `earnings_mode_a_far_days` calendar days away (default 8 to 12), after `earnings_entry_time`; ATM strike from the live chain; bought at the ask. Refused when IV percentile is above `earnings_mode_a_max_ivp` (default 40, 0 = off; needs `earnings_iv_min_history` days of stored IV, else `earnings_iv_missing_policy`), when a leg's spread exceeds `earnings_max_spread_pct`, or when premium exceeds `earnings_max_capital_per_trade`.
+* Expiry: the earliest listed expiry at least `earnings_min_days_to_expiry` days after the exit date (rolls to the next expiry automatically).
+* Exit, first to fire: loss of `earnings_mode_a_max_loss_pct` of the premium (default 40, 0 = off); expiry closer than the minimum; scheduled exit `earnings_mode_a_exit_days_before` trading days before the last safe close, at `earnings_exit_time`.
+
+**Mode B, post-earnings IV crush (defined-risk iron condor).**
+* Entry: on the last safe close day; short strikes `earnings_condor_short_steps` grid steps from ATM, wings `earnings_condor_wing_steps` beyond; shorts sold at the bid, wings bought at the ask. Refused when net credit is at or below `earnings_min_condor_credit`, IV rank is below `earnings_mode_b_min_ivr` (default 0 = off), spreads are too wide, or max risk exceeds the capital cap.
+* Exit, first to fire: spot at or beyond either short strike; expiry closer than the minimum; reaction day at `earnings_mode_b_exit_time`.
+
+**Risk gates (every entry).** Kill switch, daily loss limit, consecutive-loss pause, `max_entries_per_day`, `max_open_notional` (on max risk), `earnings_max_positions`, one position per sector (`earnings_one_per_sector`), one position per stock, lots = `earnings_lots` capped by `max_lots_per_trade`. The kill switch also squares off this book. Positions are never entered or exited on a quote that could not be refreshed; a scheduled exit more than a day overdue closes at the last known prices.
+
+**Costs.** Charges per leg use the same calculator as the other setups.
+

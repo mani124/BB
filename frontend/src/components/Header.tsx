@@ -3,7 +3,7 @@ import { ShieldCheck, Key, RefreshCw, LogOut, Sun, Moon, KeyRound } from 'lucide
 import { useDhanAuth } from '../context/DhanAuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { RiskControls } from './RiskControls';
-import type { RiskStatus } from '../types';
+import type { AppTab, RiskStatus } from '../types';
 
 export interface HeaderProps {
   activeMode: 'live' | 'demo' | 'stale' | 'error' | string;
@@ -15,8 +15,8 @@ export interface HeaderProps {
   feedStatus?: 'WS_LIVE' | 'LIVE' | 'STALE' | 'ERROR' | 'DEMO' | 'HTTP_POLLING' | string;
   wsConnected?: boolean;
   tokenExpiryCountdown?: string;
-  activeTab?: 'scanner' | 'paper';
-  onTabChange?: (tab: 'scanner' | 'paper') => void;
+  activeTab?: AppTab;
+  onTabChange?: (tab: AppTab) => void;
   openPositionsCount?: number;
   onOpenAccessKey?: () => void;
   risk?: RiskStatus | null;
@@ -122,6 +122,15 @@ export const Header: React.FC<HeaderProps> = ({
             >
               Portfolio
               {openPositionsCount > 0 && <span className="desk-pill up desk-num">{openPositionsCount}</span>}
+            </button>
+            <button type="button" className="desk-tab" aria-current={activeTab === 'analytics'} onClick={() => onTabChange('analytics')}>
+              Analytics
+            </button>
+            <button type="button" className="desk-tab" aria-current={activeTab === 'earnings'} onClick={() => onTabChange('earnings')}>
+              Earnings
+            </button>
+            <button type="button" className="desk-tab" aria-current={activeTab === 'settings'} onClick={() => onTabChange('settings')}>
+              Settings
             </button>
           </nav>
         )}

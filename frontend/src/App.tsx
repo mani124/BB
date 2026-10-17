@@ -7,7 +7,10 @@ import { SetupFilterTabs } from './components/SetupFilterTabs';
 import { SignalTable } from './components/SignalTable';
 import { JournalPanel } from './components/JournalPanel';
 import { PaperPortfolioView, PortfolioStrip, OpenPositionsPanel, liveTrades } from './components/PaperPortfolioView';
-import { PaperPortfolio, PaperPosition, ScannerState, SetupMode, Signal } from './types';
+import { AppTab, PaperPortfolio, PaperPosition, ScannerState, SetupMode, Signal } from './types';
+import { SettingsPanel } from './components/SettingsPanel';
+import { TelemetryPanel } from './components/TelemetryPanel';
+import { EarningsPanel } from './components/EarningsPanel';
 import { AlertCircle, X, KeyRound, Lock, CheckCircle2 } from 'lucide-react';
 import { isIndexSymbol } from './components/instruments';
 import { apiFetch, bootstrapDashboardSession, getDashboardCapability, setDashboardCapability } from './api/client';
@@ -24,7 +27,7 @@ const DashboardContent: React.FC = () => {
     active_mode: 'demo',
   });
 
-  const [activeTab, setActiveTab] = useState<'scanner' | 'paper'>('scanner');
+  const [activeTab, setActiveTab] = useState<AppTab>('scanner');
   const [selectedSetup, setSelectedSetup] = useState<string>('ALL');
   const [selectedOptionType, setSelectedOptionType] = useState<string>('ALL');
   const [selectedInstrumentType, setSelectedInstrumentType] = useState<string>('ALL');
@@ -537,6 +540,12 @@ const DashboardContent: React.FC = () => {
               />
             </div>
           </>
+        ) : activeTab === 'analytics' ? (
+          <TelemetryPanel />
+        ) : activeTab === 'earnings' ? (
+          <EarningsPanel />
+        ) : activeTab === 'settings' ? (
+          <SettingsPanel />
         ) : (
           <>
           <PaperPortfolioView
