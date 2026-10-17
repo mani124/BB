@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { DhanAuthProvider, useDhanAuth } from './context/DhanAuthContext';
 import { ThemeProvider } from './context/ThemeContext';
-import { Header } from './components/Header';
-import { IndexHeroRadar } from './components/IndexHeroRadar';
-import { SetupFilterTabs } from './components/SetupFilterTabs';
-import { SignalTable } from './components/SignalTable';
-import { JournalPanel } from './components/JournalPanel';
-import { PaperPortfolioView, PortfolioStrip, OpenPositionsPanel, liveTrades } from './components/PaperPortfolioView';
-import { PaperPortfolio, PaperPosition, ScannerState, SetupMode, Signal } from './types';
-import { AlertCircle, X, KeyRound, Lock, CheckCircle2 } from 'lucide-react';
+import { Header, type StreamStatus } from './components/Header';
+import { liveTrades } from './components/format';
+import { WatchScreen } from './components/WatchScreen';
+import { CapabilityDialog } from './components/CapabilityDialog';
+import { LiveAnnouncer } from './components/LiveAnnouncer';
+import { ReviewScreen } from './components/ReviewScreen';
+import { AppTab, PaperPortfolio, PaperPosition, ScannerState, SetupMode, Signal } from './types';
+import { SettingsPanel } from './components/SettingsPanel';
+import { EarningsPanel } from './components/EarningsPanel';
+import { AlertCircle, X } from 'lucide-react';
 import { isIndexSymbol } from './components/instruments';
 import { apiFetch, bootstrapDashboardSession, getDashboardCapability, setDashboardCapability } from './api/client';
 
@@ -24,12 +26,17 @@ const DashboardContent: React.FC = () => {
     active_mode: 'demo',
   });
 
-  const [activeTab, setActiveTab] = useState<'scanner' | 'paper'>('scanner');
+  const [activeTab, setActiveTab] = useState<AppTab>('scanner');
   const [selectedSetup, setSelectedSetup] = useState<string>('ALL');
   const [selectedOptionType, setSelectedOptionType] = useState<string>('ALL');
   const [selectedInstrumentType, setSelectedInstrumentType] = useState<string>('ALL');
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('ALL');
   const [wsConnected, setWsConnected] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [stream, setStream] = useState<StreamStatus>({ state: 'connecting', ageSec: 0 });
+  const lastMessageAt = React.useRef(0);
+  const streamErrored = React.useRef(false);
+  const [announcement, setAnnouncement] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const { connect } = useDhanAuth();
   const reconnectingRef = React.useRef(false);
@@ -61,6 +68,21 @@ const DashboardContent: React.FC = () => {
       cancelled = true;
     };
   }, [closedCount, state.active_mode, sessionNonce]);
+
+  // Stream health: "live" while messages keep arriving, "stale" once they stop, "reconnecting" after an error.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (lastMessageAt.current === 0) return;
+      const age = Math.round((Date.now() - lastMessageAt.current) / 1000);
+      const next: StreamStatus = streamErrored.current
+        ? { state: 'reconnecting', ageSec: age }
+        : age > 15
+        ? { state: 'stale', ageSec: age }
+        : { state: 'live', ageSec: 0 };
+      setStream((prev) => (prev.state === next.state && (next.state === 'live' || prev.ageSec === next.ageSec) ? prev : next));
+    }, 2000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (actionError) {
@@ -112,6 +134,7 @@ const DashboardContent: React.FC = () => {
           const data = await res.json();
           if (!isCancelled) {
             setState((prev) => ({ ...prev, ...data }));
+            setLoaded(true);
             setWsConnected(Boolean(data.feed_status === 'WS_LIVE' || data.ws_connected));
             if (data.active_mode === 'demo' && !reconnectingRef.current) {
               const savedId = sessionStorage.getItem('dhan_client_id');
@@ -167,6 +190,7 @@ const DashboardContent: React.FC = () => {
         try {
           const data = JSON.parse(event.data);
           if (data?.paper_portfolio) {
+            lastMessageAt.current = Date.now();
             setState((prev) => ({ ...prev, paper_portfolio: data.paper_portfolio }));
           }
         } catch (err) {
@@ -178,6 +202,10 @@ const DashboardContent: React.FC = () => {
       eventSource.onmessage = (event) => {
         try {
           const data: ScannerState = JSON.parse(event.data);
+          lastMessageAt.current = Date.now();
+          streamErrored.current = false;
+          setStream((prev) => (prev.state === 'live' ? prev : { state: 'live', ageSec: 0 }));
+          setLoaded(true);
           setState(data);
           // Sync wsConnected with state snapshot to enable HTTP polling fallback
           setWsConnected(Boolean(data.feed_status === 'WS_LIVE' || data.ws_connected));
@@ -198,6 +226,9 @@ const DashboardContent: React.FC = () => {
 
       eventSource.onerror = () => {
         eventSource?.close();
+        streamErrored.current = true;
+        if (lastMessageAt.current === 0) lastMessageAt.current = Date.now();
+        setStream((prev) => (prev.state === 'reconnecting' ? prev : { state: 'reconnecting', ageSec: 0 }));
         setWsConnected(false);
         if (!isCancelled) {
           reconnectTimeout = setTimeout(connectSSE, 3000);
@@ -437,8 +468,30 @@ const DashboardContent: React.FC = () => {
     return new Set(state.paper_portfolio?.active_positions?.map((p) => p.signal_id) || []);
   }, [state.paper_portfolio?.active_positions]);
 
+  // Tell screen readers about new confirmed signals and risk-state changes.
+  const seenSignals = React.useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const confirmed = state.signals.filter((x) => x.is_confirmed !== false);
+    if (seenSignals.current === null) {
+      if (loaded) seenSignals.current = new Set(confirmed.map((x) => x.id));
+      return;
+    }
+    const fresh = confirmed.filter((x) => !seenSignals.current!.has(x.id));
+    fresh.forEach((x) => seenSignals.current!.add(x.id));
+    if (fresh.length > 0) {
+      const f = fresh[0];
+      setAnnouncement(`New signal: ${f.symbol} ${f.option_type}${fresh.length > 1 ? ` and ${fresh.length - 1} more` : ''}`);
+    }
+  }, [state.signals, loaded]);
+
+  const risk = state.paper_portfolio?.risk;
+  useEffect(() => {
+    if (risk?.kill_switch_active) setAnnouncement('Kill switch is on. New entries are paused.');
+    else if (risk?.loss_cap_tripped) setAnnouncement('Daily loss cap hit. New entries are off for today.');
+  }, [risk?.kill_switch_active, risk?.loss_cap_tripped]);
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col lg:h-screen lg:overflow-hidden">
       <Header
         activeMode={state.active_mode}
         scanCycleCount={state.scan_cycle_count}
@@ -454,9 +507,11 @@ const DashboardContent: React.FC = () => {
         onOpenAccessKey={openCapabilityModal}
         risk={state.paper_portfolio?.risk}
         onKillSwitch={handleKillSwitch}
+        stream={stream}
       />
+      <LiveAnnouncer message={announcement} />
 
-      <main className="flex-1 max-w-[1360px] w-full mx-auto px-4 sm:px-6 py-3 flex flex-col gap-3">
+      <main id="main-panel" role="tabpanel" aria-labelledby={`main-tab-${activeTab}`} className="flex-1 min-h-0 w-full px-4 sm:px-6 py-2 flex flex-col gap-2">
         {actionError && (
           <div className="desk-alert flex items-center justify-between gap-3" role="alert">
             <div className="flex items-center gap-2">
@@ -469,161 +524,54 @@ const DashboardContent: React.FC = () => {
           </div>
         )}
 
-        <PortfolioStrip portfolio={state.paper_portfolio} />
-
         {activeTab === 'scanner' ? (
-          <>
-            <IndexHeroRadar radar={state.radar} />
-
-            {(Boolean(state.top_bullish?.length) || Boolean(state.top_bearish?.length) || state.market_bias) && (
-              <div className="desk-panel px-3.5 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="desk-label">Market bias</span>
-                  <span
-                    className={`desk-pill ${
-                      state.market_bias === 'BULLISH' ? 'up' : state.market_bias === 'BEARISH' ? 'down' : ''
-                    }`}
-                  >
-                    {state.active_mode === 'closed' ? 'MARKET CLOSED' : state.market_bias || 'NEUTRAL'}
-                  </span>
-                  <span className="desk-muted">
-                    {state.market_bias === 'BULLISH'
-                      ? '(PE stock options blocked)'
-                      : state.market_bias === 'BEARISH'
-                      ? '(CE stock options blocked)'
-                      : ''}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-4">
-                  {state.top_bullish && state.top_bullish.length > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="desk-up font-semibold">Top bullish (CE)</span>
-                      {state.top_bullish.map((sym) => (
-                        <span key={sym} className="desk-pill up desk-num">{sym}</span>
-                      ))}
-                    </div>
-                  )}
-                  {state.top_bearish && state.top_bearish.length > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="desk-down font-semibold">Top bearish (PE)</span>
-                      {state.top_bearish.map((sym) => (
-                        <span key={sym} className="desk-pill down desk-num">{sym}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <SetupFilterTabs
-              selectedSetup={selectedSetup}
-              onSelectSetup={setSelectedSetup}
-              selectedOptionType={selectedOptionType}
-              onSelectOptionType={setSelectedOptionType}
-              selectedInstrumentType={selectedInstrumentType}
-              onSelectInstrumentType={setSelectedInstrumentType}
-              selectedTimeframe={selectedTimeframe}
-              onSelectTimeframe={setSelectedTimeframe}
-              totalSignals={filteredSignals.length}
-            />
-
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-3 items-start">
-              <section className="desk-panel" aria-labelledby="signals-title">
-                <div className="desk-ph">
-                  <h2 id="signals-title">Active Strategy Signals</h2>
-                  <span className="desk-pill desk-num">{filteredSignals.length} active</span>
-                  <span className="text-xs desk-muted ml-auto">
-                    {wsConnected ? 'Real-time ticks' : (state.last_scan_seconds ? `Auto-scanned (last scan ${state.last_scan_seconds.toFixed(1)}s)` : 'Auto-scanned')} · signals confirm on candle close
-                  </span>
-                </div>
-                <SignalTable
-                  signals={filteredSignals}
-                  onPaperBuy={handlePaperBuy}
-                  activeSignalIds={activeSignalIds}
-                />
-              </section>
-
-              <OpenPositionsPanel
-                positions={state.paper_portfolio?.active_positions ?? []}
-                onClosePosition={handleClosePosition}
-              />
-            </div>
-          </>
+          <WatchScreen
+            state={state}
+            loaded={loaded}
+            wsConnected={wsConnected}
+            filters={{ setup: selectedSetup, optionType: selectedOptionType, instrumentType: selectedInstrumentType, timeframe: selectedTimeframe }}
+            onFilters={(f) => {
+              if (f.setup !== undefined) setSelectedSetup(f.setup);
+              if (f.optionType !== undefined) setSelectedOptionType(f.optionType);
+              if (f.instrumentType !== undefined) setSelectedInstrumentType(f.instrumentType);
+              if (f.timeframe !== undefined) setSelectedTimeframe(f.timeframe);
+            }}
+            filteredSignals={filteredSignals}
+            closedTrades={liveTrades(closedTrades)}
+            activeSignalIds={activeSignalIds}
+            onPaperBuy={handlePaperBuy}
+            onClosePosition={handleClosePosition}
+            onToggleAutoTrade={handleToggleAutoTrade}
+            onChangeLots={handleChangeLots}
+          />
+        ) : activeTab === 'earnings' ? (
+          <div className="flex flex-col lg:flex-1 lg:min-h-0"><EarningsPanel /></div>
+        ) : activeTab === 'settings' ? (
+          <div className="flex flex-col lg:flex-1 lg:min-h-0"><SettingsPanel /></div>
         ) : (
-          <>
-          <PaperPortfolioView
-            portfolio={state.paper_portfolio && { ...state.paper_portfolio, closed_trades: liveTrades(closedTrades) }}
+          <ReviewScreen
+            portfolio={state.paper_portfolio}
+            closedTrades={liveTrades(closedTrades)}
             onClosePosition={handleClosePosition}
             onToggleAutoTrade={handleToggleAutoTrade}
             onChangeLots={handleChangeLots}
             onChangeSetupMode={handleChangeSetupMode}
             onResetPortfolio={handleResetPortfolio}
-            hideStrip
           />
-          <JournalPanel />
-          </>
         )}
 
         {capabilityModalOpen && (
-          <div className="desk-overlay">
-            <div className="desk-modal p-5">
-              <div className="flex items-center justify-between pb-3 mb-4" style={{ borderBottom: '1px solid var(--line)' }}>
-                <div className="flex items-center gap-3">
-                  <KeyRound className="w-5 h-5" style={{ color: 'var(--accent)' }} />
-                  <div>
-                    <h3 className="text-base font-semibold">Dashboard key</h3>
-                    <p className="text-xs desk-muted">Needed to trade, reset and stream live data</p>
-                  </div>
-                </div>
-                <button type="button" onClick={() => setCapabilityModalOpen(false)} title="Close" aria-label="Close" className="desk-btn">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {capabilityError && (
-                <div className="desk-alert mb-4 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{capabilityError}</span>
-                </div>
-              )}
-              {capabilitySuccess && (
-                <div className="desk-pill up mb-4 flex items-center gap-2" style={{ borderRadius: 8, padding: '8px 12px' }}>
-                  <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  <span>Key accepted. Session started.</span>
-                </div>
-              )}
-
-              <form onSubmit={handleSaveCapability} className="space-y-4">
-                <div>
-                  <label htmlFor="capability-input" className="block text-xs font-semibold mb-1.5 desk-muted">
-                    Access key
-                  </label>
-                  <input
-                    id="capability-input"
-                    type="password"
-                    value={capabilityInput}
-                    onChange={(e) => setCapabilityInput(e.target.value)}
-                    placeholder="Enter your dashboard key"
-                    className="desk-input font-mono"
-                    required
-                  />
-                </div>
-                <div className="flex items-center justify-end gap-3">
-                  <button type="button" onClick={() => setCapabilityModalOpen(false)} className="desk-btn">Cancel</button>
-                  <button type="submit" className="desk-btn solid">
-                    <Lock className="w-3.5 h-3.5" />
-                    Authorize session
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
+          <CapabilityDialog
+            value={capabilityInput}
+            onChange={setCapabilityInput}
+            error={capabilityError}
+            success={capabilitySuccess}
+            onSubmit={handleSaveCapability}
+            onClose={() => setCapabilityModalOpen(false)}
+          />
         )}
       </main>
 
-      <footer className="py-3 text-center text-xs desk-muted" style={{ borderTop: '1px solid var(--line)' }}>
-        Bollinger Bands Options PRO · Forward-testing mode
-      </footer>
     </div>
   );
 };

@@ -190,6 +190,14 @@ class PaperPersistenceMixin:
                 raw_modes = None
         self._portfolio.setup_modes = setup_switches.normalize_modes(raw_modes)
 
+        # Values saved before the runtime-settings store existed move into it; afterwards it is the source of truth.
+        for key, saved in (("default_lots", saved_lots), ("max_risk_per_trade", saved_risk)):
+            if saved is not None and not self.runtime.is_overridden(key):
+                try:
+                    self.runtime.adopt(key, max(2, int(saved)) if key == "default_lots" else float(saved))
+                except Exception:
+                    pass
+        self._sync_portfolio_from_runtime()
         self._load_risk()
         self.flag_stale_carryover()
         self._recalculate_metrics()

@@ -1,54 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { PaperPortfolio, PaperPosition, SetupMode } from '../types';
-import { RefreshCcw, Power, Receipt, X, LineChart } from 'lucide-react';
+import { RefreshCcw, Power, Receipt, LineChart } from 'lucide-react';
 import { PositionChartModal } from './PositionChartModal';
 import { setupCode } from './setupCode';
 import { CostPanel } from './CostPanel';
 import { isIndexSymbol } from './instruments';
 import { SetupStatsPanel } from './SetupStatsPanel';
+import { INR, formatCurrency, pnlClass, liveTrades, shortTime } from './format';
+import { formatTradeSpan, summarizeTrades } from './tradeUtils';
+import { OpenPositionsPanel } from './OpenPositionsPanel';
+import { PortfolioStrip } from './PortfolioStrips';
+import { ExitReason, TradeDrawer } from './TradeParts';
+import { ReceiptModal } from './ReceiptModal';
 
-// Show the date whenever a trade crosses midnight/sessions so an overnight exit never
-// looks like it happened before its entry (times alone are HH:MM:SS).
-export function formatTradeSpan(trade: {
-  entry_time: string;
-  exit_time?: string;
-  entry_datetime?: string | null;
-  exit_datetime?: string | null;
-}): string {
-  const entryDate = trade.entry_datetime?.slice(0, 10);
-  const exitDate = trade.exit_datetime?.slice(0, 10);
-  const fmt = (iso: string, time: string) => {
-    const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
-    const label = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-    return `${label} ${time}`;
-  };
-  if (entryDate && exitDate && entryDate !== exitDate) {
-    return `${fmt(entryDate, trade.entry_time)} → ${fmt(exitDate, trade.exit_time ?? '')}`;
-  }
-  return `${trade.entry_time} → ${trade.exit_time ?? ''}`;
-}
-
-
-type SummaryTrade = {
-  quarantine_reason?: string | null;
-  net_pnl?: number;
-  gross_pnl?: number;
-  pnl_rupees?: number;
-  total_slippage_cost?: number;
-};
-
-export function summarizeTrades(trades: SummaryTrade[]) {
-  const counted = trades.filter((t) => !t.quarantine_reason);
-  const wins = counted.filter((t) => (t.net_pnl ?? t.gross_pnl ?? t.pnl_rupees ?? 0) > 0).length;
-  return {
-    count: counted.length,
-    winRate: counted.length > 0 ? ((wins / counted.length) * 100).toFixed(1) : '0.0',
-    gross: counted.reduce((a, t) => a + (t.gross_pnl ?? t.pnl_rupees ?? 0), 0),
-    net: counted.reduce((a, t) => a + (t.net_pnl ?? t.pnl_rupees ?? 0), 0),
-    slippage: counted.reduce((a, t) => a + (t.total_slippage_cost ?? 0), 0),
-  };
-}
-
+// Re-exported so existing imports (App, tests) keep working after the split into smaller files.
+export { formatTradeSpan, summarizeTrades } from './tradeUtils';
+export { formatCurrency, liveTrades } from './format';
+export { PortfolioStrip, CompactStrip } from './PortfolioStrips';
+export { OpenPositionsPanel } from './OpenPositionsPanel';
+export { exitReasonLabel } from './TradeParts';
 
 interface PaperPortfolioViewProps {
   portfolio?: PaperPortfolio;
@@ -58,6 +28,8 @@ interface PaperPortfolioViewProps {
   onChangeSetupMode?: (setup: string, mode: SetupMode) => void;
   onResetPortfolio: () => void;
   hideStrip?: boolean;
+  /** Which part of the review to show; 'all' (default) is the original long page. */
+  view?: 'all' | 'today' | 'trades' | 'setups' | 'costs';
 }
 
 const KIND_FILTER_OPTIONS = [
@@ -121,186 +93,6 @@ const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
   return false;
 };
 
-const INR = { minimumFractionDigits: 2, maximumFractionDigits: 2 } as const;
-
-export const formatCurrency = (val: number, showPlus = false) => {
-  const formatted = Math.abs(val).toLocaleString('en-IN', INR);
-  if (val > 0) return `${showPlus ? '+' : ''}₹${formatted}`;
-  if (val < 0) return `-₹${formatted}`;
-  return `₹${formatted}`;
-};
-
-const pnlClass = (v: number) => (v > 0 ? 'desk-up' : v < 0 ? 'desk-down' : '');
-
-// Quarantined rows come from before the live journal began; they are never shown or counted.
-export const liveTrades = (trades: PaperPosition[] | undefined): PaperPosition[] =>
-  (trades ?? []).filter((t) => !t.quarantine_reason);
-
-/* ---------- P&L strip ---------- */
-export const PortfolioStrip: React.FC<{ portfolio?: PaperPortfolio }> = ({ portfolio }) => {
-  const grossRealized = portfolio?.total_gross_pnl ?? portfolio?.total_realized_pnl ?? 0;
-  const slippageCost = portfolio?.total_slippage_cost ?? 0;
-  const avgSlippagePts = portfolio?.avg_slippage_points ?? 0;
-  const totalCharges = portfolio?.total_charges ?? 0;
-  const netRealized = portfolio?.total_net_pnl ?? portfolio?.total_realized_pnl ?? 0;
-  const floating = portfolio?.total_unrealized_pnl ?? 0;
-  const floatingCharges = portfolio?.total_unrealized_charges ?? 0;
-  const floatingNet = portfolio?.total_unrealized_net ?? floating;
-  const openCount = portfolio?.active_positions?.length ?? 0;
-  // Profit already booked at Target 1 on trades that are still open: not in Net Realized until they close.
-  const bookedOpen = (portfolio?.active_positions ?? []).reduce((sum, p) => sum + (p.booked_pnl_rupees ?? 0), 0);
-
-  return (
-    <section
-      className="desk-strip grid-cols-2 md:grid-cols-3 lg:grid-cols-[1.4fr_repeat(5,1fr)]"
-      aria-label="Portfolio performance"
-    >
-      <div className="col-span-2 md:col-span-3 lg:col-span-1">
-        <div className="desk-label" title="Closed trades only, after charges. Open trades are not included.">Net Realized P&L</div>
-        <div className={`desk-num text-[26px] font-semibold ${pnlClass(netRealized)}`}>
-          {formatCurrency(netRealized, true)}
-        </div>
-      </div>
-      <div>
-        <div className="desk-label">Gross Realized P&L</div>
-        <div className={`desk-num text-lg font-semibold ${pnlClass(grossRealized)}`}>
-          {formatCurrency(grossRealized, true)}
-        </div>
-        <div className="text-xs desk-muted">
-          {portfolio?.winning_trades_count ?? 0}W / {portfolio?.losing_trades_count ?? 0}L
-        </div>
-      </div>
-      <div>
-        <div className="desk-label">Execution Slippage Impact</div>
-        <div className="desk-num text-lg font-semibold" style={{ color: 'var(--warn)' }}>
-          {slippageCost > 0 ? `-₹${slippageCost.toLocaleString('en-IN', INR)}` : '₹0.00'}
-        </div>
-        <div className="text-xs desk-muted">
-          Avg drag {avgSlippagePts > 0 ? `-${avgSlippagePts.toFixed(1)}` : '0.0'} pts
-        </div>
-      </div>
-      <div>
-        <div className="desk-label">Brokerage & Regulatory Taxes</div>
-        <div className="desk-num text-lg font-semibold">
-          {totalCharges > 0 ? `-₹${totalCharges.toLocaleString('en-IN', INR)}` : '₹0.00'}
-        </div>
-        <div className="text-xs desk-muted">STT, GST, exchange, SEBI</div>
-      </div>
-      <div>
-        <div className="desk-label">Unrealized P&L (open)</div>
-        <div className={`desk-num text-lg font-semibold ${pnlClass(floating)}`}>
-          {formatCurrency(floating, true)}
-        </div>
-        <div className="text-xs desk-muted">
-          {openCount} open
-          {bookedOpen !== 0 && <> · booked at T1 <span className={`desk-num ${pnlClass(bookedOpen)}`}>{formatCurrency(bookedOpen, true)}</span> (in Net Realized once closed)</>}
-          {' '}· net if closed now{' '}
-          <span className={`desk-num ${pnlClass(floatingNet)}`}>{formatCurrency(floatingNet, true)}</span>
-          {floatingCharges > 0 && <> (est. charges ₹{floatingCharges.toLocaleString('en-IN', INR)})</>}
-        </div>
-      </div>
-      <div>
-        <div className="desk-label">Win rate</div>
-        <div className="desk-num text-lg font-semibold">{(portfolio?.win_rate_pct ?? 0).toFixed(1)}%</div>
-      </div>
-    </section>
-  );
-};
-
-/* ---------- Open positions ---------- */
-export const OpenPositionsPanel: React.FC<{
-  positions: PaperPosition[];
-  onClosePosition: (id: string) => void;
-}> = ({ positions, onClosePosition }) => {
-  // Keep the position itself, so the popup stays open (and shows the exit) if the trade closes meanwhile.
-  const [chartPosition, setChartPosition] = useState<PaperPosition | null>(null);
-  return (
-  <section className="desk-panel" aria-labelledby="open-positions-title">
-    <div className="desk-ph">
-      <h2 id="open-positions-title">Active Open Paper Positions ({positions.length})</h2>
-      <span className="text-xs desk-muted ml-auto">Books 50% at T1, then trails the rest at breakeven</span>
-    </div>
-    {positions.length === 0 ? (
-      <div className="p-6 text-center text-xs desk-muted">
-        No open paper positions. New signals open trades automatically, or click "Paper buy" on a signal.
-      </div>
-    ) : (
-      positions.map((pos) => {
-        const isT1 = pos.status === 'TARGET_1';
-        const target = isT1 ? pos.option_target_2 : pos.option_target_1;
-        const span = target - pos.option_sl;
-        const booked = pos.booked_pnl_rupees ?? 0;
-        const openGain = pos.unrealized_pnl_rupees ?? Math.round((pos.pnl_rupees - booked) * 100) / 100;
-        const frac = span > 0 ? Math.max(0, Math.min(1, (pos.current_option_price - pos.option_sl) / span)) : 0.5;
-        return (
-          <div
-            key={pos.id}
-            className="px-3.5 py-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 cursor-pointer"
-            style={{ borderBottom: '1px solid var(--line)' }}
-            onClick={() => setChartPosition(pos)}
-            title="Click to open chart"
-          >
-            <div>
-              <span className="desk-sym">{pos.strike_symbol}</span>{' '}
-              <span className={`desk-side ${pos.option_type === 'CE' ? 'ce' : 'pe'}`}>BUY {pos.option_type}</span>
-              <span className="desk-sub">
-                {setupCode(pos.setup_type)} · {pos.symbol} {pos.timeframe} @ {pos.entry_time} · {pos.quantity} qty ({pos.lots}L × {pos.lot_size})
-              </span>
-            </div>
-            <div className={`desk-num text-xl font-semibold text-right ${pnlClass(pos.pnl_rupees)}`}>
-              {formatCurrency(pos.pnl_rupees, true)}
-              <span className="desk-sub text-right">Total · {pos.pnl_points >= 0 ? '+' : ''}{pos.pnl_points.toFixed(1)} pts on open lots</span>
-            </div>
-            <div
-              className="col-span-2 relative h-1.5 rounded-sm my-2"
-              style={{ background: 'linear-gradient(90deg, var(--down-soft) 0 33%, var(--line) 33% 66%, var(--up-soft) 66%)' }}
-            >
-              <i className="absolute block rounded-sm" style={{ top: -3, width: 3, height: 12, background: 'var(--fg)', left: `calc(${frac * 100}% - 1px)` }} />
-            </div>
-            <div className="col-span-2 flex flex-wrap justify-between gap-x-3 text-xs desk-num desk-muted">
-              <span className={isT1 ? '' : 'desk-down'}>{isT1 ? 'Trailed SL' : 'SL'} {pos.option_sl.toFixed(1)}</span>
-              <span>Entry {pos.option_entry.toFixed(1)}</span>
-              <span style={{ color: 'var(--fg)', fontWeight: 600 }}>LTP {pos.current_option_price.toFixed(1)}</span>
-              <span className="desk-up">{isT1 ? 'T2' : 'T1'} {target.toFixed(1)}</span>
-            </div>
-            <div className="col-span-2 flex flex-wrap justify-between gap-x-3 text-xs desk-num">
-              <span className={pnlClass(booked)}>
-                Booked {formatCurrency(booked, true)}
-              </span>
-              <span className={pnlClass(openGain)}>
-                Unrealized {formatCurrency(openGain, true)}
-              </span>
-              {pos.est_net_pnl !== undefined && (
-                <span className={pnlClass(pos.est_net_pnl)} title="Booked + unrealized, minus estimated brokerage and taxes for the whole trade">
-                  Net if closed now {formatCurrency(pos.est_net_pnl, true)}
-                  {(pos.est_exit_charges ?? 0) > 0 && <span className="desk-muted"> (charges ₹{pos.est_exit_charges!.toLocaleString('en-IN', INR)})</span>}
-                </span>
-              )}
-            </div>
-            {isT1 && (
-              <div className="col-span-2 text-xs" style={{ color: 'var(--accent)' }}>
-                {(pos.booked_lots ?? 0) > 0
-                  ? `✓ ${pos.booked_lots} of ${pos.initial_lots ?? (pos.lots + (pos.booked_lots ?? 0))} lots booked at T1: ${formatCurrency(booked, true)} locked in`
-                  : 'T1 hit: a single lot cannot be split, so nothing is booked. Stop moved to breakeven.'}
-              </div>
-            )}
-            <div className="col-span-2 text-right mt-1">
-              <button type="button" className="desk-btn accent mr-2" onClick={(e) => { e.stopPropagation(); setChartPosition(pos); }}>
-                Chart
-              </button>
-              <button type="button" className="desk-btn danger" onClick={(e) => { e.stopPropagation(); onClosePosition(pos.id); }}>
-                Close
-              </button>
-            </div>
-          </div>
-        );
-      })
-    )}
-    {chartPosition && <PositionChartModal position={chartPosition} onClose={() => setChartPosition(null)} />}
-  </section>
-  );
-};
-
 /* ---------- Journal helpers ---------- */
 const tradeDay = (t: PaperPosition): string =>
   (t.exit_datetime ?? t.entry_datetime ?? '').slice(0, 10) || 'Undated';
@@ -312,6 +104,7 @@ const dayLabel = (iso: string): string => {
 };
 
 const DAYS_SHOWN = 5;
+const PAGE_SIZE = 25;
 
 const SETUP_SWITCH_ROWS: { key: string; label: string }[] = [
   { key: '1', label: 'Setup 1 · BB Squeeze' },
@@ -343,24 +136,18 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
   onChangeSetupMode,
   onResetPortfolio,
   hideStrip = false,
+  view = 'all',
 }) => {
+  const show = (...v: string[]) => view === 'all' || v.includes(view);
+  const [page, setPage] = useState(0);
+  const [drawerTrade, setDrawerTrade] = useState<PaperPosition | null>(null);
   const [selectedSetupFilter, setSelectedSetupFilter] = useState<string>('ALL');
   const [selectedKindFilter, setSelectedKindFilter] = useState<string>('ALL');
+  useEffect(() => { setPage(0); }, [selectedSetupFilter, selectedKindFilter]);
   const [selectedTradeForReceipt, setSelectedTradeForReceipt] = useState<PaperPosition | null>(null);
   const [showAllDays, setShowAllDays] = useState(false);
   const [chartTrade, setChartTrade] = useState<PaperPosition | null>(null);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setSelectedTradeForReceipt(null);
-      }
-    };
-    if (selectedTradeForReceipt) {
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
-    }
-  }, [selectedTradeForReceipt]);
 
   if (!portfolio) {
     return <div className="p-8 text-center desk-muted">Loading paper portfolio...</div>;
@@ -381,7 +168,30 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
     dayMap.set(k, [...(dayMap.get(k) ?? []), t]);
   });
   const days = Array.from(dayMap.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
-  const visibleDays = showAllDays ? days : days.slice(0, DAYS_SHOWN);
+  let visibleDays = showAllDays ? days : days.slice(0, DAYS_SHOWN);
+  const pageCount = Math.max(1, Math.ceil(ordered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  if (view === 'today') {
+    visibleDays = days.slice(0, 1);
+  } else if (view === 'trades') {
+    const pageMap = new Map<string, PaperPosition[]>();
+    ordered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE).forEach((t) => {
+      const k = tradeDay(t);
+      pageMap.set(k, [...(pageMap.get(k) ?? []), t]);
+    });
+    visibleDays = Array.from(pageMap.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  }
+  const paged = view === 'trades';
+  // Today tab: the summary and title describe the session shown, not the whole journal.
+  const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const shownDay = view === 'today' ? visibleDays[0]?.[0] : undefined;
+  const headSummary = view === 'today' ? summarizeTrades(visibleDays[0]?.[1] ?? []) : summary;
+  const journalTitle =
+    view === 'today'
+      ? shownDay === undefined || shownDay === todayIso
+        ? "Today's closed trades"
+        : `Last session · ${dayLabel(shownDay)}`
+      : `Closed Trades Journal (${filteredTrades.length}${isFiltered ? ` of ${closedTrades.length}` : ''})`;
 
   // Per-setup table over all live trades.
   const bySetup = new Map<string, { trades: number; wins: number; net: number }>();
@@ -401,6 +211,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
       {!hideStrip && <PortfolioStrip portfolio={portfolio} />}
 
       {/* Controls */}
+      {show('setups') && (
       <div className="desk-panel px-3.5 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
         <button
           type="button"
@@ -425,10 +236,11 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
           Reset Portfolio
         </button>
       </div>
+      )}
 
-      <SetupStatsPanel refreshKey={portfolio.closed_trades.length} />
+      {show('setups') && <SetupStatsPanel refreshKey={portfolio.closed_trades.length} collapsible={view === 'setups'} />}
 
-      {onChangeSetupMode && (
+      {show('setups') && onChangeSetupMode && (
         <section className="desk-panel" aria-labelledby="setup-switches-title">
           <div className="desk-ph">
             <h2 id="setup-switches-title">Setup switches</h2>
@@ -460,6 +272,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
         </section>
       )}
 
+      {view === 'all' && (
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-3 items-start">
         <OpenPositionsPanel positions={portfolio.active_positions} onClosePosition={onClosePosition} />
 
@@ -471,7 +284,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
             <div className="overflow-x-auto">
               <table className="desk-table">
                 <thead>
-                  <tr><th>Setup</th><th className="r">Trades</th><th className="r">Win</th><th className="r">Net</th></tr>
+                  <tr><th scope="col">Setup</th><th scope="col" className="r">Trades</th><th scope="col" className="r">Win</th><th scope="col" className="r">Net</th></tr>
                 </thead>
                 <tbody>
                   {setupRows.map(([code, r]) => (
@@ -488,15 +301,15 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
           )}
         </section>
       </div>
+      )}
 
-      <CostPanel refreshKey={portfolio.closed_trades_count ?? closedTrades.length} />
+      {show('costs') && <CostPanel refreshKey={portfolio.closed_trades_count ?? closedTrades.length} />}
 
       {/* Closed trades journal, grouped by day */}
+      {show('trades', 'today') && (
       <section className="desk-panel" aria-labelledby="journal-title">
-        <div className="desk-ph">
-          <h2 id="journal-title">
-            Closed Trades Journal ({filteredTrades.length}{isFiltered ? ` of ${closedTrades.length}` : ''})
-          </h2>
+        <div className={`desk-ph ${view !== 'all' ? 'sticky top-0 z-[2]' : ''}`} style={view !== 'all' ? { background: 'var(--panel)' } : undefined}>
+          <h2 id="journal-title">{journalTitle}</h2>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 ml-auto">
             <div className="flex gap-1.5" role="group" aria-label="Journal instrument filter">
               {KIND_FILTER_OPTIONS.map((opt) => (
@@ -511,6 +324,19 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                 </button>
               ))}
             </div>
+            {view !== 'all' ? (
+              <select
+                className="desk-input"
+                style={{ width: 'auto', padding: '3px 8px' }}
+                value={selectedSetupFilter}
+                onChange={(e) => setSelectedSetupFilter(e.target.value)}
+                aria-label="Journal setup filter"
+              >
+                {SETUP_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>{opt.label}</option>
+                ))}
+              </select>
+            ) : (
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Journal setup filter">
               {SETUP_FILTER_OPTIONS.map((opt) => (
                 <button
@@ -524,16 +350,17 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                 </button>
               ))}
             </div>
+            )}
           </div>
         </div>
 
         <div className="desk-day text-sm">
-          <span>{summary.count} trades</span>
-          <span className="desk-muted">{summary.winRate}% Win Rate</span>
-          <span>Gross <b className={`desk-num ${pnlClass(summary.gross)}`}>{formatCurrency(summary.gross, true)}</b></span>
-          <span>Net <b className={`desk-num ${pnlClass(summary.net)}`}>{formatCurrency(summary.net, true)}</b></span>
+          <span>{headSummary.count} trades</span>
+          <span className="desk-muted">{headSummary.winRate}% Win Rate</span>
+          <span>Gross <b className={`desk-num ${pnlClass(headSummary.gross)}`}>{formatCurrency(headSummary.gross, true)}</b></span>
+          <span>Net <b className={`desk-num ${pnlClass(headSummary.net)}`}>{formatCurrency(headSummary.net, true)}</b></span>
           <span>Slippage drag <b className="desk-num" style={{ color: 'var(--warn)' }}>
-            {summary.slippage > 0 ? `-₹${summary.slippage.toLocaleString('en-IN', INR)}` : '₹0.00'}
+            {headSummary.slippage > 0 ? `-₹${headSummary.slippage.toLocaleString('en-IN', INR)}` : '₹0.00'}
           </b></span>
         </div>
 
@@ -560,8 +387,8 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                     <table className="desk-table">
                       <thead>
                         <tr>
-                          <th>In → Out</th><th>Instrument</th><th>Setup</th><th className="r">Entry → Exit</th>
-                          <th className="r">Gross</th><th className="r">Net</th><th>Why it closed</th><th className="r">Receipt</th>
+                          <th scope="col">In → Out</th><th scope="col">Instrument</th><th scope="col">Setup</th><th scope="col" className="r">Entry → Exit</th>
+                          <th scope="col" className="r">Gross</th><th scope="col" className="r">Net</th><th scope="col">Why it closed</th><th scope="col" className="r">{view !== 'all' ? 'Details' : 'Receipt'}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -573,8 +400,12 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                             trade.exit_slippage != null ? `Exit slippage ${trade.exit_slippage.toFixed(1)} pts` : '',
                           ].filter(Boolean).join(' · ');
                           return (
-                            <tr key={trade.id}>
-                              <td className="desk-num">{formatTradeSpan(trade)}</td>
+                            <tr
+                              key={trade.id}
+                              className={view !== 'all' ? 'cursor-pointer' : undefined}
+                              onClick={view !== 'all' ? () => setDrawerTrade(trade) : undefined}
+                            >
+                              <td className="desk-num" title={formatTradeSpan(trade)}>{formatTradeSpan(trade, { short: true })}</td>
                               <td>
                                 <span className="desk-sym">{trade.strike_symbol}</span>{' '}
                                 <span className={`desk-side ${trade.option_type === 'CE' ? 'ce' : 'pe'}`}>{trade.option_type}</span>
@@ -590,29 +421,42 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                               </td>
                               <td className={`r desk-num ${pnlClass(grossVal)}`}>{formatCurrency(grossVal, true)}</td>
                               <td className={`r desk-num font-semibold ${pnlClass(netVal)}`}>{formatCurrency(netVal, true)}</td>
-                              <td>{trade.exit_reason || trade.status}</td>
+                              <td><ExitReason reason={trade.exit_reason || trade.status} /></td>
                               <td className="r whitespace-nowrap">
-                                <button
-                                  type="button"
-                                  className="desk-btn mr-1"
-                                  onClick={() => setChartTrade(trade)}
-                                  title="Open chart"
-                                  aria-label="Open trade chart"
-                                >
-                                  <LineChart className="h-3.5 w-3.5" />
-                                </button>
-                                {trade.charges_breakdown ? (
+                                {view !== 'all' ? (
                                   <button
                                     type="button"
-                                    className="desk-btn"
-                                    onClick={() => setSelectedTradeForReceipt(trade)}
-                                    title="View Charges Breakdown"
-                                    aria-label="View charges breakdown"
+                                    className="desk-btn sm"
+                                    onClick={(e) => { e.stopPropagation(); setDrawerTrade(trade); }}
+                                    aria-label={`Details for ${trade.strike_symbol}`}
                                   >
-                                    <Receipt className="h-3.5 w-3.5" />
+                                    Details
                                   </button>
                                 ) : (
-                                  <span className="desk-muted">—</span>
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="desk-btn mr-1"
+                                      onClick={(e) => { e.stopPropagation(); setChartTrade(trade); }}
+                                      title="Open chart"
+                                      aria-label="Open trade chart"
+                                    >
+                                      <LineChart className="h-3.5 w-3.5" />
+                                    </button>
+                                    {trade.charges_breakdown ? (
+                                      <button
+                                        type="button"
+                                        className="desk-btn"
+                                        onClick={(e) => { e.stopPropagation(); setSelectedTradeForReceipt(trade); }}
+                                        title="View Charges Breakdown"
+                                        aria-label="View charges breakdown"
+                                      >
+                                        <Receipt className="h-3.5 w-3.5" />
+                                      </button>
+                                    ) : (
+                                      <span className="desk-muted">—</span>
+                                    )}
+                                  </>
                                 )}
                               </td>
                             </tr>
@@ -624,7 +468,19 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                 </div>
               );
             })}
-            {days.length > DAYS_SHOWN && (
+            {paged && (
+              <div className="flex items-center justify-between gap-3 px-3.5 py-2 text-xs desk-muted" style={{ borderTop: '1px solid var(--line)' }}>
+                <span className="desk-num">
+                  {safePage * PAGE_SIZE + 1}–{Math.min(ordered.length, (safePage + 1) * PAGE_SIZE)} of {ordered.length} trades
+                </span>
+                <span className="flex items-center gap-2">
+                  <button type="button" className="desk-btn" disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>Prev</button>
+                  <span className="desk-num">Page {safePage + 1} / {pageCount}</span>
+                  <button type="button" className="desk-btn" disabled={safePage >= pageCount - 1} onClick={() => setPage(safePage + 1)}>Next</button>
+                </span>
+              </div>
+            )}
+            {view === 'all' && days.length > DAYS_SHOWN && (
               <button
                 type="button"
                 className="w-full py-2.5 text-sm font-medium"
@@ -637,107 +493,20 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
           </>
         )}
       </section>
+      )}
+
+      {drawerTrade && (
+        <TradeDrawer
+          trade={drawerTrade}
+          onClose={() => setDrawerTrade(null)}
+          onChart={() => setChartTrade(drawerTrade)}
+          onReceipt={() => setSelectedTradeForReceipt(drawerTrade)}
+        />
+      )}
 
       {/* Itemized tax receipt */}
       {chartTrade && <PositionChartModal position={chartTrade} onClose={() => setChartTrade(null)} />}
-      {selectedTradeForReceipt && (
-        <div className="desk-overlay" onClick={() => setSelectedTradeForReceipt(null)}>
-          <div className="desk-modal p-5" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between pb-3" style={{ borderBottom: '1px solid var(--line)' }}>
-              <div>
-                <h4 className="text-sm font-semibold">Dhan & Statutory Taxes Receipt</h4>
-                <p className="text-[11px] desk-muted font-mono">
-                  {selectedTradeForReceipt.strike_symbol} • {selectedTradeForReceipt.setup_type}
-                </p>
-              </div>
-              <button type="button" onClick={() => setSelectedTradeForReceipt(null)} aria-label="Close" className="desk-btn">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {(() => {
-              const cb = selectedTradeForReceipt.charges_breakdown ?? {
-                buy_turnover: selectedTradeForReceipt.option_entry * selectedTradeForReceipt.quantity,
-                sell_turnover: selectedTradeForReceipt.current_option_price * selectedTradeForReceipt.quantity,
-                total_turnover: (selectedTradeForReceipt.option_entry + selectedTradeForReceipt.current_option_price) * selectedTradeForReceipt.quantity,
-                orders_count: 2,
-                brokerage: 40.0,
-                stt: 0,
-                exchange_fee: 0,
-                sebi_fee: 0,
-                stamp_duty: 0,
-                gst: 0,
-                total_charges: selectedTradeForReceipt.total_charges ?? 0,
-              };
-
-              return (
-                <>
-                  {/* Turnover Summary */}
-                  <div className="grid grid-cols-2 gap-2 my-3 p-3 rounded-md text-xs font-mono" style={{ background: 'var(--alt)', border: '1px solid var(--line)' }}>
-                    <div>
-                      <span className="text-[10px] desk-muted uppercase block font-sans">Buy Turnover</span>
-                      <span className="font-bold">₹{cb.buy_turnover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] desk-muted uppercase block font-sans">Sell Turnover</span>
-                      <span className="font-bold">₹{cb.sell_turnover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] desk-muted uppercase block font-sans">Total Turnover</span>
-                      <span className="font-bold">₹{cb.total_turnover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] desk-muted uppercase block font-sans">Orders Executed</span>
-                      <span className="font-bold">{cb.orders_count} orders</span>
-                    </div>
-                  </div>
-
-                  {/* Itemized Fees & Taxes */}
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between items-center pt-1.5">
-                      <span className="desk-muted">Brokerage (Dhan ₹20/order)</span>
-                      <span className="font-mono font-bold">₹{cb.brokerage.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-1.5">
-                      <span className="desk-muted">STT (0.1% on Sell)</span>
-                      <span className="font-mono font-bold">₹{cb.stt.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-1.5">
-                      <span className="desk-muted">NSE Exchange Fee (0.05%)</span>
-                      <span className="font-mono font-bold">₹{cb.exchange_fee.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-1.5">
-                      <span className="desk-muted">GST (18%)</span>
-                      <span className="font-mono font-bold">₹{cb.gst.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-1.5">
-                      <span className="desk-muted">Stamp Duty (0.003% on Buy)</span>
-                      <span className="font-mono font-bold">₹{cb.stamp_duty.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-1.5">
-                      <span className="desk-muted">SEBI Turnover Fee</span>
-                      <span className="font-mono font-bold">₹{cb.sebi_fee.toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  {/* Total Deductions */}
-                  <div className="mt-4 pt-3 flex justify-between items-center" style={{ borderTop: '1px solid var(--line)' }}>
-                    <div>
-                      <span className="font-bold text-xs uppercase tracking-wider block">
-                        Total Deductions
-                      </span>
-                      <span className="text-[10px] desk-muted font-sans">Dhan F&O Rate Card</span>
-                    </div>
-                    <span className="text-sm font-semibold font-mono desk-down">
-                      -₹{cb.total_charges.toFixed(2)}
-                    </span>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
+      {selectedTradeForReceipt && <ReceiptModal trade={selectedTradeForReceipt} onClose={() => setSelectedTradeForReceipt(null)} />}
     </div>
   );
 };
