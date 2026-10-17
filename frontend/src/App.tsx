@@ -533,7 +533,7 @@ const DashboardContent: React.FC = () => {
                   <h2 id="signals-title">Active Strategy Signals</h2>
                   <span className="desk-pill desk-num">{filteredSignals.length} active</span>
                   <span className="text-xs desk-muted ml-auto">
-                    {wsConnected ? 'Real-time ticks' : 'Auto-scanned every ~8s'} · signals confirm on candle close
+                    {wsConnected ? 'Real-time ticks' : (state.last_scan_seconds ? `Auto-scanned (last scan ${state.last_scan_seconds.toFixed(1)}s)` : 'Auto-scanned')} · signals confirm on candle close
                   </span>
                 </div>
                 <SignalTable

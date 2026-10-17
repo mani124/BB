@@ -334,10 +334,13 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         """Execute scan cycle with guaranteed is_scanning = False reset via finally block."""
         self._state.is_scanning = True
         self._state.scan_progress = 0.0
+        started = time.monotonic()
         try:
             return await self._run_scan_cycle_body(client_id, access_token)
         finally:
             self._state.is_scanning = False
+            self._state.last_scan_seconds = round(time.monotonic() - started, 2)
+            logger.info("Scan cycle %d took %.2fs", self._state.scan_cycle_count, self._state.last_scan_seconds)
 
     async def _run_scan_cycle_body(
         self,
