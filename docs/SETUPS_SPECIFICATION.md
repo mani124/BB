@@ -663,4 +663,33 @@ A separate paper book (`earnings` in the decision trail), **paper only**, off by
 
 ### Notes
 * Thresholds (6-bar warm-up, 1 to 5 dip bars, 3-bar volume average, 1,000 contracts, 1% stop buffer, 30% stop cap, 14:25 cutoff) are starting values. Past option candles are not available for replay, so this setup is validated by paper trading.
+
+---
+
+## 19. Setup 14: PCR / OI Wall Bounce
+
+* **Setup Enum:** `SetupType.SETUP_14_OI_WALL_BOUNCE`; code in `backend/app/services/setup14.py`, wired in `scanner_worker` right after the option chain is fetched (before live strike enrichment). Signal is on the underlying (like Setups 1-4 and 12); the traded leg is picked by the usual strike selector.
+* **Underlying Principle:** open interest (OI) in the option chain shows where large positions sit. The strike with the most put OI below spot tends to act as support (writers defend it) and the strike with the most call OI above spot as resistance. The setup buys the first rejection of such a wall, so the stop is close and the level is clear.
+* **Data:** Dhan `/optionchain` `oi` field per strike and side. The scanner already caches the nearest-expiry chain with a 15 s TTL, so no extra API calls are made. Exchange OI itself moves slowly (it is not tick data), which is why walls are recomputed every 15 minutes, not every cycle. A signal is skipped when the chain behind the walls is older than 120 s. Chain freshness could not be measured against the live API from the build environment, so the first sessions should be checked through the `chain_age_s` and OI fields in the signal snapshot.
+
+### Walls and bias
+1. **Wall:** the strike with the largest put OI at or below spot (support) or the largest call OI at or above spot (resistance), within 5% of spot, and only if its OI is at least 1.5x the OI of each adjacent strike (otherwise there is no wall on that side). A chain with no OI returns no walls.
+2. **PCR:** total put OI divided by total call OI across the fetched chain. Calls at support need PCR >= 1.2; puts at resistance need PCR <= 0.8; in between the day is skipped.
+3. Walls and PCR are recomputed every 15 minutes (`WALL_REFRESH_S`) and reset each session.
+
+### Qualification (CE at support shown; PE at resistance is the mirror), on completed 5m spot bars
+1. The bar's low reaches within 0.1 ATR of the wall strike (or through it).
+2. The bar closes back above the wall (PE: below), and no more than 1.0 ATR away from it (no chasing).
+3. Lower wick (PE: upper wick) at least as long as the body.
+4. First touch: no earlier completed bar of today reached within 0.1 ATR of the same wall.
+5. At least 3 bars of the session; bar start no later than 14:25 (confirms at 14:30).
+
+### Risk and management
+* Entry: signal close. Stop: the tighter of the wall strike and the candle extreme, with a buffer of max(0.1 ATR, 0.03% of price); the strike selector enforces its usual minimum stop distance. T1 1.5R (book half, stop to breakeven), T2 2.5R, sizing, caps, re-entry gate and exits are the Setups 1-4 ones. The opposite wall is logged in the snapshot (`opposite_wall`) but is not used as a target.
+* Default per-setup switch: `index` (stock chains are thin and walls are noisy).
+* Snapshot logs `wall_strike`, `wall_oi`, `wall_oi_ratio`, `pcr`, `opposite_wall`, `opposite_wall_oi`, `wick`, `body`, `chain_age_s`.
+
+### Notes
+* Thresholds (1.5x dominance, 5% range, PCR 1.2 / 0.8, 0.1 ATR touch, 15-minute refresh, 120 s chain age) are starting values chosen before any replay. Past option-chain OI is not stored, so the setup can only be validated by paper trading; store signal snapshots to tune it.
+* It fits expiry week best and is expected to fire only a few times a day. A broken wall can flip into a fast trend, so the stop is firm.
 * Setups 1 and 5 are unchanged.
