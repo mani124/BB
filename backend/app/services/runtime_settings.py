@@ -57,6 +57,7 @@ G_TELE = "Telemetry"
 G_EARN = "Earnings options strategy"
 G_LIVE = "Live broker routing"
 G_REC = "Market data recorder"
+G_SWING = "Swing equity book (Setup 15)"
 
 DEFINITIONS: tuple[SettingDef, ...] = (
     # ---- RMS ----
@@ -237,6 +238,57 @@ DEFINITIONS: tuple[SettingDef, ...] = (
        default=60, min=15, max=3600),
     _d(key="earnings_starting_capital", label="Starting paper capital", group=G_EARN, type="float", unit="INR",
        description="Capital the earnings paper book reports returns against.", default=500000.0, min=0),
+    # ---- swing equity book (swing_engine.py / swing_signals.py) ----
+    _d(key="swing_enabled", label="Swing book enabled", group=G_SWING, type="bool",
+       description="Allow the swing paper book to queue new daily-bar entries. Open positions are always managed.", default=False),
+    _d(key="swing_setup15_enabled", label="Setup 15 (ATR trend flip)", group=G_SWING, type="bool",
+       description="Daily Supertrend flips from down to up: buy the next open, trail the stop on the Supertrend line.", default=True),
+    _d(key="swing_atr_period", label="Supertrend ATR period", group=G_SWING, type="int", unit="days",
+       description="ATR length of the daily Supertrend. 3 with a multiplier of 1 is the swing-length variant in the only "
+                   "Indian study found (about 15-day holds); 10 / 3 trends for months.", default=3, min=2, max=50),
+    _d(key="swing_atr_mult", label="Supertrend multiplier", group=G_SWING, type="float", unit="x ATR",
+       description="Band distance in ATRs. Smaller flips and stops out faster.", default=1.0, min=0.5, max=6),
+    _d(key="swing_exit_mode", label="Exit mode", group=G_SWING, type="str",
+       description="stop: the Supertrend line is a stop order, hit the moment price trades through it (conservative, "
+                   "stops out on wicks). close: exit at the next open after a close beyond the line, as the Indian study did; "
+                   "only the max-loss stop below protects the position inside a day.", default="stop", choices=("stop", "close")),
+    _d(key="swing_close_mode_max_loss_pct", label="Close mode: max-loss stop", group=G_SWING, type="float", unit="% below entry",
+       description="In close exit mode, an intraday stop this far below the entry price caps a bad day. Also limits the "
+                   "distance used to size the position.", default=8.0, min=1, max=30),
+    _d(key="swing_sma_filter_days", label="Trend filter (close above SMA)", group=G_SWING, type="int", unit="days",
+       description="Only buy when the close is above this simple moving average. 0 turns the filter off.", default=200,
+       min=0, max=400, zero_disables=True),
+    _d(key="swing_min_price", label="Min price", group=G_SWING, type="float", unit="INR",
+       description="Skip stocks closing below this price.", default=50.0, min=0),
+    _d(key="swing_min_avg_volume", label="Min average volume", group=G_SWING, type="float", unit="shares",
+       description="Skip stocks whose 20-day average daily volume is below this.", default=100000.0, min=0),
+    _d(key="swing_max_hold_days", label="Max holding period", group=G_SWING, type="int", unit="trading days",
+       description="Exit at the next open once a position has been held this many trading days. 0 = no time stop.",
+       default=20, min=0, max=250, zero_disables=True),
+    _d(key="swing_max_positions", label="Max open positions", group=G_SWING, type="int",
+       description="Open plus queued swing positions at once.", default=5, min=1, max=50),
+    _d(key="swing_max_new_per_day", label="Max new entries per day", group=G_SWING, type="int",
+       description="Entries queued from one day's close. 0 = no cap beyond the position limit.", default=3, min=0, zero_disables=True),
+    _d(key="swing_risk_per_trade", label="Risk per trade", group=G_SWING, type="float", unit="INR",
+       description="Quantity = this / (entry - stop), capped by the capital limit below.", default=5000.0, min=100),
+    _d(key="swing_max_capital_per_trade", label="Max capital per position", group=G_SWING, type="float", unit="INR",
+       description="Largest entry value (price x quantity) in one position.", default=100000.0, min=1000),
+    _d(key="swing_slippage_bps", label="Slippage per side", group=G_SWING, type="float", unit="bps",
+       description="Added to buys and taken off sells on top of the open / stop price. An assumption: compare with real fills before trusting results.",
+       default=10.0, min=0, max=200),
+    _d(key="swing_brokerage_per_order", label="Brokerage per order", group=G_SWING, type="float", unit="INR",
+       description="Delivery brokerage per leg. 0 matches the discount-broker schedule; confirm your broker's.", default=0.0, min=0),
+    _d(key="swing_dp_charge", label="DP charge per sell day", group=G_SWING, type="float", unit="INR",
+       description="Depository charge on each delivery sale (includes GST).", default=15.34, min=0),
+    _d(key="swing_earnings_blackout_days", label="Earnings blackout", group=G_SWING, type="int", unit="calendar days",
+       description="Skip entries when the earnings calendar lists results within this many days. 0 = off.", default=5,
+       min=0, max=30, zero_disables=True),
+    _d(key="swing_scan_time", label="Daily scan time", group=G_SWING, type="time", unit="IST",
+       description="After this time on a trading day the engine reads the finished daily bars, manages positions and scans.", default="16:00"),
+    _d(key="swing_poll_seconds", label="Check interval", group=G_SWING, type="int", unit="seconds",
+       description="How often the engine looks for a new finished trading day.", default=600, min=60, max=7200),
+    _d(key="swing_starting_capital", label="Starting paper capital", group=G_SWING, type="float", unit="INR",
+       description="Capital the swing paper book reports returns against.", default=1000000.0, min=0),
 )
 
 BY_KEY: dict[str, SettingDef] = {d.key: d for d in DEFINITIONS}

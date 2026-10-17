@@ -94,6 +94,8 @@ paper = con.execute(sql).fetchone()[0]
 tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 if "earnings_positions" in tables:  # the earnings book holds positions for days and is not covered by the query above
     paper += con.execute("SELECT COUNT(*) FROM earnings_positions WHERE status='OPEN'").fetchone()[0]
+if "swing_positions" in tables:  # the swing book holds positions (and queued entries) for days
+    paper += con.execute("SELECT COUNT(*) FROM swing_positions WHERE status IN ('OPEN','PENDING')").fetchone()[0]
 routed = orders = 0
 if "live_positions" in tables:
     routed = con.execute("SELECT COUNT(*) FROM live_positions WHERE mode='LIVE' AND state IN ('ENTERING','OPEN')").fetchone()[0]
