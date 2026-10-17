@@ -47,8 +47,8 @@ async def stream_signals(request: Request, max_events: Optional[int] = None):
                     data = await asyncio.wait_for(queue.get(), timeout=SSE_PING_INTERVAL)
                     if hasattr(data, "model_dump"):
                         data = data.model_dump()
-                    if isinstance(data, dict) and data.get("type") == "tick":
-                        yield f"event: tick\ndata: {json.dumps(data)}\n\n"
+                    if isinstance(data, dict) and data.get("type") in ("tick", "portfolio"):
+                        yield f"event: {data['type']}\ndata: {json.dumps(data)}\n\n"
                     else:
                         yield f"data: {json.dumps(data)}\n\n"
                     count += 1

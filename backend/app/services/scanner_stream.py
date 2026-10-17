@@ -25,6 +25,10 @@ from app.services.momentum_ranker import MomentumRanker, MomentumRankings
 from app.services.scanner_models import *  # noqa: F401,F403
 
 
+TICK_BROADCAST_MIN_INTERVAL = 0.25  # seconds between "tick" events for the same instrument
+PORTFOLIO_PUBLISH_MIN_INTERVAL = 0.5  # seconds between live "portfolio" events
+
+
 class ScannerStreamMixin:
     """Methods split out of ScannerWorker (no behaviour change)."""
 
@@ -163,6 +167,41 @@ class ScannerStreamMixin:
                 type(exc).__name__,
             )
 
+    def _publish_portfolio(self, force: bool = False) -> None:
+        """Refresh the shared portfolio totals after a price tick and push them to SSE clients.
+
+        Open-position P&L only used to reach the browser with the full scan snapshot (every
+        SCAN_INTERVAL_SECONDS plus the scan itself). This sends a small, throttled "portfolio" event
+        (open positions and totals, no closed trades) so the figures move about once a second.
+        """
+        now_mono = time.monotonic()
+        if now_mono - self._last_portfolio_publish < PORTFOLIO_PUBLISH_MIN_INTERVAL:
+            if not self._portfolio_publish_pending:
+                # Trailing publish, so the last move inside the window is not left unseen on a quiet contract.
+                self._portfolio_publish_pending = True
+                try:
+                    asyncio.get_running_loop().call_later(
+                        PORTFOLIO_PUBLISH_MIN_INTERVAL, lambda: self._publish_portfolio(force=force)
+                    )
+                except RuntimeError:
+                    pass
+            return
+        self._last_portfolio_publish = now_mono
+        self._portfolio_publish_pending = False
+        mode = "live" if force else self._state.active_mode
+        summary = paper_trader.get_portfolio_summary(mode=mode)
+        self._state.paper_portfolio = summary
+        self._enqueue_nowait({"type": "portfolio", "paper_portfolio": summary.model_dump()})
+
+    def _enqueue_nowait(self, data: dict) -> None:
+        for q in list(self._listeners):
+            try:
+                if q.full():
+                    q.get_nowait()
+                q.put_nowait(data)
+            except Exception:
+                pass
+
     async def _handle_incoming_ws_tick(self, tick: dict) -> None:
         """
         Sub-second tick handler from Dhan WebSocket feed.
@@ -196,7 +235,12 @@ class ScannerStreamMixin:
         vol = int(raw_vol) if raw_vol is not None else None
 
         # 1. Check if tick corresponds to active live paper trading option contract
-        active_live = paper_trader.get_portfolio(mode="live").active_positions
+        # Read the open book directly: get_portfolio() re-totals every closed trade, which is far too
+        # heavy to repeat for each of the hundreds of ticks per second the universe produces.
+        active_live = [
+            p for p in paper_trader._portfolio.active_positions
+            if getattr(p, "feed_mode", "demo") == "live"
+        ]
         matching_opt_positions = [
             p for p in active_live if p.option_security_id == sec_id_str
         ]
@@ -237,10 +281,8 @@ class ScannerStreamMixin:
                 feed_mode="live",
                 option_bid_map=option_bid_map,
             )
-            mode_to_query = "live" if matching_opt_positions else self._state.active_mode
-            self._state.paper_portfolio = paper_trader.get_portfolio_summary(
-                mode=mode_to_query
-            )
+            if matching_opt_positions:
+                self._publish_portfolio(force=True)
 
         # 2. Check if tick corresponds to an underlying instrument in universe
         inst = None
@@ -268,11 +310,15 @@ class ScannerStreamMixin:
                     option_price_map=None,
                     feed_mode="live",
                 )
-                self._state.paper_portfolio = paper_trader.get_portfolio_summary(
-                    mode=self._state.active_mode
-                )
+                self._publish_portfolio()
 
-        # 3. Broadcast real-time tick delta to active SSE subscriber queues
+        # 3. Broadcast real-time tick delta to active SSE subscriber queues (at most one per
+        # instrument per interval, so the universe feed cannot crowd the full-state snapshots out of
+        # the bounded subscriber queues)
+        now_mono = time.monotonic()
+        if now_mono - self._last_tick_broadcast.get(sec_id_str, 0.0) < TICK_BROADCAST_MIN_INTERVAL:
+            return
+        self._last_tick_broadcast[sec_id_str] = now_mono
         broadcast_data: dict = {
             "type": "tick",
             "security_id": sec_id,

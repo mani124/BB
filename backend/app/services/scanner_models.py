@@ -53,6 +53,7 @@ class ScannerState(BaseModel):
     paper_portfolio: PaperPortfolio = Field(default_factory=PaperPortfolio)
     last_scan_time: str = ""
     scan_cycle_count: int = 0
+    last_scan_seconds: float = 0.0  # wall time of the latest full scan cycle
     is_scanning: bool = False
     scan_progress: float = 0.0
     universe_count: int = 0

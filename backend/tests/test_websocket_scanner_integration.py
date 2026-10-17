@@ -265,3 +265,34 @@ async def test_worker_stop_and_logout_disconnect_during_reconnecting_state():
     with patch.object(worker.ws_manager, "disconnect", new_callable=AsyncMock) as mock_disc:
         await worker.stop()
         assert mock_disc.called
+
+
+@pytest.mark.asyncio
+async def test_option_tick_publishes_throttled_portfolio_event():
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    q = worker.subscribe()
+    worker._publish_portfolio(force=True)
+    worker._publish_portfolio(force=True)  # inside the throttle window: not sent a second time
+    events = []
+    while not q.empty():
+        events.append(q.get_nowait())
+    portfolio_events = [e for e in events if e.get("type") == "portfolio"]
+    assert len(portfolio_events) == 1
+    assert "active_positions" in portfolio_events[0]["paper_portfolio"]
+    assert portfolio_events[0]["paper_portfolio"]["closed_trades"] == []
+    worker.unsubscribe(q)
+    await worker.stop()
+
+
+@pytest.mark.asyncio
+async def test_repeated_ticks_for_one_instrument_are_throttled():
+    worker = ScannerWorker(universe_mgr=UniverseManager())
+    q = worker.subscribe()
+    for ltp in (100.0, 100.5, 101.0):
+        await worker._handle_incoming_ws_tick({"security_id": 13, "exchange_segment": 0, "ltp": ltp})
+    ticks = []
+    while not q.empty():
+        ticks.append(q.get_nowait())
+    assert len([e for e in ticks if e.get("type") == "tick"]) == 1
+    worker.unsubscribe(q)
+    await worker.stop()
