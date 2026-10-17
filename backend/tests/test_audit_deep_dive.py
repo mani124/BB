@@ -736,3 +736,15 @@ async def test_finding_6_zero_price_option_chain_does_not_refresh_quote_time():
 
 
 
+
+
+def test_allowed_origin_env_replaces_built_in_deployed_default(monkeypatch):
+    """With ALLOWED_ORIGIN set, the built-in VM address is no longer trusted; unset keeps it."""
+    from app.main import create_app
+    old = "https://options.34-14-178-224.sslip.io"
+    monkeypatch.setenv("ALLOWED_ORIGIN", "https://options.mydomain.com")
+    with TestClient(create_app()) as c:
+        assert c.post("/api/paper/reset", headers={"Origin": old}).status_code == 403
+    monkeypatch.delenv("ALLOWED_ORIGIN")
+    with TestClient(create_app()) as c:
+        assert c.post("/api/paper/reset", headers={"Origin": old}).status_code == 200

@@ -19,11 +19,34 @@ class SessionAuthRequest(BaseModel):
     secret: str = Field(..., description="Master dashboard capability secret")
 
 
+# Wrong-key attempts per client in a sliding window. Behind the reverse proxy every client may share one address, so
+# this also acts as a global brake on guessing; the window is short so the owner is never locked out for long.
+_SESSION_FAIL_LIMIT = 10
+_SESSION_FAIL_WINDOW_S = 300
+_session_failures: dict[str, list[float]] = {}
+
+
+def _recent_failures(client: str, now: float) -> list[float]:
+    recent = [t for t in _session_failures.get(client, []) if now - t < _SESSION_FAIL_WINDOW_S]
+    if recent:
+        _session_failures[client] = recent
+    else:
+        _session_failures.pop(client, None)
+    return recent
+
+
 @router.post("/session")
-def create_dashboard_session(body: SessionAuthRequest, response: Response):
+def create_dashboard_session(body: SessionAuthRequest, request: Request, response: Response):
     import hmac
+    import time
+    client = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    if len(_recent_failures(client, now)) >= _SESSION_FAIL_LIMIT:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail="Too many wrong keys, try again in a few minutes")
     expected = settings.DASHBOARD_CAPABILITY.strip()
     if not expected or not hmac.compare_digest(body.secret.strip(), expected):
+        _session_failures.setdefault(client, []).append(now)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid dashboard capability secret"
@@ -36,6 +59,7 @@ def create_dashboard_session(body: SessionAuthRequest, response: Response):
         secure=settings.COOKIE_SECURE,
         max_age=SESSION_TTL_SECONDS,
     )
+    _session_failures.pop(client, None)
     return {"status": "authenticated"}
 
 

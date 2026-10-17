@@ -2,13 +2,16 @@ export const CAPABILITY_STORAGE_KEY = 'dashboard_capability';
 // The old public default key; it is never sent and is dropped if found in storage.
 const LEGACY_PUBLIC_KEY = 'bb-options-local-capability';
 
+// The key lives in sessionStorage (this tab only, gone when it closes). The HttpOnly session cookie is what keeps
+// a returning visitor signed in; an older copy left in localStorage is removed.
 export function getDashboardCapability(): string {
-  const stored = localStorage.getItem(CAPABILITY_STORAGE_KEY) || '';
+  try { localStorage.removeItem(CAPABILITY_STORAGE_KEY); } catch { /* storage unavailable */ }
+  const stored = sessionStorage.getItem(CAPABILITY_STORAGE_KEY) || '';
   return stored === LEGACY_PUBLIC_KEY ? '' : stored;
 }
 
 export function setDashboardCapability(token: string): void {
-  localStorage.setItem(CAPABILITY_STORAGE_KEY, token);
+  sessionStorage.setItem(CAPABILITY_STORAGE_KEY, token);
 }
 
 export async function bootstrapDashboardSession(customToken?: string): Promise<boolean> {
