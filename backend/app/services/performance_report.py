@@ -24,7 +24,8 @@ def _outcome(p) -> float:
 
 def _r(p) -> Optional[float]:
     qty = p.initial_quantity or p.quantity
-    risk = (p.option_entry - p.option_sl) * qty
+    stop = getattr(p, "initial_option_sl", None) or p.option_sl
+    risk = (p.option_entry - stop) * qty
     return _outcome(p) / risk if risk > 0 else None
 
 

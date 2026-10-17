@@ -45,3 +45,36 @@ def test_endpoint():
     client = TestClient(app)
     r = client.get("/api/paper/setup-stats?mode=all")
     assert r.status_code == 200 and isinstance(r.json(), list)
+
+
+def test_r_uses_initial_stop_after_target_1_moved_the_stop():
+    p = pos("a", "S1", 150.0, "2026-10-14T10:00:00+05:30", sl=100.0)  # stop moved to entry
+    p.initial_option_sl = 90.0                                          # risk 100
+    tot = [r for r in compute_setup_stats([p]) if r.date == "ALL"][0]
+    assert tot.r_trades == 1 and tot.avg_r == 1.5
+
+    from app.services.performance_report import _r
+    assert _r(p) == 1.5
+
+
+def test_entry_delay_seconds_from_bar_close():
+    from datetime import datetime
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from app.services.paper_trader import PaperTradingEngine
+
+    sig = SimpleNamespace(timestamp="2026-10-14 10:00:00", timeframe="5m")
+    with patch("app.services.paper_trader.market_hours.now_ist", return_value=datetime(2026, 10, 14, 10, 5, 7)):
+        assert PaperTradingEngine._entry_delay_seconds(sig) == 7.0
+    assert PaperTradingEngine._entry_delay_seconds(SimpleNamespace(timestamp="junk", timeframe="5m")) is None
+
+
+def test_new_columns_round_trip(tmp_path):
+    from app.services.paper_storage import PaperStorage
+    s = PaperStorage(db_path=str(tmp_path / "t.db"))
+    p = pos("a", "S1", 0.0, None)
+    p.status = "OPEN"
+    p.initial_option_sl, p.entry_delay_s = 90.0, 4.2
+    s.upsert_position(p)
+    active, _ = PaperStorage(db_path=str(tmp_path / "t.db")).load_all_positions()
+    assert active[0].initial_option_sl == 90.0 and active[0].entry_delay_s == 4.2

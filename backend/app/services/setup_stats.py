@@ -14,8 +14,8 @@ class SetupDayStats(BaseModel):
     wins: int = 0
     win_rate: float = 0.0
     avg_r: Optional[float] = None  # None when no trade had a measurable stop distance
-    # Trades that went into avg_r. After Target 1 the stop moves to entry, so those trades have no
-    # measurable initial risk and are left out: avg_r only covers trades stopped or exited before that.
+    # Trades that went into avg_r. Trades that reached Target 1 count when the initial stop was recorded
+    # (initial_option_sl); older ones, whose stop had already moved to entry, have no measurable risk and are left out.
     r_trades: int = 0
     gross_pnl: float = 0.0
     total_slippage_cost: float = 0.0
@@ -24,7 +24,9 @@ class SetupDayStats(BaseModel):
 
 def _trade_r(p) -> Optional[float]:
     qty = p.initial_quantity or p.quantity
-    risk = (p.option_entry - p.option_sl) * qty
+    # option_sl moves to entry at Target 1, so use the stop as first set when it was recorded.
+    stop = getattr(p, "initial_option_sl", None) or p.option_sl
+    risk = (p.option_entry - stop) * qty
     if risk <= 0:
         return None
     return p.net_pnl / risk
