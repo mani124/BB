@@ -234,7 +234,15 @@ async def engage_kill_switch(body: KillSwitchRequest):
         except Exception:
             logger.exception("Kill switch could not close %s", pos.id)
             failed.append(pos.id)
-    return {"status": "engaged", "closed": closed, "failed": failed, "risk": paper_trader.risk_status(None)}
+    earnings_closed = 0
+    try:
+        from app.services.earnings_registry import get_engine
+        earnings_closed = await get_engine().square_off_all("KILL_SWITCH")
+    except Exception:
+        logger.exception("Kill switch could not square off the earnings book")
+        failed.append("earnings_book")
+    return {"status": "engaged", "closed": closed, "earnings_closed": earnings_closed, "failed": failed,
+            "risk": paper_trader.risk_status(None)}
 
 
 @router.post("/kill-switch/release")
