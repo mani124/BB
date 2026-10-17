@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import uuid
 import logging
 from datetime import datetime, timedelta
@@ -18,6 +19,8 @@ from app.services import liquidity_filter
 from app.services.paper_exits import PaperExitsMixin
 from app.services.paper_risk import PaperRiskMixin
 from app.services import setup_switches
+from app.services.runtime_settings import RuntimeSettings
+from app.services.telemetry import Telemetry
 logger = logging.getLogger(__name__)
 
 
@@ -41,6 +44,14 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._portfolio_generation: int = 0
         self._pending_errors: list[Exception] = []
+        # Every limit and threshold is a runtime setting (see runtime_settings.py): editable from the dashboard,
+        # persisted in the database, falling back to the environment defaults.
+        self.runtime = RuntimeSettings(db_path)
+        self.telemetry = Telemetry(
+            db_path, self.runtime,
+            log_dir=os.path.join(os.path.dirname(os.path.abspath(db_path)), "logs") if db_path else None)
+        self.runtime.on_change("default_lots", self._apply_default_lots)
+        self.runtime.on_change("max_risk_per_trade", self._apply_max_risk)
         self._init_risk()
         if db_path is not None:
             from app.services.paper_storage import PaperStorage
@@ -156,17 +167,30 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         self._enqueue_write("save_setting", ("setup_modes", json.dumps(merged)))
 
     def set_default_lots(self, lots: int):
-        self._portfolio.default_lots = max(2, lots)  # 2 lots minimum so Target 1 can book 50%
-        self._enqueue_write("save_setting", ("default_lots", str(self._portfolio.default_lots)))
+        self.runtime.set("default_lots", max(2, int(lots)))  # 2 lots minimum so Target 1 can book 50%
 
     def set_max_risk_per_trade(self, amount: float):
-        self._portfolio.max_risk_per_trade = max(500.0, float(amount))
+        self.runtime.set("max_risk_per_trade", max(500.0, float(amount)))
+
+    def _apply_default_lots(self, value) -> None:
+        self._portfolio.default_lots = int(value)
+        self._enqueue_write("save_setting", ("default_lots", str(self._portfolio.default_lots)))
+
+    def _apply_max_risk(self, value) -> None:
+        self._portfolio.max_risk_per_trade = float(value)
         self._enqueue_write("save_setting", ("max_risk_per_trade", str(self._portfolio.max_risk_per_trade)))
+
+    def _sync_portfolio_from_runtime(self) -> None:
+        """Portfolio fields that mirror runtime settings take the stored/overridden value (used after load and reset)."""
+        for key, attr in (("default_lots", "default_lots"), ("max_risk_per_trade", "max_risk_per_trade")):
+            if self.runtime.is_overridden(key):
+                setattr(self._portfolio, attr, self.runtime.get(key))
 
     async def reset(self) -> None:
         self._portfolio_generation += 1
         saved_modes = self._portfolio.setup_modes
         self._portfolio = PaperPortfolio(setup_modes=saved_modes)
+        self._sync_portfolio_from_runtime()
         self._processed_signal_ids.clear()
         self._loss_cap_trips = {}  # a reset empties the day's P&L, so a stored trip no longer applies
         self._enqueue_write("save_setting", ("loss_cap_trips", "{}"))  # ...and must not come back on restart
@@ -189,6 +213,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             self._portfolio_generation += 1
             saved_modes = self._portfolio.setup_modes
             self._portfolio = PaperPortfolio(setup_modes=saved_modes)
+            self._sync_portfolio_from_runtime()
             self._processed_signal_ids.clear()
             self._loss_cap_trips = {}
             if self.storage:
@@ -197,6 +222,42 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
 
     def reset_portfolio(self) -> None:
         self.reset_sync()
+
+
+    # ---- telemetry helpers ----
+    _SKIP_CODES = (
+        ("kill switch", "KILL_SWITCH"), ("daily loss cap", "LOSS_CAP"), ("consecutive losses", "LOSS_STREAK_PAUSE"),
+        ("max open positions", "MAX_OPEN_POSITIONS"), ("open premium notional", "MAX_OPEN_NOTIONAL"),
+        ("max entries per day", "MAX_ENTRIES_PER_DAY"), ("entries today", "MAX_ENTRIES_PER_SYMBOL_DAY"),
+        ("cooldown", "REENTRY_COOLDOWN"), ("already has an open position", "ALREADY_OPEN"),
+        ("quote is", "QUOTE_STALE"), ("spread", "SPREAD_TOO_WIDE"), ("crossed market", "CROSSED_MARKET"),
+        ("lot size unknown", "LOT_SIZE_UNKNOWN"), ("assumed delta", "DELTA_ASSUMED"),
+    )
+
+    @classmethod
+    def _skip_code(cls, reason: str) -> str:
+        low = reason.lower()
+        for needle, code in cls._SKIP_CODES:
+            if needle in low:
+                return code
+        return "OTHER"
+
+    def _signal_metrics(self, signal: Signal) -> dict:
+        rec = getattr(signal, "strike_recommendation", None)
+        m = {"timeframe": signal.timeframe, "underlying_entry": signal.entry_price}
+        if rec is not None:
+            for attr in ("estimated_option_entry", "real_bid_price", "real_ask_price", "real_ltp", "lot_size", "quote_age_s"):
+                v = getattr(rec, attr, None)
+                if v is not None:
+                    m[attr] = v
+        return m
+
+    def _log_skip(self, signal: Signal, feed_mode: str, code: str, reason: str = "", **extra) -> None:
+        """Record why a signal was declined. Also marks nothing: callers keep their own processed-signal handling."""
+        self.telemetry.decision(
+            book=feed_mode, strategy=getattr(signal.setup_type, "value", str(signal.setup_type)), symbol=signal.symbol,
+            side=signal.option_type, decision="SKIPPED", reason=code, signal_id=signal.id,
+            metrics={**self._signal_metrics(signal), "detail": reason, **extra})
 
     def open_position_from_signal(
         self,
@@ -216,6 +277,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         # (demo mode runs on synthetic offline data and is not tied to exchange hours)
         if feed_mode == "live" and not market_hours.is_entry_allowed():
             logger.info("Entry skipped for %s: outside entry window (session closed or past cutoff)", signal.symbol)
+            self._log_skip(signal, feed_mode, "OUTSIDE_ENTRY_WINDOW")
             return None
 
         # Kill switch and daily loss cap stop every new entry, auto or manual.
@@ -223,6 +285,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         if risk_block:
             logger.info("Entry blocked for %s %s: %s", signal.symbol, signal.option_type, risk_block)
             self._processed_signal_ids.add(signal.id)
+            self._log_skip(signal, feed_mode, self._skip_code(risk_block), risk_block)
             return None
 
         # P0-2: exposure guards (one position per contract, per stock+side, plus cooldown)
@@ -230,6 +293,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         if block:
             logger.info("Entry blocked for %s %s: %s", signal.symbol, signal.option_type, block)
             self._processed_signal_ids.add(signal.id)
+            self._log_skip(signal, feed_mode, self._skip_code(block), block)
             return None
 
         # Check re-entry gate: prevent consecutive stop-out churn in the same chop box
@@ -249,6 +313,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                         f"Re-entry blocked for {signal.symbol} Setup 5: option entry {opt_entry} <= previous failed option price {failed_peak} (Chop box protection)"
                     )
                     self._processed_signal_ids.add(signal.id)
+                    self._log_skip(signal, feed_mode, "REENTRY_CHOP_GATE", "price not beyond the previous stopped-out entry")
                     return None
             elif signal.option_type == "CE":
                 failed_peak = last_closed.underlying_entry
@@ -257,6 +322,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                         f"Re-entry blocked for {signal.symbol} CE: entry {signal.entry_price} <= previous failed high {failed_peak} (Chop box protection)"
                     )
                     self._processed_signal_ids.add(signal.id)
+                    self._log_skip(signal, feed_mode, "REENTRY_CHOP_GATE", "price not beyond the previous stopped-out entry")
                     return None
             elif signal.option_type == "PE":
                 failed_trough = last_closed.underlying_entry
@@ -265,6 +331,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                         f"Re-entry blocked for {signal.symbol} PE: entry {signal.entry_price} >= previous failed low {failed_trough} (Chop box protection)"
                     )
                     self._processed_signal_ids.add(signal.id)
+                    self._log_skip(signal, feed_mode, "REENTRY_CHOP_GATE", "price not beyond the previous stopped-out entry")
                     return None
 
         rec = signal.strike_recommendation
@@ -278,18 +345,23 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                     f"Live position entry skipped for {signal.symbol}: contract unresolved or missing usable live option quote"
                 )
                 self._processed_signal_ids.add(signal.id)
+                self._log_skip(signal, feed_mode, "NO_LIVE_QUOTE", "contract unresolved or no usable live option quote")
                 return None
 
             # P1-3: reject stale or untradeable quotes (frozen last trade, wide/one-sided market).
-            quote_block = self._quote_block_reason(rec)
+            quote_block = self._quote_block_reason(
+                rec, max_age=float(self.runtime.get("max_quote_age_seconds")),
+                max_spread=float(self.runtime.get("max_entry_spread_pct")))
             if quote_block:
                 logger.warning("DATA_QUALITY entry_blocked symbol=%s side=%s reason=%s", signal.symbol, signal.option_type, quote_block)
                 self._processed_signal_ids.add(signal.id)
+                self._log_skip(signal, feed_mode, self._skip_code(quote_block), quote_block)
                 return None
 
         liq_block = liquidity_filter.check_recommendation(rec, signal.symbol, signal.option_type)
         if liq_block:
             self._processed_signal_ids.add(signal.id)
+            self._log_skip(signal, feed_mode, "LIQUIDITY_FILTER", str(liq_block))
             return None
 
         lot_size = rec.lot_size
@@ -323,11 +395,18 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                     f"Trade skipped for {signal.symbol}: risk per lot {risk_per_lot:.1f} exceeds max risk cap {self._portfolio.max_risk_per_trade:.1f}"
                 )
                 self._processed_signal_ids.add(signal.id)
+                self._log_skip(signal, feed_mode, "RISK_PER_TRADE_TOO_HIGH",
+                               risk_per_lot=round(risk_per_lot, 2), max_risk_per_trade=self._portfolio.max_risk_per_trade)
                 return None
             lots_to_trade = min(target_lots, allowed_lots)
             if lots_to_trade < target_lots:
                 logger.warning("Risk cap reduced %s from %d to %d lot(s)%s", signal.symbol, target_lots, lots_to_trade,
                                "; Target 1 will not book a partial" if lots_to_trade < 2 else "")
+
+        lot_cap = int(self.runtime.get("max_lots_per_trade"))
+        if lot_cap > 0 and lots_to_trade > lot_cap:
+            logger.warning("Lot cap reduced %s from %d to %d lot(s)", signal.symbol, lots_to_trade, lot_cap)
+            lots_to_trade = lot_cap
 
         self._processed_signal_ids.add(signal.id)
         qty = lot_size * lots_to_trade
@@ -401,7 +480,15 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             self._portfolio.active_positions.remove(pos)
             self._processed_signal_ids.discard(signal.id)  # allow a retry once storage recovers
             self._recalculate_metrics()
+            self._log_skip(signal, feed_mode, "STORAGE_WRITE_FAILED")
             return None
+        self.telemetry.decision(
+            book=feed_mode, strategy=pos.setup_type, symbol=pos.symbol, side=pos.option_type, decision="ENTERED",
+            reason="SIGNAL_CONFIRMED", signal_id=signal.id, position_id=pos.id,
+            metrics={**self._signal_metrics(signal), "lots": lots_to_trade, "fill": pos.option_entry,
+                     "signal_price": pos.theoretical_entry, "entry_slippage": pos.entry_slippage,
+                     "spread_pct": pos.entry_spread_pct, "risk_per_lot": round(risk_per_lot, 2),
+                     "estimated_fill": entry_estimated})
         if self.on_position_opened:
             try:
                 res = self.on_position_opened(pos)
@@ -432,6 +519,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                 switched_off = setup_switches.block_reason(modes, sig.setup_type, sig.symbol)
                 if switched_off:
                     logger.info("Auto-entry skipped for %s: %s", sig.symbol, switched_off)
+                    self._log_skip(sig, feed_mode, "SETUP_SWITCHED_OFF", switched_off)
                     self._processed_signal_ids.add(sig.id)
                     continue
                 # Open position for new signals

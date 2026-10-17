@@ -36,7 +36,6 @@ class RiskStatus(BaseModel):
 
 class PaperRiskMixin:
     def _init_risk(self) -> None:
-        self._daily_loss_limit: float = max(0.0, float(getattr(settings, "DAILY_LOSS_LIMIT", 0) or 0))
         self._kill_switch: bool = False
         self._kill_switch_since: Optional[str] = None
         self._loss_cap_trips: dict[str, str] = {}  # book ("live"/"demo") -> IST date it tripped
@@ -44,14 +43,19 @@ class PaperRiskMixin:
         # "kill_switch_engaged", "kill_switch_released". Left unset until something subscribes.
         self.on_risk_event = None
 
+    @property
+    def _daily_loss_limit(self) -> float:
+        """Live value of the runtime setting, so a change from the dashboard applies to the next decision."""
+        return float(self.runtime.get("daily_loss_limit"))
+
     def _load_risk(self) -> None:
         if not self.storage:
             return
         raw = self.storage.load_setting("daily_loss_limit")
-        if raw is not None:
+        if raw is not None and not self.runtime.is_overridden("daily_loss_limit"):
             try:
-                self._daily_loss_limit = max(0.0, float(raw))
-            except ValueError:
+                self.runtime.adopt("daily_loss_limit", max(0.0, float(raw)))  # carry a pre-settings-store value forward
+            except (ValueError, Exception):
                 pass
         self._kill_switch = (self.storage.load_setting("kill_switch") or "").lower() == "true"
         self._kill_switch_since = self.storage.load_setting("kill_switch_since") or None
@@ -112,12 +116,36 @@ class PaperRiskMixin:
         self._emit_risk_event("loss_cap_tripped", {"book": book, "day_pnl": pnl, "limit": limit, "date": today})
         return True
 
+    def consecutive_losses_today(self, book: str) -> int:
+        """Losing trades in a row (most recent first) among today's closed trades in `book`; breakeven ends the run."""
+        from app.services.paper_trader import _outcome_pnl
+        today = market_hours.now_ist().date()
+        todays = []
+        for p in self._portfolio.closed_trades:
+            if p.quarantine_reason or getattr(p, "feed_mode", "demo") != book:
+                continue
+            ed = _parse_iso(p.exit_datetime)
+            if ed is not None and ed.date() == today:
+                todays.append((ed, p))
+        run = 0
+        for _, p in sorted(todays, key=lambda t: t[0], reverse=True):
+            if _outcome_pnl(p) < 0:
+                run += 1
+            else:
+                break
+        return run
+
     def risk_block_reason(self, feed_mode: str) -> Optional[str]:
-        """Why a new entry in `feed_mode` must be refused by the kill switch or loss cap, else None."""
+        """Why a new entry in `feed_mode` must be refused by the kill switch, loss cap or loss streak, else None."""
         if self._kill_switch:
             return "kill switch is engaged"
         if self._check_loss_cap(feed_mode):
             return f"daily loss cap reached (limit {self._daily_loss_limit:,.0f})"
+        streak_limit = int(self.runtime.get("max_consecutive_losses"))
+        if streak_limit > 0:
+            run = self.consecutive_losses_today(feed_mode)
+            if run >= streak_limit:
+                return f"paused after {run} consecutive losses today (limit {streak_limit})"
         return None
 
     def risk_status(self, mode: Optional[str] = None) -> RiskStatus:
@@ -142,8 +170,7 @@ class PaperRiskMixin:
 
     def set_daily_loss_limit(self, amount: float) -> None:
         """0 disables the cap. Raising the limit mid-day does not clear an already latched trip."""
-        self._daily_loss_limit = max(0.0, float(amount))
-        self._enqueue_write("save_setting", ("daily_loss_limit", str(self._daily_loss_limit)))
+        self.runtime.set("daily_loss_limit", max(0.0, float(amount)))
 
     def set_kill_switch(self, active: bool) -> bool:
         """Engage or release the switch (squaring off is the caller's job). False if nothing changed."""

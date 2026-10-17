@@ -18,13 +18,16 @@ class PaperGuardsMixin:
     """Methods split out of PaperTradingEngine (no behaviour change)."""
 
     @staticmethod
-    def _quote_block_reason(rec) -> Optional[str]:
-        """P1-3: None if the live quote behind a recommendation is fresh and tradeable."""
+    def _quote_block_reason(rec, max_age: Optional[float] = None, max_spread: Optional[float] = None) -> Optional[str]:
+        """P1-3: None if the live quote behind a recommendation is fresh and tradeable.
+
+        `max_age` / `max_spread` come from the runtime settings when the engine calls this; None falls back to the environment."""
         if getattr(settings, "REQUIRE_REAL_DELTA", False) and getattr(rec, "delta_assumed", False):
             return "option exits rely on an assumed delta (no Greeks in chain)"
         if getattr(rec, "lot_size_known", True) is False:
             return "lot size unknown (guessed default); refusing to size a position"
-        max_age = float(getattr(settings, "MAX_QUOTE_AGE_SECONDS", 0) or 0)
+        if max_age is None:
+            max_age = float(getattr(settings, "MAX_QUOTE_AGE_SECONDS", 0) or 0)
         age = getattr(rec, "quote_age_s", None)
         as_of = getattr(rec, "quote_as_of", None)
         if as_of is not None:
@@ -34,7 +37,8 @@ class PaperGuardsMixin:
             return f"quote is {float(age):.0f}s old (limit {max_age:.0f}s)"
         ask = float(getattr(rec, "real_ask_price", 0.0) or 0.0)
         bid = float(getattr(rec, "real_bid_price", 0.0) or 0.0)
-        max_spread = float(getattr(settings, "MAX_ENTRY_SPREAD_PCT", 0) or 0)
+        if max_spread is None:
+            max_spread = float(getattr(settings, "MAX_ENTRY_SPREAD_PCT", 0) or 0)
         if max_spread > 0 and ask > 0 and bid > 0:
             if ask < bid:
                 return f"crossed market (bid {bid} > ask {ask})"
@@ -70,11 +74,12 @@ class PaperGuardsMixin:
                 return f"{p.symbol} {p.option_type} already has an open position"
 
         # P1-7: portfolio-level caps (0 disables a cap)
-        max_open = int(getattr(settings, "MAX_OPEN_POSITIONS", 0) or 0)
+        rt = self.runtime.get
+        max_open = int(rt("max_open_positions"))
         if max_open > 0 and len(active) >= max_open:
             return f"max open positions reached ({max_open})"
 
-        max_notional = float(getattr(settings, "MAX_OPEN_NOTIONAL", 0) or 0)
+        max_notional = float(rt("max_open_notional"))
         if max_notional > 0:
             open_notional = sum(p.option_entry * p.quantity for p in active)
             lots = lots if lots is not None else self._portfolio.default_lots
@@ -82,7 +87,19 @@ class PaperGuardsMixin:
             if open_notional + new_notional > max_notional:
                 return f"open premium notional would exceed {max_notional:,.0f}"
 
-        max_per_day = int(getattr(settings, "MAX_ENTRIES_PER_SYMBOL_PER_DAY", 0) or 0)
+        max_per_day = int(rt("max_entries_per_symbol_per_day"))
+        max_book_day = int(rt("max_entries_per_day"))
+        if max_book_day > 0:
+            today = market_hours.now_ist().date()
+            book_entries = 0
+            for p in active + closed:
+                if p.quarantine_reason:
+                    continue
+                ed = _parse_iso(p.entry_datetime)
+                if ed is not None and ed.date() == today:
+                    book_entries += 1
+            if book_entries >= max_book_day:
+                return f"max entries per day reached ({book_entries} of {max_book_day})"
         if max_per_day > 0:
             today = market_hours.now_ist().date()
             entered = 0
@@ -95,7 +112,7 @@ class PaperGuardsMixin:
             if entered >= max_per_day:
                 return f"{signal.symbol} already had {entered} entries today (limit {max_per_day})"
 
-        cooldown = int(getattr(settings, "REENTRY_COOLDOWN_SECONDS", 0) or 0)
+        cooldown = int(rt("reentry_cooldown_seconds"))
         if cooldown > 0:
             now = market_hours.now_ist()
             for p in reversed(closed):
