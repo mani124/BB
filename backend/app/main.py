@@ -20,6 +20,7 @@ from app.api.telemetry import router as telemetry_router
 from app.api.earnings import router as earnings_router
 from app.api.live import router as live_router_api
 from app.api.readiness import router as readiness_router
+from app.api.recorder import router as recorder_router
 
 setup_security_logging()
 
@@ -70,6 +71,9 @@ def gather_readiness() -> list:
 
 readiness_monitor = readiness.ReadinessMonitor(gather_readiness)
 
+from app.services.market_recorder import recorder
+recorder.runtime = paper_trader.runtime
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -88,6 +92,10 @@ async def lifespan(app: FastAPI):
         paper_trader.telemetry.purge()
     except Exception:
         logging.getLogger(__name__).warning("telemetry purge failed", exc_info=True)
+    try:
+        recorder.purge()
+    except Exception:
+        logging.getLogger(__name__).warning("market recorder purge failed", exc_info=True)
     notify("service_started", f"{settings.APP_NAME} started (v{settings.VERSION}).", min_interval=60)
     worker.start()
     earnings_task = asyncio.create_task(earnings_registry.poll_loop(earnings_engine))
@@ -104,6 +112,7 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
     await worker.stop()
+    await recorder.maybe_flush(force=True)
     await paper_trader.stop_persistence_worker()
 
 def create_app() -> FastAPI:
@@ -227,6 +236,7 @@ def create_app() -> FastAPI:
     app.include_router(earnings_router, prefix=settings.API_PREFIX)
     app.include_router(live_router_api, prefix=settings.API_PREFIX)
     app.include_router(readiness_router, prefix=settings.API_PREFIX)
+    app.include_router(recorder_router, prefix=settings.API_PREFIX)
 
     return app
 

@@ -205,6 +205,9 @@ The dashboard features a paper trading and forward-testing journal engine:
 
 ---
 
+## 🗄 Market-data recorder
+Every completed 5m/15m bar the scanner sees (spot bars from live ticks and the Dhan intraday seed, option bars from live ticks) is saved to `backend/data/market_bars.db` (table `bars`: kind `spot`/`option`, key = symbol or option security id, tf, ts, OHLCV; real data only, duplicates ignored). It lets a setup idea or a variant (for example an earlier entry cutoff) be replayed offline instead of waiting for live trades. Switch and retention are in Settings (`recorder_enabled`, `recorder_retention_days`, default 180 days). Read it with `GET /api/recorder/status` and `GET /api/recorder/bars?kind=spot&key=NIFTY%2050&day=2026-10-17`, or open the SQLite file in pandas. The file is separate from `trades.db` and is not part of the nightly GCS backup. Limits: option bars exist only for contracts the scanner tracked, keyed by security id (map to a contract through the trades or decisions tables); no option-chain OI history yet.
+
 ## 🔌 REST API & SSE Live Streams
 
 The FastAPI backend exposes the following endpoints under `/api`:

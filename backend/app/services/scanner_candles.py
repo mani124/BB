@@ -21,6 +21,7 @@ from app.services.strategy_engine import evaluate_signals, Signal, SetupType
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size
 from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
+from app.services.market_recorder import recorder, SPOT, OPTION
 from app.services.momentum_ranker import MomentumRanker, MomentumRankings
 from app.services.scanner_models import *  # noqa: F401,F403
 
@@ -147,6 +148,7 @@ class ScannerCandlesMixin:
                     return False
 
                 self._candle_history[sym] = completed_records
+                recorder.record_many(SPOT, sym, interval, completed_records)
                 if unfinished_bar:
                     # Merge into active forming candle so it is treated as provisional
                     self._current_forming_candle[sym] = unfinished_bar
@@ -244,6 +246,7 @@ class ScannerCandlesMixin:
         if bar_elapsed >= (step_min * 60) or forming_ts.date() != now.date():
             self._candle_history[sym].append(forming)
             self._bar_completed_symbols.add(sym)
+            recorder.record(SPOT, sym, step_min, forming)
             forming = {
                 "timestamp": current_slot_ts,
                 "open": live_ltp,
@@ -299,6 +302,7 @@ class ScannerCandlesMixin:
 
             if forming is not None and pd.Timestamp(forming["timestamp"]) < slot:
                 history.append(forming)
+                recorder.record(OPTION, sec_id, step_min, forming)
                 forming = None
 
             if forming is None:
