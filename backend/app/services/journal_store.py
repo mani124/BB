@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from typing import Optional
 
 from app.services import market_hours
+from app.services import db
 
 MAX_NOTE_LEN = 1000
 MAX_TAG_LEN = 40
@@ -20,7 +21,7 @@ class JournalStore:
 
     @contextmanager
     def _conn(self):
-        conn = sqlite3.connect(self.db_path)
+        conn = db.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         try:
             with conn:  # commit / rollback

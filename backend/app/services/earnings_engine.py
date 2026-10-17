@@ -25,6 +25,7 @@ from app.services import market_hours
 from app.services.charges_calculator import calculate_option_trade_charges
 from app.services.runtime_settings import RuntimeSettings
 from app.services.telemetry import Telemetry
+from app.services import db
 
 logger = logging.getLogger(__name__)
 BOOK = "earnings"
@@ -63,7 +64,7 @@ class EarningsStore:
                     id TEXT PRIMARY KEY, symbol TEXT, mode TEXT, status TEXT, earnings_date TEXT, opened_at TEXT, body TEXT)""")
 
     def _conn(self) -> sqlite3.Connection:
-        c = sqlite3.connect(self.db_path, timeout=5)
+        c = db.connect(self.db_path)
         c.row_factory = sqlite3.Row
         return c
 
