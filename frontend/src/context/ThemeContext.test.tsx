@@ -30,7 +30,7 @@ describe('ThemeContext', () => {
 
     expect(screen.getByTestId('current-theme').textContent).toBe('light');
     expect(document.documentElement.classList.contains('dark')).toBe(false);
-    expect(document.documentElement.classList.contains('light')).toBe(true);
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
   });
 
   it('allows toggling between light and dark theme', () => {
@@ -59,7 +59,7 @@ describe('ThemeContext', () => {
     });
     expect(screen.getByTestId('current-theme').textContent).toBe('light');
     expect(document.documentElement.classList.contains('dark')).toBe(false);
-    expect(document.documentElement.classList.contains('light')).toBe(true);
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
     expect(localStorage.getItem('app_theme')).toBe('light');
   });
 

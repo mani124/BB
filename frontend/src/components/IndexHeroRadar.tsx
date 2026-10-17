@@ -19,17 +19,16 @@ export const IndexHeroRadar: React.FC<IndexHeroRadarProps> = ({ radar }) => {
       aria-label="Benchmark indices Bollinger radar (5m)"
     >
       {indexKeys.map((key) => {
-        const item = radar[key] || {
-          symbol: key,
-          close: 0,
-          change_pct: 0,
-          percent_b: 0.5,
-          bandwidth: 0,
-          is_squeeze: false,
-          vwap_bias: 'ABOVE_VWAP',
-          rsi: 50,
-          trend_state: 'RANGE',
-        };
+        const item = radar[key];
+        // No data for this index yet: show dashes, never invented %B / RSI / VWAP values.
+        if (!item) {
+          return (
+            <div key={key} className="flex items-center gap-x-1.5 overflow-hidden whitespace-nowrap" title={`${key} · no data yet`}>
+              <b className="font-semibold shrink-0">{SHORT_NAMES[key] ?? key}</b>
+              <span className="desk-num desk-muted">---</span>
+            </div>
+          );
+        }
         const isPositive = item.change_pct >= 0;
         const isAboveVwap = item.vwap_bias === 'ABOVE_VWAP';
         return (

@@ -343,9 +343,12 @@ const DashboardContent: React.FC = () => {
       if (res.ok) {
         const portData = await res.json();
         applyPortfolio(portData);
+      } else {
+        setActionError(await settingsError(res, 'auto-trade'));
       }
     } catch (e) {
       console.error('Toggle auto trade failed', e);
+      setActionError('Network error changing auto-trade.');
     }
   };
 
@@ -395,9 +398,12 @@ const DashboardContent: React.FC = () => {
       if (res.ok) {
         const portData = await res.json();
         applyPortfolio(portData);
+      } else {
+        setActionError(await settingsError(res, 'the setup mode'));
       }
     } catch (e) {
       console.error('Change setup mode failed', e);
+      setActionError('Network error changing the setup mode.');
     }
   };
 
@@ -416,9 +422,12 @@ const DashboardContent: React.FC = () => {
       if (res.ok) {
         const portData = await res.json();
         applyPortfolio(portData);
+      } else {
+        setActionError(await settingsError(res, 'the lot size'));
       }
     } catch (e) {
       console.error('Change lots failed', e);
+      setActionError('Network error changing the lot size.');
     }
   };
 
@@ -584,6 +593,13 @@ const DashboardContent: React.FC = () => {
     </div>
   );
 };
+
+/** Message for a rejected settings change, so a toggle that snapped back is never unexplained. */
+async function settingsError(res: Response, what: string): Promise<string> {
+  const body = await res.json().catch(() => null);
+  const detail = typeof body?.detail === 'string' ? body.detail : `HTTP ${res.status}`;
+  return `Could not change ${what}: ${detail}`;
+}
 
 export default function App() {
   return (

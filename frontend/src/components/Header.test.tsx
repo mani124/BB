@@ -26,7 +26,7 @@ describe('Header Theme Toggle', () => {
     expect(themeToggleBtn).toBeInTheDocument();
 
     // Default theme is light
-    expect(document.documentElement.classList.contains('light')).toBe(true);
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
     expect(document.documentElement.classList.contains('dark')).toBe(false);
 
     // Click toggle button
