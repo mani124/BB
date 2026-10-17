@@ -29,3 +29,6 @@ wait for `/api/health` and an active service, and roll back automatically on fai
 - A rollback does not undo `pip install` changes or database schema changes made by a new version.
 - Anyone who can push to `main` controls what goes live. Consider branch protection.
 - `FRONTEND_DIST` defaults to `<app>/frontend/dist`; if caddy serves the site from elsewhere, set it in the config file.
+
+## Morning readiness alerts
+The app checks itself and sends a Telegram message (needs `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`) at 09:00 IST on trading days listing anything not OK: Dhan login, feed, backup age (reads `/var/lib/bb-backup`), failed deploy (reads `/var/lib/bb-deploy/failed`), disk use (warn 80%, fail 90%), NSE holiday list, Telegram, live-routing session and kill switch. If Dhan is still not logged in it reminds at 09:10 and 09:20, and at 18:00 it alerts on machine problems (backup, disk, holiday list). Same data: `GET /api/readiness`. Override the state directories with `BB_BACKUP_STATE_DIR` / `BB_DEPLOY_STATE_DIR`. The app user must be able to read those directories.

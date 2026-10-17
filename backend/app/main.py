@@ -19,6 +19,7 @@ from app.api.runtime_config import router as runtime_config_router
 from app.api.telemetry import router as telemetry_router
 from app.api.earnings import router as earnings_router
 from app.api.live import router as live_router_api
+from app.api.readiness import router as readiness_router
 
 setup_security_logging()
 
@@ -53,6 +54,23 @@ set_router(live_router)
 paper_trader.on_live_entry = live_router.on_entry
 paper_trader.on_position_update = live_router.on_position_update
 
+from app.services import readiness
+
+
+def gather_readiness() -> list:
+    state = worker.get_state()
+    return readiness.run_checks(
+        has_dhan_login=bool(worker._session_credentials),
+        feed_live=state.feed_status in ("WS_LIVE", "LIVE"),
+        router_mode=live_router.mode,
+        broker_session=live_router.broker.has_session(),
+        kill_switch=paper_trader.risk_status(None).kill_switch_active,
+    )
+
+
+readiness_monitor = readiness.ReadinessMonitor(gather_readiness)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cap = settings.DASHBOARD_CAPABILITY.strip()
@@ -75,10 +93,12 @@ async def lifespan(app: FastAPI):
     earnings_task = asyncio.create_task(earnings_registry.poll_loop(earnings_engine))
     live_router.bind_loop(asyncio.get_running_loop())
     live_task = asyncio.create_task(live_router.run_loop())
+    readiness_task = asyncio.create_task(readiness_monitor.run())
     yield
     live_task.cancel()
     earnings_task.cancel()
-    for task in (earnings_task, live_task):
+    readiness_task.cancel()
+    for task in (earnings_task, live_task, readiness_task):
         try:
             await task
         except asyncio.CancelledError:
@@ -206,6 +226,7 @@ def create_app() -> FastAPI:
     app.include_router(telemetry_router, prefix=settings.API_PREFIX)
     app.include_router(earnings_router, prefix=settings.API_PREFIX)
     app.include_router(live_router_api, prefix=settings.API_PREFIX)
+    app.include_router(readiness_router, prefix=settings.API_PREFIX)
 
     return app
 
