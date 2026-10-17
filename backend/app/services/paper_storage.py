@@ -105,6 +105,8 @@ class PaperStorage:
                 "ALTER TABLE positions ADD COLUMN option_oi REAL DEFAULT NULL;",
                 "ALTER TABLE positions ADD COLUMN bid_qty REAL DEFAULT NULL;",
                 "ALTER TABLE positions ADD COLUMN ask_qty REAL DEFAULT NULL;",
+                "ALTER TABLE positions ADD COLUMN initial_option_sl REAL DEFAULT NULL;",
+                "ALTER TABLE positions ADD COLUMN entry_delay_s REAL DEFAULT NULL;",
             ]
             for stmt in migrations:
                 try:
@@ -196,6 +198,7 @@ class PaperStorage:
         "booked_slippage_cost", "pending_spot_exit", "pending_spot_tp1",
         "entry_datetime", "exit_datetime", "quarantine_reason", "entry_estimated",
         "entry_bid", "entry_spread_pct", "option_volume", "option_oi", "bid_qty", "ask_qty",
+        "initial_option_sl", "entry_delay_s",
     )
     # Columns that never change after the row is first inserted.
     # (underlying_sl / option_sl are deliberately absent: they move to entry at Target 1 and must persist.)
@@ -205,6 +208,7 @@ class PaperStorage:
         "option_entry", "option_target_1", "option_target_2", "lot_size",
         "initial_lots", "initial_quantity",
         "entry_bid", "entry_spread_pct", "option_volume", "option_oi", "bid_qty", "ask_qty",
+        "initial_option_sl", "entry_delay_s",
     })
 
     @classmethod
@@ -246,6 +250,7 @@ class PaperStorage:
             getattr(pos, "entry_bid", None), getattr(pos, "entry_spread_pct", None),
             getattr(pos, "option_volume", None), getattr(pos, "option_oi", None),
             getattr(pos, "bid_qty", None), getattr(pos, "ask_qty", None),
+            getattr(pos, "initial_option_sl", None), getattr(pos, "entry_delay_s", None),
         )
 
     def upsert_position(self, pos: PaperPosition):

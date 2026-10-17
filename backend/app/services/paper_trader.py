@@ -245,6 +245,20 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                 return code
         return "OTHER"
 
+    @staticmethod
+    def _entry_delay_seconds(signal) -> Optional[float]:
+        """Seconds from the close of the signal's bar (bar start + timeframe) to now. None if it cannot be worked out."""
+        try:
+            import pandas as pd
+            start = pd.Timestamp(str(signal.timestamp))
+            minutes = int(str(signal.timeframe).rstrip("mM"))
+            end = start + pd.Timedelta(minutes=minutes)
+            now = market_hours.now_ist().replace(tzinfo=None)
+            delay = (pd.Timestamp(now) - end).total_seconds()
+            return round(delay, 1) if abs(delay) < 86400 else None
+        except Exception:
+            return None
+
     def _signal_metrics(self, signal: Signal) -> dict:
         rec = getattr(signal, "strike_recommendation", None)
         m = {"timeframe": signal.timeframe, "underlying_entry": signal.entry_price}
@@ -475,6 +489,8 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             option_oi=getattr(rec, "real_oi", None),
             bid_qty=getattr(rec, "real_bid_qty", None),
             ask_qty=getattr(rec, "real_ask_qty", None),
+            initial_option_sl=rec.option_sl_price,
+            entry_delay_s=self._entry_delay_seconds(signal),
         )
 
         self._portfolio.active_positions.append(pos)
@@ -492,7 +508,7 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
             metrics={**self._signal_metrics(signal), "lots": lots_to_trade, "fill": pos.option_entry,
                      "signal_price": pos.theoretical_entry, "entry_slippage": pos.entry_slippage,
                      "spread_pct": pos.entry_spread_pct, "risk_per_lot": round(risk_per_lot, 2),
-                     "estimated_fill": entry_estimated})
+                     "estimated_fill": entry_estimated, "entry_delay_s": pos.entry_delay_s})
         if self.on_position_opened:
             try:
                 res = self.on_position_opened(pos)

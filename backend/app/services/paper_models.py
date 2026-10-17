@@ -77,6 +77,12 @@ class PaperPosition(BaseModel):
     option_oi: Optional[float] = None
     bid_qty: Optional[float] = None
     ask_qty: Optional[float] = None
+    # The stop as first set. option_sl moves to the entry price at Target 1, so R multiples for trades that
+    # reached Target 1 need this. None on trades opened before this field existed.
+    initial_option_sl: Optional[float] = None
+    # Seconds from the close of the signal bar to the fill (negative if the signal was read on a forming bar).
+    # Together with entry_slippage it separates "we were slow" from "the price jumped".
+    entry_delay_s: Optional[float] = None
 
 class DailyPnl(BaseModel):
     date: str
