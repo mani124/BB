@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import { Tabs } from './Tabs';
+import { LiveRoutingPanel } from './LiveRoutingPanel';
 import type { RuntimeSetting, RuntimeSettingsPayload, SettingAuditRow } from '../types';
 
 type Draft = string | boolean;
@@ -154,6 +155,7 @@ export const SettingsPanel: React.FC<{ initial?: RuntimeSettingsPayload; initial
 
         <div id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${activeGroup}`} className="flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto pb-3">
           {q && visible.length === 0 && <div className="desk-panel p-6 text-center text-xs desk-muted">No setting matches "{query}".</div>}
+          {!q && activeGroup === 'Live broker routing' && !initial && <LiveRoutingPanel />}
           {shownGroups.map((g) => (
             <section key={g} className="desk-panel" aria-label={g}>
               <div className="desk-ph"><h3>{g}</h3></div>

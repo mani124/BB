@@ -327,3 +327,17 @@ export interface EarningsCandidate {
   earnings_date?: string; expiry?: string; exit_date?: string; net_unit?: number; max_risk?: number;
 }
 export interface EarningsCalendarRow { symbol: string; earnings_date: string; session: string; sector: string; note: string; source?: string }
+
+export interface LivePositionRow {
+  position_id: string; strike_symbol: string; setup: string; mode: 'LIVE' | 'DRY'; state: string;
+  held: number; pending_sell: number; last_error?: string | null;
+}
+export interface LiveStatus {
+  mode: 'off' | 'dry_run' | 'live'; halted: string; broker: string; broker_session: boolean; env_confirmed: boolean;
+  armed: boolean; preconditions: string[]; entries_today: number; orders_today: number; realized_today: number;
+  positions: LivePositionRow[];
+}
+export interface LiveOrderRow {
+  id: number; ts: string; side: 'BUY' | 'SELL'; mode: 'LIVE' | 'DRY'; trading_symbol: string | null; qty: number;
+  order_type: string | null; price: number | null; status: string; filled_qty: number; message: string | null;
+}

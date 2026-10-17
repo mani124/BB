@@ -77,6 +77,12 @@ The server can message your phone when the Dhan feed drops or recovers, a positi
 
 Alerts are sent in the background with a 5 s timeout, repeats are rate-limited, and the token is never logged. Other code can call `app.services.notifier.notify(event, text, min_interval=...)` to send its own alert.
 
+### Live broker routing (Definedge, off by default)
+
+Real orders are sent only by `backend/app/services/order_router.py`, and only after you switch routing on in
+**Settings > Live broker routing**. With routing off, paper trading behaves exactly as before. Full guide,
+safety rules and the dry-run checklist: [docs/LIVE_ROUTING.md](docs/LIVE_ROUTING.md).
+
 ### Journal safety
 - **Reset never deletes trades.** It writes a backup to `backend/data/backups/` and archives the rows (hidden, not removed).
 - **Tests never touch the real journal.** `backend/tests/conftest.py` points `BB_DATA_DIR`/`BB_DB_PATH` at a temp directory.
