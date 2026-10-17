@@ -121,7 +121,7 @@ def position_bars(worker, pos: PaperPosition):
 
 
 @router.get("/positions/{position_id}/chart")
-def get_position_chart(position_id: str):
+async def get_position_chart(position_id: str):
     """Candles and setup indicators for a position's option contract and its underlying.
     Built from the saved per-trade candles plus whatever the scanner holds in memory; nothing is fetched."""
     from app.main import worker
