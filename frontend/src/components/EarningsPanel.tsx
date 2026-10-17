@@ -129,7 +129,8 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
       </section>
 
       <section className="desk-panel" aria-label="Earnings calendar">
-        <div className="desk-ph"><h3>Earnings calendar</h3><span className="desk-muted text-xs">Maintained here. Session: BMO = before open, AMC = after close.</span></div>
+        <div className="desk-ph"><h3>Earnings calendar</h3><span className="desk-muted text-xs">Filled daily from NSE (F&O stocks with a financial-results board meeting). NSE does not say before open or after close, so set the session per row (BMO = before open, AMC = after close), or pick a default in Settings.</span>
+          <button type="button" className="desk-btn accent ml-auto" disabled={busy} onClick={() => call('/api/earnings/calendar/sync', { method: 'POST' }, 'Calendar updated from NSE')}>Sync from NSE</button></div>
         <form className="px-3.5 py-3 flex flex-wrap gap-2 items-end" onSubmit={addRow}>
           <label className="text-xs">Symbol<input className="desk-input" required value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} aria-label="Symbol" /></label>
           <label className="text-xs">Date<input className="desk-input" type="date" required value={form.earnings_date} onChange={(e) => setForm({ ...form, earnings_date: e.target.value })} aria-label="Earnings date" /></label>
@@ -142,9 +143,14 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
         </form>
         {calendar.length > 0 && (
           <div className="overflow-x-auto"><table className="desk-table">
-            <thead><tr><th>Symbol</th><th>Date</th><th>Session</th><th>Sector</th><th /></tr></thead>
+            <thead><tr><th>Symbol</th><th>Date</th><th>Session</th><th>Sector</th><th>Source</th><th /></tr></thead>
             <tbody>{calendar.map((r) => (
-              <tr key={`${r.symbol}-${r.earnings_date}`}><td className="desk-sym">{r.symbol}</td><td>{r.earnings_date}</td><td>{r.session || 'unknown'}</td><td>{r.sector}</td>
+              <tr key={`${r.symbol}-${r.earnings_date}`}><td className="desk-sym">{r.symbol}</td><td>{r.earnings_date}</td><td>
+                <select className="desk-input" aria-label={`Session for ${r.symbol}`} value={r.session} disabled={busy}
+                  onChange={(e) => call('/api/earnings/calendar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ rows: [{ ...r, session: e.target.value }] }) }, `Session set for ${r.symbol}`)}>
+                  <option value="">Unknown</option><option value="BMO">BMO</option><option value="AMC">AMC</option>
+                </select></td><td>{r.sector}</td><td className="desk-muted text-xs">{r.source ?? 'manual'}</td>
                 <td className="r"><button type="button" className="desk-btn" aria-label={`Remove ${r.symbol}`} disabled={busy}
                   onClick={() => call(`/api/earnings/calendar/${r.symbol}/${r.earnings_date}`, { method: 'DELETE' }, `Removed ${r.symbol}`)}>Remove</button></td></tr>
             ))}</tbody></table></div>

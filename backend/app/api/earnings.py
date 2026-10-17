@@ -53,6 +53,15 @@ async def get_calendar() -> list[dict]:
     return get_engine().store.calendar()
 
 
+@router.post("/calendar/sync")
+async def sync_calendar() -> dict:
+    """Pull financial-result dates for F&O stocks from the NSE event calendar now."""
+    res = await get_engine().sync_calendar(force=True)
+    if res["status"] == "error":
+        raise HTTPException(status_code=502, detail=f"NSE calendar fetch failed: {res['error']}")
+    return res
+
+
 @router.post("/calendar")
 async def add_calendar(body: CalendarBulk) -> list[dict]:
     store = get_engine().store

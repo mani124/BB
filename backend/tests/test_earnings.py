@@ -363,6 +363,11 @@ def test_condor_strikes_follow_settings(tmp_path):
 def test_api_calendar_and_summary():
     from app.main import app
     client = TestClient(app)
+    from app.services.earnings_registry import get_engine
+
+    async def no_events():
+        return []
+    get_engine().events_fetcher = no_events  # never reach NSE from tests
     d = (TODAY + timedelta(days=30)).isoformat()
     try:
         r = client.post("/api/earnings/calendar", json={"rows": [{"symbol": "zzz", "earnings_date": d, "session": "bmo"}]})
@@ -374,6 +379,83 @@ def test_api_calendar_and_summary():
         assert s["enabled"] is False and s["open_positions"] == 0
         assert client.get("/api/earnings/candidates").json() == []  # no Dhan session in tests
         assert client.post("/api/earnings/run-cycle").json()["status"] == "no_credentials"
+        assert client.post("/api/earnings/calendar/sync").json()["status"] == "ok"
     finally:
         client.delete(f"/api/earnings/calendar/ZZZ/{d}")
     assert client.delete(f"/api/earnings/calendar/ZZZ/{d}").status_code == 404
+
+
+# ---------------------------------------------------------------- NSE calendar sync
+EVENTS = [
+    {"symbol": "ABC", "purpose": "Financial Results", "date": (TODAY + timedelta(days=9)).strftime("%d-%b-%Y"), "bm_desc": "x"},
+    {"symbol": "ABC", "purpose": "Dividend", "date": (TODAY + timedelta(days=3)).strftime("%d-%b-%Y")},
+    {"symbol": "OUT", "purpose": "Financial Results", "date": (TODAY + timedelta(days=9)).strftime("%d-%b-%Y")},   # not F&O
+    {"symbol": "DEF", "purpose": "Financial Results/Dividend", "date": (TODAY + timedelta(days=100)).strftime("%d-%b-%Y")},  # too far
+    {"symbol": "GHI", "purpose": "Financial Results", "date": (TODAY - timedelta(days=2)).strftime("%d-%b-%Y")},   # past
+    {"symbol": "JKL", "purpose": "Financial Results/Other business matters", "date": "bad-date"},
+]
+
+
+def sync_engine(tmp_path, events):
+    eng = make_engine(tmp_path)
+    box = {"events": events}
+
+    async def fetch():
+        if isinstance(box["events"], Exception):
+            raise box["events"]
+        return box["events"]
+    eng.events_fetcher = fetch
+    eng._universe = lambda: {"ABC", "DEF", "GHI", "JKL"}
+    return eng, box
+
+
+def test_sync_adds_only_future_fno_result_dates(tmp_path):
+    eng, _ = sync_engine(tmp_path, EVENTS)
+    res = run(eng.sync_calendar(TODAY, force=True))
+    assert res == {"status": "ok", "added": 1, "removed": 0, "listed": 1}
+    row = eng.store.calendar()[0]
+    assert row["symbol"] == "ABC" and row["session"] == "" and row["source"] == "NSE"
+
+
+def test_sync_runs_once_a_day_and_respects_switch(tmp_path):
+    eng, _ = sync_engine(tmp_path, EVENTS)
+    assert run(eng.sync_calendar(TODAY))["status"] == "ok"
+    assert run(eng.sync_calendar(TODAY))["status"] == "skipped"
+    assert run(eng.sync_calendar(TODAY + timedelta(days=1)))["status"] == "ok"
+    eng.runtime.set("earnings_auto_sync", False)
+    assert run(eng.sync_calendar(TODAY + timedelta(days=2)))["status"] == "skipped"
+
+
+def test_sync_never_overwrites_manual_rows_and_drops_moved_nse_rows(tmp_path):
+    eng, box = sync_engine(tmp_path, EVENTS)
+    d = (TODAY + timedelta(days=9)).isoformat()
+    eng.store.upsert_calendar("ABC", d, "BMO", "Tech")  # user's own row for the same date
+    assert run(eng.sync_calendar(TODAY, force=True))["added"] == 0
+    assert eng.store.calendar()[0]["session"] == "BMO"
+    eng.store.delete_calendar("ABC", d)
+    run(eng.sync_calendar(TODAY, force=True))
+    box["events"] = [{**EVENTS[0], "date": (TODAY + timedelta(days=11)).strftime("%d-%b-%Y")}]  # NSE moved the meeting
+    res = run(eng.sync_calendar(TODAY, force=True))
+    assert res["added"] == 1 and res["removed"] == 1
+    assert [r["earnings_date"] for r in eng.store.calendar()] == [(TODAY + timedelta(days=11)).isoformat()]
+
+
+def test_sync_failure_is_reported_not_raised(tmp_path):
+    eng, _ = sync_engine(tmp_path, RuntimeError("blocked"))
+    res = run(eng.sync_calendar(TODAY, force=True))
+    assert res["status"] == "error" and "blocked" in res["error"]
+
+
+def test_cycle_syncs_even_without_broker_session(tmp_path):
+    eng, _ = sync_engine(tmp_path, EVENTS)
+    eng.provider = None
+    r = run(eng.run_cycle(NOW))
+    assert r["status"] == "no_credentials" and r["calendar_sync"]["added"] == 1
+
+
+def test_parse_handles_real_nse_shape():
+    from app.services.earnings_calendar_sync import parse_results_rows
+    ev = [{"symbol": "BAJFINANCE", "company": "Bajaj Finance Limited", "purpose": "Financial Results",
+           "bm_desc": "To consider ...", "date": "19-Oct-2026"}]
+    rows = parse_results_rows(ev, {"BAJFINANCE"}, date(2026, 10, 17), 45)
+    assert rows == [{"symbol": "BAJFINANCE", "earnings_date": "2026-10-19", "note": "Financial Results"}]
