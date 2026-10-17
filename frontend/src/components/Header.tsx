@@ -3,7 +3,9 @@ import { ShieldCheck, Key, RefreshCw, LogOut, Sun, Moon, KeyRound } from 'lucide
 import { useDhanAuth } from '../context/DhanAuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { RiskControls } from './RiskControls';
-import type { RiskStatus } from '../types';
+import { Tabs } from './Tabs';
+import { Dialog } from './Dialog';
+import type { AppTab, RiskStatus } from '../types';
 
 export interface HeaderProps {
   activeMode: 'live' | 'demo' | 'stale' | 'error' | string;
@@ -15,13 +17,17 @@ export interface HeaderProps {
   feedStatus?: 'WS_LIVE' | 'LIVE' | 'STALE' | 'ERROR' | 'DEMO' | 'HTTP_POLLING' | string;
   wsConnected?: boolean;
   tokenExpiryCountdown?: string;
-  activeTab?: 'scanner' | 'paper';
-  onTabChange?: (tab: 'scanner' | 'paper') => void;
+  activeTab?: AppTab;
+  onTabChange?: (tab: AppTab) => void;
   openPositionsCount?: number;
   onOpenAccessKey?: () => void;
   risk?: RiskStatus | null;
   onKillSwitch?: (engage: boolean) => void;
+  /** Browser-to-server stream health, separate from the exchange feed pill. */
+  stream?: StreamStatus;
 }
+
+export type StreamStatus = { state: 'connecting' | 'live' | 'reconnecting' | 'stale'; ageSec: number };
 
 export const Header: React.FC<HeaderProps> = ({
   activeMode,
@@ -39,6 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAccessKey,
   risk,
   onKillSwitch,
+  stream,
 }) => {
   const {
     isLoggedIn,
@@ -99,34 +106,38 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <>
       <header
-        className="sticky top-0 z-40 px-4 sm:px-6 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2"
+        className="shrink-0 z-40 px-4 sm:px-6 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2"
         style={{ background: 'var(--bg)', borderBottom: '1px solid var(--line)' }}
       >
         <span className="font-semibold text-base tracking-tight">BB Options</span>
 
         {onTabChange && (
-          <nav className="flex items-center gap-1" aria-label="Sections">
-            <button
-              type="button"
-              className="desk-tab"
-              aria-current={activeTab === 'scanner'}
-              onClick={() => onTabChange('scanner')}
-            >
-              Scanner
-            </button>
-            <button
-              type="button"
-              className="desk-tab"
-              aria-current={activeTab === 'paper'}
-              onClick={() => onTabChange('paper')}
-            >
-              Portfolio
-              {openPositionsCount > 0 && <span className="desk-pill up desk-num">{openPositionsCount}</span>}
-            </button>
-          </nav>
+          <Tabs<AppTab>
+            idPrefix="main"
+            label="Sections"
+            className="flex items-center gap-1"
+            tabClassName="desk-tab"
+            value={activeTab ?? 'scanner'}
+            onChange={onTabChange}
+            items={[
+              {
+                id: 'scanner',
+                name: openPositionsCount > 0 ? `Watch, ${openPositionsCount} open` : 'Watch',
+                label: (
+                  <>
+                    Watch
+                    {openPositionsCount > 0 && <span className="desk-pill up desk-num" aria-hidden="true">{openPositionsCount}</span>}
+                  </>
+                ),
+              },
+              { id: 'paper', label: 'Review' },
+              { id: 'earnings', label: 'Earnings' },
+              { id: 'settings', label: 'Settings' },
+            ]}
+          />
         )}
 
-        <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2 text-[12.5px] desk-muted">
+        <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2 text-xs desk-muted">
           <RiskControls risk={risk ?? undefined} onKillSwitch={onKillSwitch} />
           {/* Feed status */}
           {isWsLive ? (
@@ -141,7 +152,18 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="desk-pill warn"><span className="desk-dot" />Simulated / Demo Feed</span>
           )}
 
-          <span className="desk-num" title="Scan cycle and last scan time">
+          {stream && stream.state !== 'connecting' && (
+            <span
+              role="status"
+              className={`desk-pill ${stream.state === 'live' ? 'mute' : stream.state === 'stale' ? 'warn' : 'down'}`}
+              title="Connection between this page and the dashboard server"
+            >
+              <span className="desk-dot" />
+              {stream.state === 'live' ? 'Stream live' : stream.state === 'reconnecting' ? 'Reconnecting…' : `Stream stale ${stream.ageSec}s`}
+            </span>
+          )}
+
+          <span className="desk-num hidden 2xl:inline" title="Scan cycle and last scan time">
             Cycle {scanCycleCount} · {lastScanTime || 'Ready'}
           </span>
 
@@ -200,8 +222,8 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Connect Modal */}
       {modalOpen && (
-        <div className="desk-overlay">
-          <div className="desk-modal p-5">
+        <Dialog label="Connect Dhan" onClose={() => setModalOpen(false)} className="p-5" closeOnBackdrop={false}>
+          <div>
             <div className="flex items-center gap-3 mb-4">
               <div className="desk-pill" style={{ padding: 8, borderRadius: 8 }}>
                 <Key className="h-5 w-5" />
@@ -212,9 +234,10 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
 
-            <div className="flex mb-4" style={{ borderBottom: '1px solid var(--line)' }}>
+            <div className="flex mb-4" role="group" aria-label="Login method" style={{ borderBottom: '1px solid var(--line)' }}>
               <button
                 type="button"
+                aria-pressed={authTab === 'oauth'}
                 onClick={() => { setAuthTab('oauth'); clearError(); }}
                 className="flex-1 py-2 text-xs font-semibold"
                 style={{ borderBottom: `2px solid ${authTab === 'oauth' ? 'var(--accent)' : 'transparent'}`, color: authTab === 'oauth' ? 'var(--accent)' : 'var(--muted)' }}
@@ -223,6 +246,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
               <button
                 type="button"
+                aria-pressed={authTab === 'manual'}
                 onClick={() => { setAuthTab('manual'); clearError(); }}
                 className="flex-1 py-2 text-xs font-semibold"
                 style={{ borderBottom: `2px solid ${authTab === 'manual' ? 'var(--accent)' : 'transparent'}`, color: authTab === 'manual' ? 'var(--accent)' : 'var(--muted)' }}
@@ -236,18 +260,18 @@ export const Header: React.FC<HeaderProps> = ({
             {authTab === 'oauth' ? (
               <form onSubmit={handleOAuthSubmit} className="space-y-4">
                 <div>
-                  <label className={labelCls}>Dhan Client ID</label>
-                  <input type="text" required placeholder="Your 10-digit Dhan ID (e.g. 1000000001)" value={oauthClientId} onChange={(e) => setOauthClientId(e.target.value)} className={inputCls} />
+                  <label htmlFor="dhan-f1" className={labelCls}>Dhan Client ID</label>
+                  <input id="dhan-f1" type="text" required placeholder="Your 10-digit Dhan ID (e.g. 1000000001)" value={oauthClientId} onChange={(e) => setOauthClientId(e.target.value)} className={inputCls} />
                 </div>
                 <div>
-                  <label className={labelCls}>Dhan App ID / API Key</label>
-                  <input type="text" required placeholder="API Key generated in Dhan Developer Portal" value={oauthAppId} onChange={(e) => setOauthAppId(e.target.value)} className={inputCls} />
+                  <label htmlFor="dhan-f2" className={labelCls}>Dhan App ID / API Key</label>
+                  <input id="dhan-f2" type="text" required placeholder="API Key generated in Dhan Developer Portal" value={oauthAppId} onChange={(e) => setOauthAppId(e.target.value)} className={inputCls} />
                 </div>
                 <div>
-                  <label className={labelCls}>Dhan App Secret</label>
-                  <input type="password" required placeholder="API Secret generated in Dhan Developer Portal" value={oauthAppSecret} onChange={(e) => setOauthAppSecret(e.target.value)} className={inputCls} />
+                  <label htmlFor="dhan-f3" className={labelCls}>Dhan App Secret</label>
+                  <input id="dhan-f3" type="password" required placeholder="API Secret generated in Dhan Developer Portal" value={oauthAppSecret} onChange={(e) => setOauthAppSecret(e.target.value)} className={inputCls} />
                 </div>
-                <div className="p-3 rounded-md text-[11px] space-y-1 desk-muted" style={{ background: 'var(--alt)', border: '1px solid var(--line)' }}>
+                <div className="p-3 rounded-md text-xs space-y-1 desk-muted" style={{ background: 'var(--alt)', border: '1px solid var(--line)' }}>
                   <p className="flex items-center gap-1.5 font-semibold" style={{ color: 'var(--accent)' }}>
                     <ShieldCheck className="h-3.5 w-3.5" /> 1-Click Official Dhan Login
                   </p>
@@ -263,14 +287,14 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
               <form onSubmit={handleManualSubmit} className="space-y-4">
                 <div>
-                  <label className={labelCls}>Dhan Client ID</label>
-                  <input type="text" required placeholder="e.g. 1000000001" value={inputClientId} onChange={(e) => setInputClientId(e.target.value)} className={inputCls} />
+                  <label htmlFor="dhan-f4" className={labelCls}>Dhan Client ID</label>
+                  <input id="dhan-f4" type="text" required placeholder="e.g. 1000000001" value={inputClientId} onChange={(e) => setInputClientId(e.target.value)} className={inputCls} />
                 </div>
                 <div>
-                  <label className={labelCls}>24-Hour Access Token (JWT)</label>
-                  <textarea required rows={3} placeholder="Paste your 24h JWT token from Dhan Web Settings" value={inputToken} onChange={(e) => setInputToken(e.target.value)} className={`${inputCls} font-mono text-xs`} />
+                  <label htmlFor="dhan-f5" className={labelCls}>24-Hour Access Token (JWT)</label>
+                  <textarea id="dhan-f5" required rows={3} placeholder="Paste your 24h JWT token from Dhan Web Settings" value={inputToken} onChange={(e) => setInputToken(e.target.value)} className={`${inputCls} font-mono text-xs`} />
                 </div>
-                <div className="p-3 rounded-md text-[11px] space-y-1 desk-muted" style={{ background: 'var(--alt)', border: '1px solid var(--line)' }}>
+                <div className="p-3 rounded-md text-xs space-y-1 desk-muted" style={{ background: 'var(--alt)', border: '1px solid var(--line)' }}>
                   <p className="flex items-center gap-1.5 font-semibold" style={{ color: 'var(--accent)' }}>
                     <ShieldCheck className="h-3.5 w-3.5" /> Zero Token Persistence Guarantee
                   </p>
@@ -285,7 +309,7 @@ export const Header: React.FC<HeaderProps> = ({
               </form>
             )}
           </div>
-        </div>
+        </Dialog>
       )}
     </>
   );

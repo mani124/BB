@@ -91,7 +91,7 @@ export function JournalPanel() {
       ) : (
         <table className="desk-table">
           <thead>
-            <tr><th>Date</th><th>Contract</th><th>Net</th><th>Tag</th><th>Note</th><th /></tr>
+            <tr><th scope="col">Date</th><th scope="col">Contract</th><th scope="col">Net</th><th scope="col">Tag</th><th scope="col">Note</th><th scope="col" /></tr>
           </thead>
           <tbody>
             {trades.map((t) => {

@@ -40,11 +40,11 @@ export const RiskControls: React.FC<RiskControlsProps> = ({ risk, onKillSwitch }
 
   return (
     <span className="flex items-center gap-2" data-testid="risk-controls">
-      {chip}
+      <span role="status" aria-live="polite">{chip}</span>
       {onKillSwitch && (
         <button
           type="button"
-          className={`desk-btn ${risk.kill_switch_active ? '' : 'solid'}`}
+          className={`desk-btn ${risk.kill_switch_active ? 'accent' : 'danger'}`}
           onClick={() => confirmAndRun(!risk.kill_switch_active)}
         >
           {risk.kill_switch_active ? 'Re-enable entries' : 'Kill switch'}

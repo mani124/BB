@@ -50,7 +50,7 @@ class PaperExitsMixin:
         # price improvement (e.g. a gap through a target). A fill far beyond the level is
         # labelled as a gap so it is not mistaken for a clean level hit.
         exit_slippage = _signed_slip(theoretical_exit, p_fill_exit)
-        gap_pct = float(getattr(settings, "GAP_EXIT_PCT", 0) or 0)
+        gap_pct = float(self.runtime.get("gap_exit_pct"))
         level = float(theoretical_exit)
         if gap_pct > 0 and level > 0 and "(Gap" not in reason and status in ("STOPPED_OUT", "TARGET_2"):
             move_pct = abs(p_fill_exit - level) / level * 100.0
@@ -91,6 +91,18 @@ class PaperExitsMixin:
         pos.total_charges = breakdown.total_charges
         pos.net_pnl = round(pos.gross_pnl - pos.total_charges, 2)
         pos.charges_breakdown = breakdown.model_dump()
+
+        try:
+            self.telemetry.decision(
+                book=pos.feed_mode, strategy=pos.setup_type, symbol=pos.symbol, side=pos.option_type, decision="EXITED",
+                reason=status if status != "CLOSED" else "MANUAL_OR_RULE_EXIT", position_id=pos.id,
+                metrics={"exit_reason": pos.exit_reason, "net_pnl": pos.net_pnl, "gross_pnl": pos.gross_pnl,
+                         "charges": pos.total_charges, "entry": pos.option_entry, "exit": pos.current_option_price,
+                         "theoretical_exit": pos.theoretical_exit, "exit_slippage": pos.exit_slippage,
+                         "total_slippage_cost": pos.total_slippage_cost, "lots_booked_early": pos.booked_lots})
+            self.telemetry.close_trade(pos, pos.gross_pnl)
+        except Exception:
+            logger.debug("telemetry exit hook failed", exc_info=True)
 
         if status in ("STOPPED_OUT", "TARGET_1", "TARGET_2"):
             label = "Stop hit" if status == "STOPPED_OUT" else "Target hit"
@@ -428,6 +440,7 @@ class PaperExitsMixin:
 
             runner_pnl = round(pos.pnl_points * pos.quantity, 2)
             pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
+            self.telemetry.track(pos)
             new_state = (
                 pos.current_underlying, pos.current_option_price, pos.pnl_points,
                 pos.pnl_rupees, pos.status, pos.lots, pos.quantity, pos.underlying_sl,
