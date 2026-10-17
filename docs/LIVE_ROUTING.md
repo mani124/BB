@@ -89,6 +89,26 @@ Only entries are limited by the caps. Exits are exempt.
 6. Only then set `LIVE_TRADING_CONFIRM=CONFIRMED`, restart outside market hours, log in, and use `Go live...` with
    1 lot on one setup. Watch the first trade end to end.
 
+## Regulatory checklist (SEBI / NSE retail algo framework)
+
+Summarised from public broker write-ups of the NSE retail algo circular and the rules that apply from 1 April 2026
+([Zerodha](https://zerodha.com/z-connect/general/a-comprehensive-overview-of-nses-circular-on-the-new-retail-algo-trading-framework),
+[Fyers](https://support.fyers.in/portal/en/kb/articles/what-are-the-new-sebi-rules-for-retail-algo-trading-from-april-01-2026)).
+This is not legal advice and nothing here is Definedge-specific: confirm each point with Definedge before going live.
+
+* **Static IP.** Orders are accepted only from an API key mapped to a whitelisted static public IP. Give the server a
+  reserved static external IP and register it with Definedge. If the IP changes, every order, including exits, is
+  rejected; the router will alert and keep retrying exits, but you would have to square off by hand.
+* **Order rate.** Up to 10 orders per second counts as an unregistered algo, tagged by the broker with a generic algo
+  ID. BB sends a handful of orders a day and the daily caps keep it far below that.
+* **Algo ID.** Ask Definedge what value their API expects in `algo_id` for a self-run strategy under the threshold.
+  `live_algo_id` must be non-empty or every live order is refused.
+* **Daily login.** 2FA once per trading day, no long-lived sessions. The TOTP login in the dashboard matches this.
+* **Market orders.** Brokers now convert market orders to market-price-protection orders and exchanges often refuse
+  plain market orders on options. The default exit type is MARKET. Test one exit in the 1-lot check; if it is rejected,
+  set `live_exit_order_type` to LIMIT (priced below the bid by `live_exit_limit_buffer_pct`).
+* **Your own account only.** Do not route orders for anyone else's account from this app.
+
 ## Not covered
 
 * The earnings book and Setup 11 shadow book are not routed (Setup 11 can be allowed explicitly via
