@@ -58,6 +58,8 @@ interface PaperPortfolioViewProps {
   onChangeSetupMode?: (setup: string, mode: SetupMode) => void;
   onResetPortfolio: () => void;
   hideStrip?: boolean;
+  /** Which part of the review to show; 'all' (default) is the original long page. */
+  view?: 'all' | 'today' | 'trades' | 'setups' | 'costs';
 }
 
 const KIND_FILTER_OPTIONS = [
@@ -203,19 +205,65 @@ export const PortfolioStrip: React.FC<{ portfolio?: PaperPortfolio }> = ({ portf
   );
 };
 
+/* ---------- Compact status strip (one line, always visible) ---------- */
+export const CompactStrip: React.FC<{ portfolio?: PaperPortfolio }> = ({ portfolio }) => {
+  const net = portfolio?.total_net_pnl ?? portfolio?.total_realized_pnl ?? 0;
+  const floatingNet = portfolio?.total_unrealized_net ?? portfolio?.total_unrealized_pnl ?? 0;
+  const openCount = portfolio?.active_positions?.length ?? 0;
+  const slippage = portfolio?.total_slippage_cost ?? 0;
+  const charges = portfolio?.total_charges ?? 0;
+  const wins = portfolio?.winning_trades_count ?? 0;
+  const losses = portfolio?.losing_trades_count ?? 0;
+  const Item: React.FC<{ label: string; title?: string; children: React.ReactNode }> = ({ label, title, children }) => (
+    <div title={title} className="flex items-baseline gap-2">
+      <span className="desk-label">{label}</span>
+      {children}
+    </div>
+  );
+  return (
+    <section
+      className="desk-ticker"
+      style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}
+      aria-label="Portfolio summary"
+    >
+      <Item label="Net realized">
+        <b className={`desk-num text-base ${pnlClass(net)}`}>{formatCurrency(net, true)}</b>
+      </Item>
+      <Item label="Unrealized" title="Open positions, net of estimated exit charges">
+        <b className={`desk-num ${pnlClass(floatingNet)}`}>{formatCurrency(floatingNet, true)}</b>
+        <span className="desk-muted desk-num">{openCount} open</span>
+      </Item>
+      <Item label="Win rate">
+        <b className="desk-num">{(portfolio?.win_rate_pct ?? 0).toFixed(1)}%</b>
+        <span className="desk-muted desk-num">{wins}W / {losses}L</span>
+      </Item>
+      <Item label="Slippage" title="Execution slippage cost on closed trades">
+        <b className="desk-num" style={{ color: 'var(--warn)' }}>-{formatCurrency(slippage).replace('-', '')}</b>
+      </Item>
+      <Item label="Charges" title="Brokerage, STT, GST, exchange and SEBI fees">
+        <b className="desk-num">{formatCurrency(charges)}</b>
+      </Item>
+    </section>
+  );
+};
+
 /* ---------- Open positions ---------- */
 export const OpenPositionsPanel: React.FC<{
   positions: PaperPosition[];
   onClosePosition: (id: string) => void;
-}> = ({ positions, onClosePosition }) => {
+  /** One-line expandable rows that fill their parent's height (Watch screen). */
+  compact?: boolean;
+}> = ({ positions, onClosePosition, compact = false }) => {
   // Keep the position itself, so the popup stays open (and shows the exit) if the trade closes meanwhile.
   const [chartPosition, setChartPosition] = useState<PaperPosition | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   return (
-  <section className="desk-panel" aria-labelledby="open-positions-title">
+  <section className={`desk-panel ${compact ? 'desk-pane h-full' : ''}`} aria-labelledby="open-positions-title">
     <div className="desk-ph">
       <h2 id="open-positions-title">Active Open Paper Positions ({positions.length})</h2>
       <span className="text-xs desk-muted ml-auto">Books 50% at T1, then trails the rest at breakeven</span>
     </div>
+    <div className={compact ? 'desk-scroll' : ''}>
     {positions.length === 0 ? (
       <div className="p-6 text-center text-xs desk-muted">
         No open paper positions. New signals open trades automatically, or click "Paper buy" on a signal.
@@ -223,6 +271,58 @@ export const OpenPositionsPanel: React.FC<{
     ) : (
       positions.map((pos) => {
         const isT1 = pos.status === 'TARGET_1';
+        if (compact) {
+          const open = expandedId === pos.id;
+          const cTarget = isT1 ? pos.option_target_2 : pos.option_target_1;
+          const cSpan = cTarget - pos.option_sl;
+          const cFrac = cSpan > 0 ? Math.max(0, Math.min(1, (pos.current_option_price - pos.option_sl) / cSpan)) : 0.5;
+          const cBooked = pos.booked_pnl_rupees ?? 0;
+          return (
+            <div key={pos.id} style={{ borderBottom: '1px solid var(--line)' }}>
+              <div
+                className="px-3.5 py-2 grid grid-cols-[1fr_auto_auto] items-center gap-x-3 cursor-pointer"
+                onClick={() => setExpandedId(open ? null : pos.id)}
+                aria-expanded={open}
+                title="Click for details"
+              >
+                <div className="min-w-0">
+                  <span className="desk-sym">{pos.strike_symbol}</span>{' '}
+                  <span className={`desk-side ${pos.option_type === 'CE' ? 'ce' : 'pe'}`}>{pos.option_type}</span>{' '}
+                  <span className="desk-code">{setupCode(pos.setup_type)}</span>
+                  <span className="desk-sub">
+                    {pos.quantity} qty · in {pos.entry_time} · LTP {pos.current_option_price.toFixed(1)}
+                    {isT1 ? ' · T1 hit' : ''}
+                  </span>
+                </div>
+                <div className="relative h-1.5 w-20 rounded-sm" style={{ background: 'linear-gradient(90deg, var(--down-soft) 0 33%, var(--line) 33% 66%, var(--up-soft) 66%)' }} aria-hidden>
+                  <i className="absolute block rounded-sm" style={{ top: -3, width: 3, height: 12, background: 'var(--fg)', left: `calc(${cFrac * 100}% - 1px)` }} />
+                </div>
+                <div className={`desk-num text-base font-semibold text-right ${pnlClass(pos.pnl_rupees)}`}>
+                  {formatCurrency(pos.pnl_rupees, true)}
+                </div>
+              </div>
+              {open && (
+                <div className="px-3.5 pb-3 flex flex-col gap-1 text-xs desk-num">
+                  <div className="flex flex-wrap justify-between gap-x-3 desk-muted">
+                    <span className={isT1 ? '' : 'desk-down'}>{isT1 ? 'Trailed SL' : 'SL'} {pos.option_sl.toFixed(1)}</span>
+                    <span>Entry {pos.option_entry.toFixed(1)}</span>
+                    <span className="desk-up">{isT1 ? 'T2' : 'T1'} {cTarget.toFixed(1)}</span>
+                  </div>
+                  <div className="flex flex-wrap justify-between gap-x-3">
+                    <span className={pnlClass(cBooked)}>Booked {formatCurrency(cBooked, true)}</span>
+                    {pos.est_net_pnl !== undefined && (
+                      <span className={pnlClass(pos.est_net_pnl)}>Net if closed now {formatCurrency(pos.est_net_pnl, true)}</span>
+                    )}
+                  </div>
+                  <div className="text-right mt-1">
+                    <button type="button" className="desk-btn accent mr-2" onClick={() => setChartPosition(pos)}>Chart</button>
+                    <button type="button" className="desk-btn danger" onClick={() => onClosePosition(pos.id)}>Close</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
         const target = isT1 ? pos.option_target_2 : pos.option_target_1;
         const span = target - pos.option_sl;
         const booked = pos.booked_pnl_rupees ?? 0;
@@ -292,8 +392,56 @@ export const OpenPositionsPanel: React.FC<{
         );
       })
     )}
+    </div>
     {chartPosition && <PositionChartModal position={chartPosition} onClose={() => setChartPosition(null)} />}
   </section>
+  );
+};
+
+/* ---------- Trade drawer (side panel with the full picture of one trade) ---------- */
+const TradeDrawer: React.FC<{
+  trade: PaperPosition;
+  onClose: () => void;
+  onChart: () => void;
+  onReceipt: () => void;
+}> = ({ trade, onClose, onChart, onReceipt }) => {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const gross = trade.gross_pnl ?? trade.pnl_rupees ?? 0;
+  const net = trade.net_pnl ?? trade.pnl_rupees ?? 0;
+  const Row: React.FC<{ k: string; children: React.ReactNode }> = ({ k, children }) => (
+    <div className="flex justify-between gap-3 py-1.5 text-xs" style={{ borderBottom: '1px solid var(--line)' }}>
+      <span className="desk-muted">{k}</span>
+      <span className="desk-num text-right">{children}</span>
+    </div>
+  );
+  return (
+    <aside className="desk-drawer p-4" role="dialog" aria-label="Trade details">
+      <div className="flex items-start justify-between gap-3 pb-3">
+        <div>
+          <div className="desk-sym text-sm">{trade.strike_symbol}</div>
+          <div className="desk-sub">{setupCode(trade.setup_type)} · {trade.setup_type} · {trade.timeframe}</div>
+        </div>
+        <button type="button" className="desk-btn" onClick={onClose} aria-label="Close details"><X className="h-4 w-4" /></button>
+      </div>
+      <div className={`desk-num text-2xl font-semibold mb-2 ${pnlClass(net)}`}>{formatCurrency(net, true)}</div>
+      <Row k="When">{formatTradeSpan(trade)}</Row>
+      <Row k="Quantity">{trade.quantity} ({trade.lots}L × {trade.lot_size})</Row>
+      <Row k="Entry → exit">{trade.option_entry.toFixed(1)} → {trade.current_option_price.toFixed(1)}</Row>
+      <Row k="Stop / T1 / T2">{trade.option_sl.toFixed(1)} / {trade.option_target_1.toFixed(1)} / {trade.option_target_2.toFixed(1)}</Row>
+      <Row k="Why it closed">{trade.exit_reason || trade.status}</Row>
+      <Row k="Gross P&L"><span className={pnlClass(gross)}>{formatCurrency(gross, true)}</span></Row>
+      <Row k="Charges">{formatCurrency(trade.total_charges ?? 0)}</Row>
+      <Row k="Slippage cost">{formatCurrency(trade.total_slippage_cost ?? 0)}</Row>
+      <Row k="Entry / exit slippage">{(trade.entry_slippage ?? 0).toFixed(1)} / {(trade.exit_slippage ?? 0).toFixed(1)} pts</Row>
+      <div className="flex gap-2 mt-4">
+        <button type="button" className="desk-btn accent" onClick={onChart}>Chart</button>
+        {trade.charges_breakdown && <button type="button" className="desk-btn" onClick={onReceipt}>Charges receipt</button>}
+      </div>
+    </aside>
   );
 };
 
@@ -308,6 +456,7 @@ const dayLabel = (iso: string): string => {
 };
 
 const DAYS_SHOWN = 5;
+const PAGE_SIZE = 25;
 
 const SETUP_SWITCH_ROWS: { key: string; label: string }[] = [
   { key: '1', label: 'Setup 1 · BB Squeeze' },
@@ -339,9 +488,14 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
   onChangeSetupMode,
   onResetPortfolio,
   hideStrip = false,
+  view = 'all',
 }) => {
+  const show = (...v: string[]) => view === 'all' || v.includes(view);
+  const [page, setPage] = useState(0);
+  const [drawerTrade, setDrawerTrade] = useState<PaperPosition | null>(null);
   const [selectedSetupFilter, setSelectedSetupFilter] = useState<string>('ALL');
   const [selectedKindFilter, setSelectedKindFilter] = useState<string>('ALL');
+  useEffect(() => { setPage(0); }, [selectedSetupFilter, selectedKindFilter]);
   const [selectedTradeForReceipt, setSelectedTradeForReceipt] = useState<PaperPosition | null>(null);
   const [showAllDays, setShowAllDays] = useState(false);
   const [chartTrade, setChartTrade] = useState<PaperPosition | null>(null);
@@ -377,7 +531,20 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
     dayMap.set(k, [...(dayMap.get(k) ?? []), t]);
   });
   const days = Array.from(dayMap.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
-  const visibleDays = showAllDays ? days : days.slice(0, DAYS_SHOWN);
+  let visibleDays = showAllDays ? days : days.slice(0, DAYS_SHOWN);
+  const pageCount = Math.max(1, Math.ceil(ordered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  if (view === 'today') {
+    visibleDays = days.slice(0, 1);
+  } else if (view === 'trades') {
+    const pageMap = new Map<string, PaperPosition[]>();
+    ordered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE).forEach((t) => {
+      const k = tradeDay(t);
+      pageMap.set(k, [...(pageMap.get(k) ?? []), t]);
+    });
+    visibleDays = Array.from(pageMap.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  }
+  const paged = view === 'trades';
 
   // Per-setup table over all live trades.
   const bySetup = new Map<string, { trades: number; wins: number; net: number }>();
@@ -397,6 +564,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
       {!hideStrip && <PortfolioStrip portfolio={portfolio} />}
 
       {/* Controls */}
+      {show('setups') && (
       <div className="desk-panel px-3.5 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
         <button
           type="button"
@@ -421,10 +589,11 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
           Reset Portfolio
         </button>
       </div>
+      )}
 
-      <SetupStatsPanel refreshKey={portfolio.closed_trades.length} />
+      {show('setups') && <SetupStatsPanel refreshKey={portfolio.closed_trades.length} collapsible={view === 'setups'} />}
 
-      {onChangeSetupMode && (
+      {show('setups') && onChangeSetupMode && (
         <section className="desk-panel" aria-labelledby="setup-switches-title">
           <div className="desk-ph">
             <h2 id="setup-switches-title">Setup switches</h2>
@@ -456,6 +625,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
         </section>
       )}
 
+      {view === 'all' && (
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-3 items-start">
         <OpenPositionsPanel positions={portfolio.active_positions} onClosePosition={onClosePosition} />
 
@@ -484,12 +654,14 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
           )}
         </section>
       </div>
+      )}
 
-      <CostPanel refreshKey={portfolio.closed_trades_count ?? closedTrades.length} />
+      {show('costs') && <CostPanel refreshKey={portfolio.closed_trades_count ?? closedTrades.length} />}
 
       {/* Closed trades journal, grouped by day */}
+      {show('trades', 'today') && (
       <section className="desk-panel" aria-labelledby="journal-title">
-        <div className="desk-ph">
+        <div className={`desk-ph ${view !== 'all' ? 'sticky top-0 z-[2]' : ''}`} style={view !== 'all' ? { background: 'var(--panel)' } : undefined}>
           <h2 id="journal-title">
             Closed Trades Journal ({filteredTrades.length}{isFiltered ? ` of ${closedTrades.length}` : ''})
           </h2>
@@ -507,6 +679,19 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                 </button>
               ))}
             </div>
+            {view !== 'all' ? (
+              <select
+                className="desk-input"
+                style={{ width: 'auto', padding: '3px 8px' }}
+                value={selectedSetupFilter}
+                onChange={(e) => setSelectedSetupFilter(e.target.value)}
+                aria-label="Journal setup filter"
+              >
+                {SETUP_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>{opt.label}</option>
+                ))}
+              </select>
+            ) : (
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Journal setup filter">
               {SETUP_FILTER_OPTIONS.map((opt) => (
                 <button
@@ -520,6 +705,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                 </button>
               ))}
             </div>
+            )}
           </div>
         </div>
 
@@ -569,7 +755,11 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                             trade.exit_slippage != null ? `Exit slippage ${trade.exit_slippage.toFixed(1)} pts` : '',
                           ].filter(Boolean).join(' · ');
                           return (
-                            <tr key={trade.id}>
+                            <tr
+                              key={trade.id}
+                              className={view !== 'all' ? 'cursor-pointer' : undefined}
+                              onClick={view !== 'all' ? () => setDrawerTrade(trade) : undefined}
+                            >
                               <td className="desk-num">{formatTradeSpan(trade)}</td>
                               <td>
                                 <span className="desk-sym">{trade.strike_symbol}</span>{' '}
@@ -591,7 +781,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                                 <button
                                   type="button"
                                   className="desk-btn mr-1"
-                                  onClick={() => setChartTrade(trade)}
+                                  onClick={(e) => { e.stopPropagation(); setChartTrade(trade); }}
                                   title="Open chart"
                                   aria-label="Open trade chart"
                                 >
@@ -601,7 +791,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                                   <button
                                     type="button"
                                     className="desk-btn"
-                                    onClick={() => setSelectedTradeForReceipt(trade)}
+                                    onClick={(e) => { e.stopPropagation(); setSelectedTradeForReceipt(trade); }}
                                     title="View Charges Breakdown"
                                     aria-label="View charges breakdown"
                                   >
@@ -620,7 +810,19 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                 </div>
               );
             })}
-            {days.length > DAYS_SHOWN && (
+            {paged && (
+              <div className="flex items-center justify-between gap-3 px-3.5 py-2 text-xs desk-muted" style={{ borderTop: '1px solid var(--line)' }}>
+                <span className="desk-num">
+                  {safePage * PAGE_SIZE + 1}–{Math.min(ordered.length, (safePage + 1) * PAGE_SIZE)} of {ordered.length} trades
+                </span>
+                <span className="flex items-center gap-2">
+                  <button type="button" className="desk-btn" disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>Prev</button>
+                  <span className="desk-num">Page {safePage + 1} / {pageCount}</span>
+                  <button type="button" className="desk-btn" disabled={safePage >= pageCount - 1} onClick={() => setPage(safePage + 1)}>Next</button>
+                </span>
+              </div>
+            )}
+            {view === 'all' && days.length > DAYS_SHOWN && (
               <button
                 type="button"
                 className="w-full py-2.5 text-sm font-medium"
@@ -633,6 +835,16 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
           </>
         )}
       </section>
+      )}
+
+      {drawerTrade && (
+        <TradeDrawer
+          trade={drawerTrade}
+          onClose={() => setDrawerTrade(null)}
+          onChart={() => setChartTrade(drawerTrade)}
+          onReceipt={() => setSelectedTradeForReceipt(drawerTrade)}
+        />
+      )}
 
       {/* Itemized tax receipt */}
       {chartTrade && <PositionChartModal position={chartTrade} onClose={() => setChartTrade(null)} />}

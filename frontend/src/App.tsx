@@ -5,15 +5,16 @@ import { Header } from './components/Header';
 import { IndexHeroRadar } from './components/IndexHeroRadar';
 import { SetupFilterTabs } from './components/SetupFilterTabs';
 import { SignalTable } from './components/SignalTable';
-import { JournalPanel } from './components/JournalPanel';
-import { PaperPortfolioView, PortfolioStrip, OpenPositionsPanel, liveTrades } from './components/PaperPortfolioView';
+import { CompactStrip, OpenPositionsPanel, liveTrades } from './components/PaperPortfolioView';
+import { ReviewScreen } from './components/ReviewScreen';
 import { AppTab, PaperPortfolio, PaperPosition, ScannerState, SetupMode, Signal } from './types';
 import { SettingsPanel } from './components/SettingsPanel';
-import { TelemetryPanel } from './components/TelemetryPanel';
 import { EarningsPanel } from './components/EarningsPanel';
 import { AlertCircle, X, KeyRound, Lock, CheckCircle2 } from 'lucide-react';
 import { isIndexSymbol } from './components/instruments';
 import { apiFetch, bootstrapDashboardSession, getDashboardCapability, setDashboardCapability } from './api/client';
+
+const SIGNALS_SHOWN = 12;
 
 const DashboardContent: React.FC = () => {
   const [state, setState] = useState<ScannerState>({
@@ -422,6 +423,11 @@ const DashboardContent: React.FC = () => {
     return true;
   });
 
+  // Confirmed signals first (stable), short list by default.
+  const sortedSignals = [...filteredSignals].sort((x, y) => Number(y.is_confirmed !== false) - Number(x.is_confirmed !== false));
+  const [showAllSignals, setShowAllSignals] = useState(false);
+  const shownSignals = showAllSignals ? sortedSignals : sortedSignals.slice(0, SIGNALS_SHOWN);
+
   const activePositionsCount = state.paper_portfolio?.active_positions?.length || 0;
 
   const activeSignalIds = React.useMemo(() => {
@@ -429,7 +435,7 @@ const DashboardContent: React.FC = () => {
   }, [state.paper_portfolio?.active_positions]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col lg:h-screen lg:overflow-hidden">
       <Header
         activeMode={state.active_mode}
         scanCycleCount={state.scan_cycle_count}
@@ -447,7 +453,7 @@ const DashboardContent: React.FC = () => {
         onKillSwitch={handleKillSwitch}
       />
 
-      <main className="flex-1 max-w-[1360px] w-full mx-auto px-4 sm:px-6 py-3 flex flex-col gap-3">
+      <main className="flex-1 min-h-0 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-2 flex flex-col gap-2">
         {actionError && (
           <div className="desk-alert flex items-center justify-between gap-3" role="alert">
             <div className="flex items-center gap-2">
@@ -460,105 +466,117 @@ const DashboardContent: React.FC = () => {
           </div>
         )}
 
-        <PortfolioStrip portfolio={state.paper_portfolio} />
+        <CompactStrip portfolio={state.paper_portfolio} />
 
         {activeTab === 'scanner' ? (
           <>
             <IndexHeroRadar radar={state.radar} />
 
-            {(Boolean(state.top_bullish?.length) || Boolean(state.top_bearish?.length) || state.market_bias) && (
-              <div className="desk-panel px-3.5 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="desk-label">Market bias</span>
-                  <span
-                    className={`desk-pill ${
-                      state.market_bias === 'BULLISH' ? 'up' : state.market_bias === 'BEARISH' ? 'down' : ''
-                    }`}
-                  >
-                    {state.active_mode === 'closed' ? 'MARKET CLOSED' : state.market_bias || 'NEUTRAL'}
-                  </span>
-                  <span className="desk-muted">
-                    {state.market_bias === 'BULLISH'
-                      ? '(PE stock options blocked)'
+            <div className="desk-panel px-3.5 py-1.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="desk-label">Bias</span>
+                <span
+                  className={`desk-pill ${
+                    state.market_bias === 'BULLISH' ? 'up' : state.market_bias === 'BEARISH' ? 'down' : ''
+                  }`}
+                  title={
+                    state.market_bias === 'BULLISH'
+                      ? 'PE stock options blocked'
                       : state.market_bias === 'BEARISH'
-                      ? '(CE stock options blocked)'
-                      : ''}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-4">
-                  {state.top_bullish && state.top_bullish.length > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="desk-up font-semibold">Top bullish (CE)</span>
-                      {state.top_bullish.map((sym) => (
-                        <span key={sym} className="desk-pill up desk-num">{sym}</span>
-                      ))}
-                    </div>
-                  )}
-                  {state.top_bearish && state.top_bearish.length > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="desk-down font-semibold">Top bearish (PE)</span>
-                      {state.top_bearish.map((sym) => (
-                        <span key={sym} className="desk-pill down desk-num">{sym}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                      ? 'CE stock options blocked'
+                      : undefined
+                  }
+                >
+                  {state.active_mode === 'closed' ? 'MARKET CLOSED' : state.market_bias || 'NEUTRAL'}
+                </span>
+                {state.top_bullish?.map((sym) => (
+                  <span key={sym} className="desk-pill up desk-num" title="Top bullish (CE)">{sym}</span>
+                ))}
+                {state.top_bearish?.map((sym) => (
+                  <span key={sym} className="desk-pill down desk-num" title="Top bearish (PE)">{sym}</span>
+                ))}
               </div>
-            )}
+              {state.paper_portfolio && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <button
+                    type="button"
+                    className={`desk-btn ${state.paper_portfolio.auto_trade_enabled ? 'solid' : ''}`}
+                    onClick={() => handleToggleAutoTrade(!state.paper_portfolio!.auto_trade_enabled)}
+                  >
+                    Auto-enter: {state.paper_portfolio.auto_trade_enabled ? 'ON' : 'OFF'}
+                  </button>
+                  <div className="desk-seg" role="group" aria-label="Lot multiplier">
+                    {[2, 4, 6, 8, 10].map((l) => (
+                      <button key={l} type="button" aria-pressed={state.paper_portfolio!.default_lots === l} onClick={() => handleChangeLots(l)}>
+                        {l}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
-            <SetupFilterTabs
-              selectedSetup={selectedSetup}
-              onSelectSetup={setSelectedSetup}
-              selectedOptionType={selectedOptionType}
-              onSelectOptionType={setSelectedOptionType}
-              selectedInstrumentType={selectedInstrumentType}
-              onSelectInstrumentType={setSelectedInstrumentType}
-              selectedTimeframe={selectedTimeframe}
-              onSelectTimeframe={setSelectedTimeframe}
-              totalSignals={filteredSignals.length}
-            />
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] lg:grid-rows-1 gap-3 lg:flex-1 lg:min-h-0">
+              <OpenPositionsPanel
+                compact
+                positions={state.paper_portfolio?.active_positions ?? []}
+                onClosePosition={handleClosePosition}
+              />
 
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-3 items-start">
-              <section className="desk-panel" aria-labelledby="signals-title">
+              <section className="desk-panel desk-pane" aria-labelledby="signals-title">
                 <div className="desk-ph">
                   <h2 id="signals-title">Active Strategy Signals</h2>
                   <span className="desk-pill desk-num">{filteredSignals.length} active</span>
                   <span className="text-xs desk-muted ml-auto">
-                    {wsConnected ? 'Real-time ticks' : 'Auto-scanned every ~8s'} · signals confirm on candle close
+                    {wsConnected ? 'Real-time ticks' : 'Scanned every ~8s'} · confirm on candle close
                   </span>
                 </div>
-                <SignalTable
-                  signals={filteredSignals}
-                  onPaperBuy={handlePaperBuy}
-                  activeSignalIds={activeSignalIds}
+                <SetupFilterTabs
+                  compact
+                  selectedSetup={selectedSetup}
+                  onSelectSetup={setSelectedSetup}
+                  selectedOptionType={selectedOptionType}
+                  onSelectOptionType={setSelectedOptionType}
+                  selectedInstrumentType={selectedInstrumentType}
+                  onSelectInstrumentType={setSelectedInstrumentType}
+                  selectedTimeframe={selectedTimeframe}
+                  onSelectTimeframe={setSelectedTimeframe}
+                  totalSignals={filteredSignals.length}
                 />
+                <div className="desk-scroll">
+                  <SignalTable
+                    signals={shownSignals}
+                    onPaperBuy={handlePaperBuy}
+                    activeSignalIds={activeSignalIds}
+                  />
+                  {sortedSignals.length > SIGNALS_SHOWN && (
+                    <button
+                      type="button"
+                      className="w-full py-2 text-sm font-medium"
+                      style={{ color: 'var(--accent)' }}
+                      onClick={() => setShowAllSignals((v) => !v)}
+                    >
+                      {showAllSignals ? 'Show fewer signals' : `Show all ${sortedSignals.length} signals`}
+                    </button>
+                  )}
+                </div>
               </section>
-
-              <OpenPositionsPanel
-                positions={state.paper_portfolio?.active_positions ?? []}
-                onClosePosition={handleClosePosition}
-              />
             </div>
           </>
-        ) : activeTab === 'analytics' ? (
-          <TelemetryPanel />
         ) : activeTab === 'earnings' ? (
-          <EarningsPanel />
+          <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto pb-3"><EarningsPanel /></div>
         ) : activeTab === 'settings' ? (
-          <SettingsPanel />
+          <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto pb-3"><SettingsPanel /></div>
         ) : (
-          <>
-          <PaperPortfolioView
-            portfolio={state.paper_portfolio && { ...state.paper_portfolio, closed_trades: liveTrades(closedTrades) }}
+          <ReviewScreen
+            portfolio={state.paper_portfolio}
+            closedTrades={liveTrades(closedTrades)}
             onClosePosition={handleClosePosition}
             onToggleAutoTrade={handleToggleAutoTrade}
             onChangeLots={handleChangeLots}
             onChangeSetupMode={handleChangeSetupMode}
             onResetPortfolio={handleResetPortfolio}
-            hideStrip
           />
-          <JournalPanel />
-          </>
         )}
 
         {capabilityModalOpen && (
@@ -618,9 +636,6 @@ const DashboardContent: React.FC = () => {
         )}
       </main>
 
-      <footer className="py-3 text-center text-xs desk-muted" style={{ borderTop: '1px solid var(--line)' }}>
-        Bollinger Bands Options PRO · Forward-testing mode
-      </footer>
     </div>
   );
 };

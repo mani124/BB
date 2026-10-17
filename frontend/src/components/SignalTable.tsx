@@ -28,7 +28,7 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, a
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div>
       <table className="desk-table">
         <thead>
           <tr>

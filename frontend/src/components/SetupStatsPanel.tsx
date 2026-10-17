@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { apiFetch } from '../api/client';
 import { setupCode } from './setupCode';
 
@@ -19,7 +20,15 @@ export interface SetupDayStats {
 const inr = (n: number) => `${n < 0 ? '-' : ''}₹${Math.abs(Math.round(n)).toLocaleString('en-IN')}`;
 const tone = (n: number) => (n > 0 ? 'text-emerald-500' : n < 0 ? 'text-rose-500' : '');
 
-export function SetupStatsTable({ rows }: { rows: SetupDayStats[] }) {
+export function SetupStatsTable({ rows, collapsible = false }: { rows: SetupDayStats[]; collapsible?: boolean }) {
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggle = (k: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
   if (rows.length === 0) {
     return <div className="px-3.5 py-3 text-xs desk-muted">No closed trades yet.</div>;
   }
@@ -39,9 +48,19 @@ export function SetupStatsTable({ rows }: { rows: SetupDayStats[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
-            <tr key={`${r.setup_type}|${r.date}`} className={r.date === 'ALL' ? 'font-semibold border-t' : ''}>
+          {rows.filter((r) => !collapsible || r.date === 'ALL' || open.has(r.setup_type)).map((r) => (
+            <tr
+              key={`${r.setup_type}|${r.date}`}
+              className={`${r.date === 'ALL' ? 'font-semibold border-t' : ''} ${collapsible && r.date === 'ALL' ? 'cursor-pointer' : ''}`}
+              onClick={collapsible && r.date === 'ALL' ? () => toggle(r.setup_type) : undefined}
+              aria-expanded={collapsible && r.date === 'ALL' ? open.has(r.setup_type) : undefined}
+            >
               <td className={`px-3.5 py-1 ${r.date === 'ALL' ? '' : 'pl-7 desk-muted'}`}>
+                {collapsible && r.date === 'ALL' && (
+                  open.has(r.setup_type)
+                    ? <ChevronDown className="inline h-3.5 w-3.5 mr-1" />
+                    : <ChevronRight className="inline h-3.5 w-3.5 mr-1" />
+                )}
                 {r.date === 'ALL' ? `${setupCode(r.setup_type)} · ${r.setup_type}` : r.date}
               </td>
               <td className="px-2 text-right">{r.trades}</td>
@@ -60,7 +79,7 @@ export function SetupStatsTable({ rows }: { rows: SetupDayStats[] }) {
 }
 
 /** Per-setup, per-day stats from /api/paper/setup-stats (quarantined/archived trades excluded). */
-export function SetupStatsPanel({ refreshKey }: { refreshKey?: number }) {
+export function SetupStatsPanel({ refreshKey, collapsible = false }: { refreshKey?: number; collapsible?: boolean }) {
   const [rows, setRows] = useState<SetupDayStats[]>([]);
   useEffect(() => {
     let live = true;
@@ -80,9 +99,9 @@ export function SetupStatsPanel({ refreshKey }: { refreshKey?: number }) {
     <section className="desk-panel" aria-labelledby="setup-stats-title">
       <div className="desk-ph">
         <h2 id="setup-stats-title">Setup stats</h2>
-        <span className="text-xs desk-muted">By exit day · R = net P&amp;L ÷ risk to stop</span>
+        <span className="text-xs desk-muted">By exit day · R = net P&amp;L ÷ risk to stop{collapsible ? ' · click a setup for its days' : ''}</span>
       </div>
-      <SetupStatsTable rows={rows} />
+      <SetupStatsTable rows={rows} collapsible={collapsible} />
     </section>
   );
 }
