@@ -29,7 +29,7 @@ describe('ReviewScreen', () => {
   it('pages the trades tab 25 at a time and opens a drawer on row click', () => {
     const trades = Array.from({ length: 60 }, (_, i) => trade(i));
     render(<ReviewScreen portfolio={portfolio} closedTrades={trades} {...handlers} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Trades' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Trades' }));
     expect(screen.getByText(/1–25 of 60 trades/)).toBeInTheDocument();
     expect(document.querySelectorAll('tbody tr')).toHaveLength(25);
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));

@@ -103,7 +103,7 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
         <div className="desk-ph"><h3>Open positions</h3></div>
         {open.length === 0 ? <div className="p-4 text-xs desk-muted">No open earnings positions.</div> : (
           <div className="overflow-x-auto"><table className="desk-table">
-            <thead><tr><th>Symbol</th><th>Mode</th><th>Earnings</th><th>Exit by</th><th>Expiry</th><th className="r">Lots</th><th className="r">Max risk</th><th className="r">Spot</th><th className="r">Unrealised</th><th className="r">MFE / MAE</th></tr></thead>
+            <thead><tr><th scope="col">Symbol</th><th scope="col">Mode</th><th scope="col">Earnings</th><th scope="col">Exit by</th><th scope="col">Expiry</th><th scope="col" className="r">Lots</th><th scope="col" className="r">Max risk</th><th scope="col" className="r">Spot</th><th scope="col" className="r">Unrealised</th><th scope="col" className="r">MFE / MAE</th></tr></thead>
             <tbody>{open.map((p) => (
               <tr key={p.id}><td className="desk-sym">{p.symbol}</td><td>{modeLabel(p.mode)}</td><td>{p.earnings_date} {p.session}</td><td>{p.exit_date}</td><td>{p.expiry}</td>
                 <td className="r desk-num">{p.lots}</td><td className="r desk-num">{money(p.max_risk)}</td>
@@ -117,7 +117,7 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
         <div className="desk-ph"><h3>What the engine sees now</h3><span className="desk-muted text-xs">Needs a connected Dhan session. Nothing is opened from here.</span></div>
         {candidates.length === 0 ? <div className="p-4 text-xs desk-muted">No calendar rows are due today.</div> : (
           <div className="overflow-x-auto"><table className="desk-table">
-            <thead><tr><th>Symbol</th><th>Mode</th><th>Status</th><th>Why</th><th>Expiry</th><th>Exit by</th><th className="r">Net / unit</th><th className="r">Max risk</th></tr></thead>
+            <thead><tr><th scope="col">Symbol</th><th scope="col">Mode</th><th scope="col">Status</th><th scope="col">Why</th><th scope="col">Expiry</th><th scope="col">Exit by</th><th scope="col" className="r">Net / unit</th><th scope="col" className="r">Max risk</th></tr></thead>
             <tbody>{candidates.map((c, i) => (
               <tr key={`${c.symbol}-${c.mode}-${i}`}><td className="desk-sym">{c.symbol}</td><td>{modeLabel(c.mode)}</td>
                 <td><span className={`desk-pill ${c.ready ? 'up' : 'warn'}`}>{c.ready ? 'READY' : c.code}</span></td>
@@ -143,7 +143,7 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
         </form>
         {calendar.length > 0 && (
           <div className="overflow-x-auto"><table className="desk-table">
-            <thead><tr><th>Symbol</th><th>Date</th><th>Session</th><th>Sector</th><th>Source</th><th /></tr></thead>
+            <thead><tr><th scope="col">Symbol</th><th scope="col">Date</th><th scope="col">Session</th><th scope="col">Sector</th><th scope="col">Source</th><th scope="col" /></tr></thead>
             <tbody>{calendar.map((r) => (
               <tr key={`${r.symbol}-${r.earnings_date}`}><td className="desk-sym">{r.symbol}</td><td>{r.earnings_date}</td><td>
                 <select className="desk-input" aria-label={`Session for ${r.symbol}`} value={r.session} disabled={busy}
@@ -161,7 +161,7 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
         <div className="desk-ph"><h3>Closed trades</h3></div>
         {closed.length === 0 ? <div className="p-4 text-xs desk-muted">No closed earnings trades yet.</div> : (
           <div className="overflow-x-auto"><table className="desk-table">
-            <thead><tr><th>Symbol</th><th>Mode</th><th>Closed</th><th>Reason</th><th className="r">Charges</th><th className="r">Net</th></tr></thead>
+            <thead><tr><th scope="col">Symbol</th><th scope="col">Mode</th><th scope="col">Closed</th><th scope="col">Reason</th><th scope="col" className="r">Charges</th><th scope="col" className="r">Net</th></tr></thead>
             <tbody>{closed.map((p) => (
               <tr key={p.id}><td className="desk-sym">{p.symbol}</td><td>{modeLabel(p.mode)}</td><td>{p.closed_at}</td><td><span className="desk-code">{p.exit_reason}</span></td>
                 <td className="r desk-num">{money(p.charges)}</td><td className={`r desk-num ${tone(p.net_pnl)}`}>{money(p.net_pnl, true)}</td></tr>

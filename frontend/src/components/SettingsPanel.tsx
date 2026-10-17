@@ -148,7 +148,7 @@ export const SettingsPanel: React.FC<{ initial?: RuntimeSettingsPayload; initial
         {audit.length === 0 ? <div className="p-4 text-xs desk-muted">No changes yet.</div> : (
           <div className="overflow-x-auto">
             <table className="desk-table">
-              <thead><tr><th>When</th><th>Setting</th><th>From</th><th>To</th><th>By</th></tr></thead>
+              <thead><tr><th scope="col">When</th><th scope="col">Setting</th><th scope="col">From</th><th scope="col">To</th><th scope="col">By</th></tr></thead>
               <tbody>
                 {audit.map((a, i) => (
                   <tr key={i}><td className="desk-num">{a.changed_at}</td><td>{a.key}</td><td className="desk-num">{a.old_value}</td><td className="desk-num">{a.new_value}</td><td>{a.actor}</td></tr>

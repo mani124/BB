@@ -37,14 +37,14 @@ export function SetupStatsTable({ rows, collapsible = false }: { rows: SetupDayS
       <table className="w-full text-xs">
         <thead>
           <tr className="desk-muted text-left">
-            <th className="px-3.5 py-1.5">Setup / day</th>
-            <th className="px-2 text-right">Trades</th>
-            <th className="px-2 text-right">Win %</th>
-            <th className="px-2 text-right">Avg R</th>
-            <th className="px-2 text-right">Gross</th>
-            <th className="px-2 text-right">Slippage</th>
-            <th className="px-2 text-right">Charges</th>
-            <th className="px-3.5 text-right">Net</th>
+            <th scope="col" className="px-3.5 py-1.5">Setup / day</th>
+            <th scope="col" className="px-2 text-right">Trades</th>
+            <th scope="col" className="px-2 text-right">Win %</th>
+            <th scope="col" className="px-2 text-right">Avg R</th>
+            <th scope="col" className="px-2 text-right">Gross</th>
+            <th scope="col" className="px-2 text-right">Slippage</th>
+            <th scope="col" className="px-2 text-right">Charges</th>
+            <th scope="col" className="px-3.5 text-right">Net</th>
           </tr>
         </thead>
         <tbody>
@@ -53,15 +53,21 @@ export function SetupStatsTable({ rows, collapsible = false }: { rows: SetupDayS
               key={`${r.setup_type}|${r.date}`}
               className={`${r.date === 'ALL' ? 'font-semibold border-t' : ''} ${collapsible && r.date === 'ALL' ? 'cursor-pointer' : ''}`}
               onClick={collapsible && r.date === 'ALL' ? () => toggle(r.setup_type) : undefined}
-              aria-expanded={collapsible && r.date === 'ALL' ? open.has(r.setup_type) : undefined}
             >
               <td className={`px-3.5 py-1 ${r.date === 'ALL' ? '' : 'pl-7 desk-muted'}`}>
-                {collapsible && r.date === 'ALL' && (
-                  open.has(r.setup_type)
-                    ? <ChevronDown className="inline h-3.5 w-3.5 mr-1" />
-                    : <ChevronRight className="inline h-3.5 w-3.5 mr-1" />
-                )}
-                {r.date === 'ALL' ? `${setupCode(r.setup_type)} · ${r.setup_type}` : r.date}
+                {collapsible && r.date === 'ALL' ? (
+                  <button
+                    type="button"
+                    className="text-left font-semibold"
+                    aria-expanded={open.has(r.setup_type)}
+                    onClick={(e) => { e.stopPropagation(); toggle(r.setup_type); }}
+                  >
+                    {open.has(r.setup_type)
+                      ? <ChevronDown className="inline h-3.5 w-3.5 mr-1" aria-hidden="true" />
+                      : <ChevronRight className="inline h-3.5 w-3.5 mr-1" aria-hidden="true" />}
+                    {`${setupCode(r.setup_type)} · ${r.setup_type}`}
+                  </button>
+                ) : r.date === 'ALL' ? `${setupCode(r.setup_type)} · ${r.setup_type}` : r.date}
               </td>
               <td className="px-2 text-right">{r.trades}</td>
               <td className="px-2 text-right">{r.win_rate.toFixed(1)}%</td>

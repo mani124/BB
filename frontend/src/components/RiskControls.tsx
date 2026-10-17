@@ -40,7 +40,7 @@ export const RiskControls: React.FC<RiskControlsProps> = ({ risk, onKillSwitch }
 
   return (
     <span className="flex items-center gap-2" data-testid="risk-controls">
-      {chip}
+      <span role="status" aria-live="polite">{chip}</span>
       {onKillSwitch && (
         <button
           type="button"

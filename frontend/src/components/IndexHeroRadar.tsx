@@ -35,20 +35,20 @@ export const IndexHeroRadar: React.FC<IndexHeroRadarProps> = ({ radar }) => {
         return (
           <div
             key={key}
-            className="flex items-center gap-x-1.5 overflow-hidden"
+            className="flex items-center gap-x-1.5 overflow-hidden whitespace-nowrap"
             title={`${item.symbol} · %B ${item.percent_b.toFixed(2)} · BW ${item.bandwidth.toFixed(2)}% · RSI ${item.rsi.toFixed(0)} · ${
               isAboveVwap ? 'above' : 'below'
             } VWAP${item.is_squeeze ? ' · squeeze' : ''}`}
           >
-            <b className="font-semibold truncate min-w-0">{SHORT_NAMES[key] ?? item.symbol}</b>
+            <b className="font-semibold shrink-0">{SHORT_NAMES[key] ?? item.symbol}</b>
             <span className="desk-num">{item.close > 0 ? Math.round(item.close).toLocaleString('en-IN') : '---'}</span>
             <span className={`desk-num ${isPositive ? 'desk-up' : 'desk-down'}`}>
               {isPositive ? '+' : ''}{item.change_pct.toFixed(2)}%
             </span>
-            <span className={`desk-num text-[11px] ${isAboveVwap ? 'desk-up' : 'desk-down'}`} aria-label={isAboveVwap ? 'above VWAP' : 'below VWAP'}>
-              VW{isAboveVwap ? '▲' : '▼'}
+            <span className={`desk-num text-xs ${isAboveVwap ? 'desk-up' : 'desk-down'}`} aria-label={isAboveVwap ? 'above VWAP' : 'below VWAP'}>
+              <span className="hidden xl:inline">VW</span>{isAboveVwap ? '▲' : '▼'}
             </span>
-            {item.is_squeeze && <span className="desk-pill">SQ</span>}
+            {item.is_squeeze && <span className="desk-pill shrink-0">SQ</span>}
           </div>
         );
       })}
