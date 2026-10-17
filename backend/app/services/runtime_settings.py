@@ -171,6 +171,11 @@ DEFINITIONS: tuple[SettingDef, ...] = (
     _d(key="earnings_iv_missing_policy", label="When IV history is too short", group=G_EARN, type="str",
        description="allow: trade without the IV filter (logged); skip: do not trade the stock yet.",
        default="allow", choices=("allow", "skip")),
+    _d(key="earnings_auto_sync", label="Auto-fill calendar from NSE", group=G_EARN, type="bool",
+       description="Once a day, add F&O stocks with a board meeting for financial results from the NSE event calendar. "
+                   "Rows you add or edit by hand are never overwritten.", default=True),
+    _d(key="earnings_sync_horizon_days", label="Calendar look-ahead", group=G_EARN, type="int", unit="days",
+       description="How far ahead the NSE sync adds earnings dates.", default=45, min=7, max=180),
     _d(key="earnings_poll_seconds", label="Strategy check interval", group=G_EARN, type="int", unit="seconds",
        description="How often the earnings book scans, marks and exits positions while the market is open.",
        default=60, min=15, max=3600),

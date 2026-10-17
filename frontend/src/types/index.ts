@@ -321,4 +321,4 @@ export interface EarningsCandidate {
   symbol: string; mode: string; ready: boolean; code: string; detail: string;
   earnings_date?: string; expiry?: string; exit_date?: string; net_unit?: number; max_risk?: number;
 }
-export interface EarningsCalendarRow { symbol: string; earnings_date: string; session: string; sector: string; note: string }
+export interface EarningsCalendarRow { symbol: string; earnings_date: string; session: string; sector: string; note: string; source?: string }

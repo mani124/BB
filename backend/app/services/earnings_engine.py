@@ -52,6 +52,11 @@ class EarningsStore:
                 c.execute("""CREATE TABLE IF NOT EXISTS earnings_calendar (
                     symbol TEXT NOT NULL, earnings_date TEXT NOT NULL, session TEXT DEFAULT '', sector TEXT DEFAULT '',
                     note TEXT DEFAULT '', PRIMARY KEY (symbol, earnings_date))""")
+                try:
+                    c.execute("ALTER TABLE earnings_calendar ADD COLUMN source TEXT DEFAULT 'manual'")
+                except sqlite3.OperationalError:
+                    pass
+                c.execute("CREATE TABLE IF NOT EXISTS earnings_meta (key TEXT PRIMARY KEY, value TEXT)")
                 c.execute("""CREATE TABLE IF NOT EXISTS earnings_iv_history (
                     symbol TEXT NOT NULL, day TEXT NOT NULL, iv REAL NOT NULL, spot REAL, PRIMARY KEY (symbol, day))""")
                 c.execute("""CREATE TABLE IF NOT EXISTS earnings_positions (
@@ -63,9 +68,10 @@ class EarningsStore:
         return c
 
     # ---- calendar ----
-    def upsert_calendar(self, symbol: str, earnings_date: str, session: str = "", sector: str = "", note: str = "") -> dict:
+    def upsert_calendar(self, symbol: str, earnings_date: str, session: str = "", sector: str = "", note: str = "",
+                        source: str = "manual") -> dict:
         row = {"symbol": symbol.strip().upper(), "earnings_date": _d(earnings_date).isoformat(),
-               "session": (session or "").strip().upper(), "sector": sector.strip(), "note": note.strip()}
+               "session": (session or "").strip().upper(), "sector": sector.strip(), "note": note.strip(), "source": source}
         if row["session"] not in ("", *es.SESSIONS):
             raise ValueError("session must be BMO, AMC or empty")
         if not row["symbol"]:
@@ -75,9 +81,44 @@ class EarningsStore:
                 self._mem_calendar[(row["symbol"], row["earnings_date"])] = row
             else:
                 with self._conn() as c:
-                    c.execute("INSERT OR REPLACE INTO earnings_calendar (symbol, earnings_date, session, sector, note) VALUES (?,?,?,?,?)",
-                              (row["symbol"], row["earnings_date"], row["session"], row["sector"], row["note"]))
+                    c.execute("INSERT OR REPLACE INTO earnings_calendar (symbol, earnings_date, session, sector, note, source) VALUES (?,?,?,?,?,?)",
+                              (row["symbol"], row["earnings_date"], row["session"], row["sector"], row["note"], row["source"]))
         return row
+
+    def sync_rows(self, rows: list[dict], today: date, horizon_days: int) -> dict:
+        """Apply NSE rows: add new ones (source NSE), update the date of NSE rows that moved, never touch manual rows.
+        Returns counts. NSE rows in the window that NSE no longer lists are removed (the meeting was cancelled or moved)."""
+        added = removed = 0
+        keep = {(r["symbol"], r["earnings_date"]) for r in rows}
+        with self._lock:
+            existing = self.calendar(today)
+            manual = {(r["symbol"], r["earnings_date"]) for r in existing if r.get("source", "manual") != "NSE"}
+            for r in rows:
+                key = (r["symbol"], r["earnings_date"])
+                if key in manual or any((e["symbol"], e["earnings_date"]) == key for e in existing):
+                    continue
+                self.upsert_calendar(r["symbol"], r["earnings_date"], "", "", r.get("note", ""), source="NSE")
+                added += 1
+            limit = (today + timedelta(days=horizon_days)).isoformat()
+            for e in existing:
+                if e.get("source") == "NSE" and e["earnings_date"] <= limit and (e["symbol"], e["earnings_date"]) not in keep:
+                    self.delete_calendar(e["symbol"], e["earnings_date"])
+                    removed += 1
+        return {"added": added, "removed": removed, "listed": len(rows)}
+
+    def get_meta(self, key: str) -> Optional[str]:
+        if not self.db_path:
+            return getattr(self, "_mem_meta", {}).get(key)
+        with self._conn() as c:
+            r = c.execute("SELECT value FROM earnings_meta WHERE key = ?", (key,)).fetchone()
+        return r["value"] if r else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        if not self.db_path:
+            self.__dict__.setdefault("_mem_meta", {})[key] = value
+            return
+        with self._conn() as c:
+            c.execute("INSERT OR REPLACE INTO earnings_meta (key, value) VALUES (?,?)", (key, value))
 
     def delete_calendar(self, symbol: str, earnings_date: str) -> bool:
         key = (symbol.strip().upper(), _d(earnings_date).isoformat())
@@ -223,7 +264,10 @@ class DhanChainProvider:
 # ============================================================================================ engine
 class EarningsEngine:
     def __init__(self, db_path: Optional[str], runtime: RuntimeSettings, telemetry: Telemetry,
-                 provider: Optional[ChainProvider] = None, kill_switch: Optional[Callable[[], bool]] = None):
+                 provider: Optional[ChainProvider] = None, kill_switch: Optional[Callable[[], bool]] = None,
+                 events_fetcher: Optional[Callable[[], Any]] = None, universe: Optional[Callable[[], set]] = None):
+        self.events_fetcher = events_fetcher
+        self._universe = universe
         self.store = EarningsStore(db_path)
         self.runtime = runtime
         self.telemetry = telemetry
@@ -231,6 +275,32 @@ class EarningsEngine:
         self.kill_switch = kill_switch or (lambda: False)
         self._lock = asyncio.Lock()
         self.last_cycle: dict = {"status": "never_run"}
+
+    # ---------------------------------------------------------------- calendar sync
+    def _fno_symbols(self) -> set:
+        if self._universe:
+            return set(self._universe())
+        u = getattr(self.provider, "_load", None)
+        return set(u()) if u else set()
+
+    async def sync_calendar(self, today: Optional[date] = None, force: bool = False) -> dict:
+        """Fill the calendar from NSE (financial-result board meetings of F&O stocks). Once a day unless forced."""
+        from app.services.earnings_calendar_sync import fetch_nse_events, parse_results_rows
+        today = today or market_hours.now_ist().date()
+        if not force and (not self.runtime.get("earnings_auto_sync") or self.store.get_meta("last_sync") == today.isoformat()):
+            return {"status": "skipped"}
+        fetch = self.events_fetcher or fetch_nse_events
+        try:
+            events = await fetch()
+        except Exception as exc:
+            logger.warning("Earnings calendar sync failed: %s", exc)
+            return {"status": "error", "error": str(exc)}
+        horizon = int(self.runtime.get("earnings_sync_horizon_days"))
+        rows = parse_results_rows(events, self._fno_symbols(), today, horizon)
+        res = self.store.sync_rows(rows, today, horizon)
+        self.store.set_meta("last_sync", today.isoformat())
+        self.store.set_meta("last_sync_result", json.dumps(res))
+        return {"status": "ok", **res}
 
     # ---------------------------------------------------------------- config
     def cfg(self) -> dict:
@@ -337,6 +407,12 @@ class EarningsEngine:
             now = now or market_hours.now_ist()
             today = now.date()
             result: dict = {"at": now.isoformat(), "status": "ok", "opened": [], "closed": [], "skipped": 0}
+            try:  # the NSE calendar needs no broker session, so it syncs even before Dhan is connected
+                sync = await self.sync_calendar(today)
+                if sync["status"] != "skipped":
+                    result["calendar_sync"] = sync
+            except Exception:
+                logger.warning("calendar sync crashed", exc_info=True)
             if self.provider is None or not self.provider.has_credentials():
                 result["status"] = "no_credentials"
             elif not market_hours.is_trading_day(today):
