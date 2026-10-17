@@ -27,6 +27,7 @@ from app.services.strike_selector import resolve_live_strike_from_chain, get_lot
 from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.setup11 import evaluate_setup11
 from app.services.setup12 import evaluate_adx_ema_cross
+from app.services.setup14 import WALL_REFRESH_S, compute_oi_walls, evaluate_oi_wall_bounce
 from app.services.straddle_squeeze import StraddleLeg, evaluate_straddle_squeeze
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
 from app.services.momentum_ranker import MomentumRanker, MomentumRankings
@@ -63,6 +64,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         self._session_generation: int = 0
         self._expiry_cache: dict[str, str] = {}
         self._option_chain_cache: dict[str, tuple[float, dict]] = {}
+        self._oi_wall_cache: dict[str, tuple[float, object]] = {}  # Setup 14: symbol -> (monotonic ts, OIWalls)
         self._option_chart_cache: dict[str, tuple[datetime, pd.DataFrame]] = {}
         self._candle_history: dict[str, list[dict]] = {}
         self._trade_candle_saved_at: dict[str, float] = {}
@@ -148,6 +150,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             self._option_candle_history.clear()
             self._option_forming_candle.clear()
             self._option_chart_cache.clear()
+            self._oi_wall_cache.clear()
             self._option_last_cum_volume.clear()
             self._last_cumulative_volume.clear()
             self._instrument_last_quote_time.clear()
@@ -613,6 +616,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
 
             # 1. Closed bars: evaluate on completed history for confirmed signals
             confirmed_signals: list[Signal] = []
+            completed_df = None
             completed_bars = self._candle_history.get(inst.symbol, [])
             if mode == "live" and len(completed_bars) >= 20:
                 completed_df = calculate_indicators(pd.DataFrame(completed_bars))
@@ -743,6 +747,26 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                                                         )
                                                 except (ValueError, TypeError):
                                                     pass
+
+                        # Setup 14 (OI wall bounce): walls from the chain's open interest, refreshed every 15 minutes
+                        if completed_df is not None and market_hours.is_entry_allowed():
+                            try:
+                                cached_w = self._oi_wall_cache.get(inst.symbol)
+                                if cached_w is None or (time.monotonic() - cached_w[0]) >= WALL_REFRESH_S:
+                                    w = compute_oi_walls(oc, current_price)
+                                    cached_w = (time.monotonic(), w)
+                                    self._oi_wall_cache[inst.symbol] = cached_w
+                                s14 = evaluate_oi_wall_bounce(
+                                    inst.symbol, completed_df, cached_w[1],
+                                    timeframe=inst.default_timeframe,
+                                    chain_age_s=max(0.0, time.monotonic() - chain_fetch_ts),
+                                )
+                            except Exception as e:
+                                logger.warning(f"Setup 14 evaluation failed for {inst.symbol}: {e}")
+                                s14 = []
+                            for s in s14:
+                                if pd.to_datetime(s.timestamp).date() == today_date:
+                                    detected.append(s)
 
                         # Enrich detected signals with live option quotes
                         if detected:

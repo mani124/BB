@@ -13,6 +13,7 @@ export type SetupType =
   | 'Setup 10: ATM Straddle Premium Squeeze'
   | 'Setup 11: Filtered Option Chart Scalp'
   | 'Setup 12: ADX + EMA 20 Trend Cross'
+  | 'Setup 14: OI Wall Bounce'
   | 'SETUP_1_SQUEEZE_EXPANSION'
   | 'SETUP_2_WALKING_BANDS'
   | 'SETUP_3_WM_REVERSAL'
@@ -24,7 +25,8 @@ export type SetupType =
   | 'SETUP_9_RELATIVE_STRENGTH'
   | 'SETUP_10_STRADDLE_SQUEEZE'
   | 'SETUP_11_FILTERED_OPTION_BB'
-  | 'SETUP_12_ADX_EMA_CROSS';
+  | 'SETUP_12_ADX_EMA_CROSS'
+  | 'SETUP_14_OI_WALL_BOUNCE';
 
 export interface OptionStrikeRecommendation {
   symbol: string;
