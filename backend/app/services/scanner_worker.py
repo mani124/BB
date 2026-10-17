@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.services.scanner_models import *  # noqa: F401,F403
 from app.services.scanner_candles import ScannerCandlesMixin
+from app.services.market_recorder import recorder
 from app.services.scanner_stream import ScannerStreamMixin
 from app.services.universe_manager import UniverseManager, Instrument
 from app.services.dhan_client import DhanClient
@@ -345,6 +346,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             self._state.is_scanning = False
             self._state.last_scan_seconds = round(time.monotonic() - started, 2)
             logger.info("Scan cycle %d took %.2fs", self._state.scan_cycle_count, self._state.last_scan_seconds)
+            await recorder.maybe_flush()
 
     async def _run_scan_cycle_body(
         self,

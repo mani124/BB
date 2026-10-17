@@ -56,6 +56,7 @@ G_QUALITY = "Entry quality guards"
 G_TELE = "Telemetry"
 G_EARN = "Earnings options strategy"
 G_LIVE = "Live broker routing"
+G_REC = "Market data recorder"
 
 DEFINITIONS: tuple[SettingDef, ...] = (
     # ---- RMS ----
@@ -113,6 +114,13 @@ DEFINITIONS: tuple[SettingDef, ...] = (
        min=0, zero_disables=True),
     _d(key="telemetry_excursion_flush_seconds", label="Excursion save interval", group=G_TELE, type="int",
        unit="seconds", description="How often running MFE / MAE values are written to the database.", default=15, min=1),
+    # ---- market data recorder (market_recorder.py) ----
+    _d(key="recorder_enabled", label="Record market bars", group=G_REC, type="bool",
+       description="Save every completed 5m/15m bar the scanner sees (real data only) to market_bars.db, so setup "
+                   "ideas and variants can be tested offline.", default=True),
+    _d(key="recorder_retention_days", label="Bar retention", group=G_REC, type="int", unit="days",
+       description="Bars older than this are deleted at startup. 0 keeps everything.", default=180, min=0,
+       zero_disables=True),
     # ---- live broker routing (order_router.py). Mode and arming are NOT settings: see /api/live. ----
     _d(key="live_allowed_setups", label="Setups allowed to route", group=G_LIVE, type="str",
        description="Setup numbers whose entries may be sent to the broker, comma separated (for example 5 or 5,11). "
