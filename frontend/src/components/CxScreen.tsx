@@ -20,6 +20,12 @@ const STATE_TEXT: Record<string, string> = {
   WATCHING: 'Watching', SESSION_CLOSED: 'Session closed', BOOK_OFF: 'Book is off', NO_CONTRACT: 'No contract found',
   NO_CANDLES: 'No candles', NO_OPTION_CHAIN: 'No option chain', STALE_DATA: 'Data is stale',
 };
+const CYCLE_NOTE: Record<string, string> = {
+  no_credentials: 'No Dhan login is connected, so the book cannot read prices or look for entries. Log in to Dhan in this dashboard (the login is kept per browser tab).',
+  error: 'The last check failed',
+  never_run: 'The first check has not run yet.',
+  nothing_to_do: 'Nothing to check: no underlying is enabled.',
+};
 const REFRESH_MS = 10_000;
 
 const Trades: React.FC<{ rows: CxPosition[]; empty: string; label: string; open?: boolean }> = ({ rows, empty, label, open }) => (
@@ -74,6 +80,11 @@ export const CxScreen: React.FC<{ initial?: CxOverview }> = ({ initial }) => {
           <span>Trades <b className="desk-num">{s.closed_trades}</b> · win rate <b className="desk-num">{s.win_rate}%</b></span>
           <span>Per trade <b className="desk-num">{o.settings.lots}</b> lot · stop <b className="desk-num">{o.settings.sl_pct}%</b> · target <b className="desk-num">{o.settings.target_pct}%</b></span>
         </div>
+        {s.enabled && CYCLE_NOTE[s.last_cycle.status ?? ''] && (
+          <div role="alert" data-testid="cx-cycle-note" className="px-3.5 pb-2.5 text-xs desk-down">
+            {CYCLE_NOTE[s.last_cycle.status ?? '']}{s.last_cycle.status === 'error' && s.last_cycle.error ? `: ${s.last_cycle.error}` : ''}
+          </div>
+        )}
         {!s.enabled && <div className="px-3.5 pb-2.5 text-xs desk-muted">Switch the book on under Settings → Commodities & Currency book. It needs a Dhan login with MCX and currency data.</div>}
       </section>
 

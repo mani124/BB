@@ -38,4 +38,14 @@ describe('CxScreen', () => {
     expect(screen.getByText(/No cycle has run yet/)).toBeInTheDocument();
     expect(screen.getByText('ON')).toBeInTheDocument();
   });
+
+  it('says why nothing happens when the book is on but no Dhan login is connected', () => {
+    render(<CxScreen initial={{ ...base, summary: { ...base.summary, enabled: true, last_cycle: { status: 'no_credentials' } } }} />);
+    expect(screen.getByTestId('cx-cycle-note')).toHaveTextContent(/No Dhan login is connected/);
+  });
+
+  it('shows no note while cycles run fine', () => {
+    render(<CxScreen initial={{ ...base, summary: { ...base.summary, enabled: true } }} />);
+    expect(screen.queryByTestId('cx-cycle-note')).toBeNull();
+  });
 });

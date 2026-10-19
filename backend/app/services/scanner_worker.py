@@ -34,6 +34,7 @@ from app.services.straddle_squeeze import StraddleLeg, evaluate_straddle_squeeze
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
 from app.services.momentum_ranker import MomentumRanker, MomentumRankings
 logger = logging.getLogger(__name__)
+CLOSED_QUOTE_REFRESH_S = 60.0
 
 
 class _SkipSetup(Exception):
@@ -72,6 +73,8 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         self._task: Optional[asyncio.Task] = None
         self._session_credentials: Optional[tuple[str, str]] = None
         self._historical_disabled: bool = False
+        self._closed_quotes: dict = {}  # last marketfeed answer taken while the exchange was closed
+        self._closed_quotes_at: float = 0.0
         self._session_generation: int = 0
         self._expiry_cache: dict[str, str] = {}
         self._option_chain_cache: dict[str, tuple[float, dict]] = {}
@@ -386,7 +389,12 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         # Batch-fetch real-time market quotes (LTP, OHLC, volume, net change) via marketfeed
         live_quotes: dict = {}
         has_creds = bool(cid and tok)
-        if has_creds:
+        # Outside the exchange session prices do not move: refresh at most once a minute (and not at all with nothing open)
+        # so the 3-second scan loop does not hammer /marketfeed/quote and starve the other books of Dhan's rate limit.
+        closed_now = has_creds and not market_hours.is_market_open()
+        if closed_now and self._closed_quotes_at and time.monotonic() - self._closed_quotes_at < CLOSED_QUOTE_REFRESH_S:
+            live_quotes = self._closed_quotes
+        elif has_creds:
             try:
                 req_securities: dict[str, list[int]] = {}
                 for inst in instruments:
@@ -409,6 +417,8 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 import inspect
                 if fetch_fn and inspect.iscoroutinefunction(fetch_fn):
                     live_quotes = await fetch_fn(cid, tok, req_securities)
+                    if closed_now:
+                        self._closed_quotes, self._closed_quotes_at = live_quotes or {}, time.monotonic()
                     if live_quotes:
                         logger.debug(f"Live marketfeed quotes fetched for {sum(len(v) for v in live_quotes.values())} securities")
             except Exception as e:
