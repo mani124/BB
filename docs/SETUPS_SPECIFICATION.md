@@ -601,6 +601,19 @@ Every limit below is a **runtime setting**: editable from the dashboard's Settin
 
 Existing limits are now runtime settings too, with the same defaults as before: `daily_loss_limit`, `max_open_positions`, `max_open_notional`, `max_entries_per_symbol_per_day`, `reentry_cooldown_seconds`, `default_lots`, `max_risk_per_trade`, `max_quote_age_seconds`, `max_entry_spread_pct`, `gap_exit_pct`.
 
+### Entry liquidity gate (all setups, paper entries)
+
+Applied after the setup has signalled and the strike is chosen, immediately before a paper position opens (`liquidity_filter.py`, called from `paper_trader.py`). It changes no setup rule: a signal is simply not entered when the option contract is too illiquid, and the skip is logged with reason code `LIQUIDITY_SKIP` (detail e.g. `spread 23.9% > 3%` or `OI 1200 < 5000`) so it shows in the skips list.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `liquidity_gate_enabled` | on | Master switch. Off keeps only the "would_skip" log line. |
+| `liquidity_max_spread_pct` | 3 | Skip when (ask - bid) / ask is wider than this. 0 disables the check. |
+| `liquidity_min_oi` | 5000 | Skip when the option's open interest is lower. 0 disables the check. |
+| `liquidity_min_volume` | 100 | Skip when the option's day volume is lower. 0 disables the check. |
+
+A quote field that is missing never triggers a skip. This replaces the earlier shadow-mode filter (`LIQ_FILTER_ENABLED`, default off); the `LIQ_*` environment values remain as the defaults. Basis: 15-19 Oct paper trades with spread above 5% had no winners (-19.4k) and contracts with OI below 5000 had no winners (-21.3k). **Setup 5:** its entry and exit rules are unchanged, but its option entries are subject to the gate like every other setup, so Setup 5 trades on wide or thin contracts are now skipped.
+
 ### Telemetry (no change to any setup rule)
 * `strategy_decisions`: every ENTERED / SKIPPED / EXITED decision with a reason code (e.g. `MAX_OPEN_POSITIONS`, `SPREAD_TOO_WIDE`, `LOSS_CAP`, `SETUP_SWITCHED_OFF`) and the numbers behind it.
 * `trade_excursions`: per trade MFE (best open profit) and MAE (worst open loss) in rupees, plus final P&L.
