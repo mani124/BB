@@ -172,6 +172,8 @@ def evaluate_oi_wall_bounce(
         "body": round(body, 2),
         "chain_age_s": round(chain_age_s, 1),
     }
+    # Signal.indicators_snapshot only holds numbers; a side with no wall must be omitted, not None.
+    snap = {k: v for k, v in snap.items() if v is not None}
     kind = "support (put OI)" if support else "resistance (call OI)"
     return [Signal(
         id=f"{symbol}_{timeframe}_S14_{side}_{ts_clean}",

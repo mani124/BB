@@ -70,6 +70,15 @@ def test_support_bounce_fires_ce():
     assert s.indicators_snapshot["wall_strike"] == 22400.0 and s.indicators_snapshot["opposite_wall"] == 22600.0
 
 
+def test_bounce_without_opposite_wall_still_yields_valid_signal():
+    w = _walls(resistance_strike=None, resistance_oi=None, resistance_ratio=None)
+    sigs = evaluate_oi_wall_bounce("NIFTY 50", _bars(SUPPORT_BAR), w, chain_age_s=10.0)
+    assert len(sigs) == 1
+    snap = sigs[0].indicators_snapshot
+    assert "opposite_wall" not in snap and "opposite_wall_oi" not in snap
+    assert snap["wall_strike"] == 22400.0
+
+
 def test_stop_uses_tighter_of_wall_and_candle_low():
     bar = (22405.0, 22412.0, 22404.0, 22410.0)  # low above the wall but within 0.1 ATR; no lower wick -> no signal
     assert evaluate_oi_wall_bounce("NIFTY 50", _bars(bar), _walls(), chain_age_s=5.0) == []
