@@ -99,6 +99,7 @@ def gather_readiness() -> list:
         router_mode=live_router.mode,
         broker_session=live_router.broker.has_session(),
         kill_switch=paper_trader.risk_status(None).kill_switch_active,
+        rate_limit=worker.dhan_client.rate_limit_status(),
     )
 
 

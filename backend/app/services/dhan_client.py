@@ -19,6 +19,51 @@ class DhanClient:
         self._last_request_time: float = 0.0
         self._base_url = settings.DHAN_API_BASE
         self._client: Optional[httpx.AsyncClient] = None
+        # Shared 429 backoff: one cooldown for every endpoint, never a sleep inside a held request slot.
+        self._cooldown_until: float = 0.0
+        self._cooldown_step: int = 0
+        self._last_429_at: float = 0.0
+        self._rate_limit_counts: dict[str, int] = {}
+        # Option chains are shared by every caller (scanner, earnings engine): one fetch per key per TTL.
+        self._chain_cache: dict[tuple, tuple[float, dict, bool]] = {}  # key -> (monotonic ts, chain, fetch ok)
+        self._chain_inflight: dict[tuple, asyncio.Future] = {}
+
+    # ------------------------------------------------------------------ 429 handling
+    def _note_rate_limited(self, endpoint: str) -> float:
+        """Count a 429 and start (or lengthen) the shared cooldown. Returns the cooldown length in seconds."""
+        loop_now = asyncio.get_running_loop().time()
+        day = market_hours.now_ist().date().isoformat()
+        self._rate_limit_counts[day] = self._rate_limit_counts.get(day, 0) + 1
+        for old in sorted(self._rate_limit_counts)[:-7]:
+            self._rate_limit_counts.pop(old, None)
+        # Consecutive 429s (no success in between) double the wait: 2s, 4s, 8s ... capped at 30s.
+        self._cooldown_step = min(self._cooldown_step + 1, 5)
+        length = min(self.COOLDOWN_MAX_S, self.COOLDOWN_BASE_S * (2 ** (self._cooldown_step - 1)))
+        self._cooldown_until = max(self._cooldown_until, loop_now + length)
+        self._last_429_at = loop_now
+        logger.warning(f"Dhan 429 on {endpoint}: pausing all Dhan REST calls for {length:.0f}s")
+        return length
+
+    def _note_ok(self) -> None:
+        if self._cooldown_step and asyncio.get_running_loop().time() >= self._cooldown_until:
+            self._cooldown_step = 0
+
+    def cooldown_remaining(self) -> float:
+        try:
+            return max(0.0, self._cooldown_until - asyncio.get_running_loop().time())
+        except RuntimeError:
+            return 0.0
+
+    def rate_limit_status(self) -> dict:
+        """Today's 429 count (IST day), recent days, and whether the client is cooling down right now."""
+        day = market_hours.now_ist().date().isoformat()
+        return {"today": self._rate_limit_counts.get(day, 0), "by_day": dict(sorted(self._rate_limit_counts.items())),
+                "cooldown_s": round(self.cooldown_remaining(), 1)}
+
+    COOLDOWN_BASE_S = 2.0
+    COOLDOWN_MAX_S = 30.0
+    CHAIN_TTL_S = 15.0
+    CHAIN_FAIL_TTL_S = 20.0
 
     async def get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -36,6 +81,9 @@ class DhanClient:
 
     async def _throttle(self):
         """Enforce smooth inter-request spacing (~0.18s) to prevent bursting and HTTP 429."""
+        wait = self.cooldown_remaining()
+        if wait > 0:
+            await asyncio.sleep(wait)  # outside the pace lock: other callers are not blocked behind this sleep
         async with self._pace_lock:
             loop = asyncio.get_running_loop()
             now = loop.time()
@@ -135,9 +183,8 @@ class DhanClient:
                     await self._throttle()
                     resp = await client.post("/marketfeed/quote", headers=headers, json=chunk)
                     if resp.status_code == 429:
-                        logger.warning(f"Marketfeed quote hit 429: {resp.text[:200]}. Backing off 2.5s and retrying...")
-                        await asyncio.sleep(2.5)
-                        await self._throttle()
+                        self._note_rate_limited("marketfeed/quote")
+                        await self._throttle()  # waits out the shared cooldown
                         resp = await client.post("/marketfeed/quote", headers=headers, json=chunk)
                         logger.info(f"Marketfeed retry status: {resp.status_code}")
 
@@ -179,18 +226,19 @@ class DhanClient:
             "UnderlyingScrip": int(underlying_scrip),
             "UnderlyingSeg": underlying_seg
         }
+        if self.cooldown_remaining() > 0:
+            return []  # cooling down after a 429: the caller caches the miss instead of retrying
         try:
             client = await self.get_client()
             async with self._semaphore:
                 await self._throttle()
                 resp = await client.post("/optionchain/expirylist", headers=headers, json=payload)
                 if resp.status_code == 429:
-                    logger.warning("Expirylist rate limit (429) hit. Backing off 2.0s and retrying...")
-                    await asyncio.sleep(2.0)
-                    await self._throttle()
-                    resp = await client.post("/optionchain/expirylist", headers=headers, json=payload)
+                    self._note_rate_limited("optionchain/expirylist")
+                    return []
 
                 if resp.status_code == 200:
+                    self._note_ok()
                     data = resp.json()
                     expiries = data.get("data", [])
                     if isinstance(expiries, list):
@@ -210,10 +258,41 @@ class DhanClient:
         expiry: str
     ) -> dict:
         """
-        Fetch full option chain with real quotes and Greeks from Dhan:
-        POST /optionchain
-        Body: {"UnderlyingScrip": int, "UnderlyingSeg": str, "Expiry": str}
+        Fetch full option chain with real quotes and Greeks from Dhan (POST /optionchain).
+
+        Shared by every caller: a chain fetched in the last CHAIN_TTL_S seconds is returned from memory, a failed fetch
+        (429, error, empty chain) is remembered for CHAIN_FAIL_TTL_S so callers do not hammer Dhan, and concurrent
+        callers for the same chain wait on one request.
         """
+        key = (int(underlying_scrip), underlying_seg, expiry)
+        loop = asyncio.get_running_loop()
+        hit = self._chain_cache.get(key)
+        if hit:
+            ts, oc, ok = hit
+            if loop.time() - ts < (self.CHAIN_TTL_S if ok else self.CHAIN_FAIL_TTL_S):
+                return oc
+        pending = self._chain_inflight.get(key)
+        if pending is not None:
+            return await asyncio.shield(pending)
+        fut: asyncio.Future = loop.create_future()
+        self._chain_inflight[key] = fut
+        oc: dict = {}
+        try:
+            if self.cooldown_remaining() > 0:
+                return {}  # cooling down after a 429: do not cache, the cooldown itself is the memory
+            oc = await self._request_option_chain(client_id, access_token, underlying_scrip, underlying_seg, expiry)
+            self._chain_cache[key] = (loop.time(), oc, bool(oc))
+            if len(self._chain_cache) > 400:
+                for k in [k for k, v in self._chain_cache.items() if loop.time() - v[0] > self.CHAIN_FAIL_TTL_S * 3]:
+                    self._chain_cache.pop(k, None)
+            return oc
+        finally:
+            self._chain_inflight.pop(key, None)
+            if not fut.done():
+                fut.set_result(oc)
+
+    async def _request_option_chain(self, client_id: str, access_token: str, underlying_scrip: int,
+                                    underlying_seg: str, expiry: str) -> dict:
         headers = {
             "client-id": client_id,
             "access-token": access_token,
@@ -231,12 +310,11 @@ class DhanClient:
                 await self._throttle()
                 resp = await client.post("/optionchain", headers=headers, json=payload)
                 if resp.status_code == 429:
-                    logger.warning("Optionchain rate limit (429) hit. Backing off 2.0s and retrying...")
-                    await asyncio.sleep(2.0)
-                    await self._throttle()
-                    resp = await client.post("/optionchain", headers=headers, json=payload)
+                    self._note_rate_limited("optionchain")
+                    return {}
 
                 if resp.status_code == 200:
+                    self._note_ok()
                     data = resp.json()
                     d = data.get("data", {})
                     return d.get("oc", {}) if isinstance(d, dict) else {}
@@ -314,8 +392,7 @@ class DhanClient:
                     
                     # Handle rate limiting with exponential backoff retry
                     if resp.status_code == 429:
-                        logger.warning(f"Dhan rate limit (429) hit for sec_id={security_id}. Retrying after backoff...")
-                        await asyncio.sleep(1.0)
+                        self._note_rate_limited("charts/intraday")
                         await self._throttle()
                         resp = await client.post("/charts/intraday", headers=headers, json=payload)
 
@@ -398,8 +475,7 @@ class DhanClient:
                 await self._throttle()
                 resp = await client.post("/charts/historical", headers=headers, json=payload)
                 if resp.status_code == 429:
-                    logger.warning(f"Dhan rate limit (429) on daily candles for sec_id={security_id}. Retrying after backoff...")
-                    await asyncio.sleep(1.0)
+                    self._note_rate_limited("charts/historical")
                     await self._throttle()
                     resp = await client.post("/charts/historical", headers=headers, json=payload)
                 if resp.status_code != 200:

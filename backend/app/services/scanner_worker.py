@@ -75,6 +75,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         self._session_generation: int = 0
         self._expiry_cache: dict[str, str] = {}
         self._option_chain_cache: dict[str, tuple[float, dict]] = {}
+        self._chain_fail_until: dict[str, float] = {}  # symbol -> monotonic time before which a failed chain/expiry fetch is not retried
         self._oi_wall_cache: dict[str, tuple[float, object]] = {}  # Setup 14: symbol -> (monotonic ts, OIWalls)
         self._option_chart_cache: dict[str, tuple[datetime, pd.DataFrame]] = {}
         self._candle_history: dict[str, list[dict]] = {}
@@ -162,10 +163,13 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             self._option_forming_candle.clear()
             self._option_chart_cache.clear()
             self._oi_wall_cache.clear()
+            self._chain_fail_until.clear()
             self._option_last_cum_volume.clear()
             self._last_cumulative_volume.clear()
             self._instrument_last_quote_time.clear()
             self._last_session_date = today
+
+    CHAIN_FAIL_TTL_S = 20.0
 
     def _chain_age_s(self, symbol: str) -> Optional[float]:
         """Seconds since the cached option chain for ``symbol`` was fetched (None if unknown)."""
@@ -189,6 +193,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         self._session_generation += 1
         self._historical_seed_attempts.clear()
         self._historical_seed_fail_count.clear()
+        self._chain_fail_until.clear()
         self._option_last_quote_time.clear()
         self._latest_option_quotes.clear()
         self._last_successful_quote_time = None
@@ -282,6 +287,9 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             self._expiry_cache.pop(sym, None)
             expiry = None
 
+        if now_mono < self._chain_fail_until.get(sym, 0.0):
+            return expiry or "", {}  # a recent chain/expiry fetch failed (e.g. 429): do not retry every scan cycle
+
         if not expiry:
             try:
                 exp_list = await self.dhan_client.fetch_expiry_list(
@@ -298,6 +306,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 logger.warning(f"Error resolving expiry for {sym}: {e}")
 
         if not expiry:
+            self._chain_fail_until[sym] = time.monotonic() + self.CHAIN_FAIL_TTL_S
             return "", {}
 
         cached = self._option_chain_cache.get(sym)
@@ -317,12 +326,13 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             fetch_mono = time.monotonic()
             if oc:
                 self._option_chain_cache[sym] = (fetch_mono, oc)
+                self._chain_fail_until.pop(sym, None)
                 return expiry, oc
-            else:
-                self._expiry_cache.pop(sym, None)
+            # Failed or empty chain: back off for a while but keep the expiry (the expiry list is still valid).
+            self._chain_fail_until[sym] = fetch_mono + self.CHAIN_FAIL_TTL_S
         except Exception as e:
             logger.warning(f"Error fetching option chain for {sym}: {e}")
-            self._expiry_cache.pop(sym, None)
+            self._chain_fail_until[sym] = time.monotonic() + self.CHAIN_FAIL_TTL_S
 
         return expiry, {}
 
