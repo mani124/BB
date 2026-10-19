@@ -283,6 +283,29 @@ def test_known_low_oi_blocks(tmp_path, monkeypatch):
     assert eng.positions() == []
 
 
+def test_candles_come_from_the_future_the_option_expiry_belongs_to(tmp_path, monkeypatch):
+    force_signal(monkeypatch)
+    asked = []
+
+    class P(FakeProvider):
+        async def contracts(self, symbols, today):
+            c = lambda sid, exp: {"symbol": "CRUDEOIL", "security_id": sid, "expiry": exp, "lot_size": 1, "lot_size_known": True, "display": sid}
+            return {s: [c("oct", "2026-10-19"), c("nov", "2026-11-19"), c("dec", "2026-12-18")][1:] for s in symbols}
+
+        async def candles(self, symbol, contract, now):
+            asked.append(contract["security_id"])
+            return await super().candles(symbol, contract, now)
+
+        async def chain(self, symbol, contract, now):
+            expiry, oc = await super().chain(symbol, contract, now)
+            return "2026-12-15", oc  # options expiring mid-December are written on the DEC future
+
+    eng = make(tmp_path, P())
+    run(eng, NOW)
+    assert asked == ["nov", "dec"]
+    assert eng.positions("OPEN")[0]["future_security_id"] == "dec"
+
+
 def test_completed_bars_drops_the_forming_bar():
     df = pd.DataFrame({"timestamp": pd.to_datetime(["2026-10-19 14:50", "2026-10-19 14:55"]), "close": [1, 2]})
     assert len(ce.completed_bars(df, at("2026-10-19 14:58"))) == 1

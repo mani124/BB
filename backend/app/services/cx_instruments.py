@@ -120,6 +120,41 @@ def nearest_futures(rows: list[dict], symbol: str, today: Optional[date] = None,
     return out
 
 
+def option_underlyings(rows: list[dict], symbol: str, today: Optional[date] = None, limit: int = 3) -> list[dict]:
+    """Fallback when the master lists no live future: the underlying ids that live OPTIONS of ``symbol`` point at
+    (``UNDERLYING_SECURITY_ID``), with the earliest option expiry seen for each. Dhan's 2026-10-19 master held only
+    stale USDINR futures (2024 expiries) but 2,182 current NSE USDINR options."""
+    u = UNDERLYINGS[symbol]
+    today = today or market_hours.now_ist().date()
+    best: dict[str, tuple[date, dict]] = {}
+    for r in rows:
+        if (r.get("INSTRUMENT") or "").strip().upper() != u.opt_type or not _exchange_ok(r, u) or not _matches_underlying(r, symbol, u):
+            continue
+        uid = str(r.get("UNDERLYING_SECURITY_ID") or "").strip().split(".")[0]
+        exp = _parse_date(r.get("SM_EXPIRY_DATE") or "")
+        if not uid or exp is None or exp <= today:
+            continue
+        if uid not in best or exp < best[uid][0]:
+            best[uid] = (exp, r)
+    out = []
+    for uid, (exp, r) in sorted(best.items(), key=lambda kv: kv[1][0])[:limit]:
+        lot = int(_num(r.get("LOT_SIZE"), 0))
+        out.append({"symbol": symbol, "security_id": uid, "expiry": exp.isoformat(), "lot_size": lot if lot > 0 else u.default_lot,
+                    "lot_size_known": lot > 0, "display": f"{symbol} option underlying {uid}", "source": "option_underlying"})
+    return out
+
+
+def find_contracts(rows: list[dict], symbol: str, today: Optional[date] = None) -> list[dict]:
+    """Live futures of ``symbol``, else the underlying ids its live options point at."""
+    return nearest_futures(rows, symbol, today) or option_underlyings(rows, symbol, today)
+
+
+def underlying_for_option_expiry(contracts: list[dict], option_expiry: str) -> Optional[dict]:
+    """Options on a future expire before it, so the underlying of an option expiry is the first future expiring on or after it.
+    Verified on 2026-10-19: CRUDEOIL options expiring 2026-11-17 price off the NOV future (2026-11-19), not the DEC one."""
+    return next((c for c in contracts if c["expiry"] >= option_expiry), None)
+
+
 class ContractResolver:
     """Resolves each underlying to its live futures, cached in a small JSON file and refreshed once per day."""
 
@@ -153,7 +188,7 @@ class ContractResolver:
                 rows = parse_master(await self._fetch_master())
                 contracts = dict(self._cache.get("contracts", {})) if self._cache.get("day") == today.isoformat() else {}
                 for s in stale:
-                    contracts[s] = nearest_futures(rows, s, today)
+                    contracts[s] = find_contracts(rows, s, today)
                 self._cache = {"day": today.isoformat(), "contracts": contracts}
                 tmp = self.cache_path + ".tmp"
                 with open(tmp, "w") as f:

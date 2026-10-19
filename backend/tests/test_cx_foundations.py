@@ -121,3 +121,20 @@ def test_resolver_caches_for_the_day(tmp_path):
 def test_cx_settings_are_off_by_default():
     assert BY_KEY["cx_enabled"].default is False
     assert BY_KEY["cx_loss_cap_commodity"].default == 15000.0 and BY_KEY["cx_loss_cap_currency"].default == 5000.0
+
+
+def test_no_live_currency_future_falls_back_to_the_options_underlying():
+    stale = _row("USDINR", "FUTCUR", "NSE", "2024-08-28", "1026077", "1")
+    opts = [dict(_row("USDINR", "OPTCUR", "NSE", exp, "9" + str(i), "1"), UNDERLYING_SECURITY_ID=uid)
+            for i, (exp, uid) in enumerate([("2026-10-28", "20001.0"), ("2026-11-26", "20002"), ("2026-10-28", "20001")])]
+    rows = [stale] + opts
+    assert ci.nearest_futures(rows, "USDINR", date(2026, 10, 19)) == []
+    got = ci.find_contracts(rows, "USDINR", date(2026, 10, 19))
+    assert [(g["security_id"], g["expiry"], g["source"]) for g in got] == [("20001", "2026-10-28", "option_underlying"), ("20002", "2026-11-26", "option_underlying")]
+
+
+def test_option_expiry_picks_the_future_it_is_written_on():
+    cs = [{"security_id": "nov", "expiry": "2026-11-19"}, {"security_id": "dec", "expiry": "2026-12-18"}]
+    assert ci.underlying_for_option_expiry(cs, "2026-11-17")["security_id"] == "nov"
+    assert ci.underlying_for_option_expiry(cs, "2026-11-20")["security_id"] == "dec"
+    assert ci.underlying_for_option_expiry(cs, "2027-01-01") is None

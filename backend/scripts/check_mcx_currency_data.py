@@ -84,6 +84,32 @@ def nearest_futures(rows: list[dict], symbol: str, today: Optional[datetime] = N
             for exp, r in found[:limit]]
 
 
+def option_underlyings(rows: list[dict], symbol: str, today: Optional[datetime] = None, limit: int = 2) -> list[dict]:
+    """No live future in the master: the underlying ids that live options of `symbol` point at (UNDERLYING_SECURITY_ID)."""
+    _f, opt_type, _seg, exch = UNDERLYINGS[symbol]
+    today = (today or datetime.now()).replace(hour=0, minute=0, second=0, microsecond=0)
+    best: dict[str, tuple[datetime, dict]] = {}
+    for r in rows:
+        if (r.get("INSTRUMENT") or "").strip().upper() != opt_type or (r.get("EXCH_ID") or "").strip().upper() not in ("", exch):
+            continue
+        if not _matches(r, symbol, exch):
+            continue
+        uid = str(r.get("UNDERLYING_SECURITY_ID") or "").strip().split(".")[0]
+        exp = _parse_date(r.get("SM_EXPIRY_DATE") or "")
+        if uid and exp is not None and exp > today and (uid not in best or exp < best[uid][0]):
+            best[uid] = (exp, r)
+    return [{"security_id": uid, "lot_size": int(_num(r.get("LOT_SIZE"), 0)), "expiry": exp.strftime("%Y-%m-%d"),
+             "display": f"{symbol} option underlying {uid}"} for uid, (exp, r) in sorted(best.items(), key=lambda kv: kv[1][0])[:limit]]
+
+
+def future_expiry_summary(rows: list[dict], symbol: str) -> str:
+    """Expiry range of the master's futures rows for `symbol`, to show whether they are all stale."""
+    fut_type, _o, _s, exch = UNDERLYINGS[symbol]
+    exps = sorted({str(r.get("SM_EXPIRY_DATE"))[:10] for r in rows if (r.get("INSTRUMENT") or "").strip().upper() == fut_type
+                   and (r.get("EXCH_ID") or "").strip().upper() == exch and _matches(r, symbol, exch)})
+    return f"{len(exps)} {fut_type} expiries in master for {symbol}: {exps[:3]} ... {exps[-3:]}" if exps else f"no {fut_type} rows for {symbol}"
+
+
 def diagnose_missing(rows: list[dict], symbol: str) -> list[str]:
     """Why no future was found: what the master holds for this symbol and instrument type."""
     fut_type, _o, _s, exch = UNDERLYINGS[symbol]
@@ -177,9 +203,9 @@ async def check_symbol(client: httpx.AsyncClient, headers: dict, rep: Report, sy
         atm = parity_atm(oc) if isinstance(oc, dict) else None
         if ok and atm and ltp > 0:
             off = abs(atm - ltp) / ltp * 100
-            rep.add(symbol, "chain vs future", "PASS" if off <= 3.0 else "FAIL",
+            rep.add(symbol, "chain vs future", "PASS" if off <= 0.5 else ("FAIL" if tag in ("", " #1") else "INFO"),
                     f"future ltp {ltp}, chain parity ATM strike {atm} ({off:.2f}% apart): "
-                    + ("this future is the chain's underlying" if off <= 3.0 else "this future is probably NOT the chain's underlying month"))
+                    + ("this future is the chain's underlying" if off <= 0.5 else "this future is probably NOT the chain's underlying month"))
         if ok and s.get("with_greeks", 0) == 0:
             rep.add(symbol, "chain greeks", "FAIL", "no delta in chain (setups would use assumed delta)")
         elif ok:
@@ -195,7 +221,8 @@ async def check_symbol(client: httpx.AsyncClient, headers: dict, rep: Report, sy
     code, data = await _post(client, headers, "/charts/intraday", body)
     n = len((data or {}).get("close", [])) if isinstance(data, dict) else 0
     first_ts = ((data or {}).get("start_Time") or (data or {}).get("timestamp") or [None])[0] if n else None
-    rep.add(symbol, "5m candles", "PASS" if code == 200 and n >= 50 else "FAIL", f"http={code} bars={n} first_ts={first_ts}")
+    detail = f"http={code} bars={n} first_ts={first_ts}" + ("" if n else f" body={str(data)[:160]}")
+    rep.add(symbol, "5m candles", "PASS" if code == 200 and n >= 50 else "FAIL", detail)
 
     if with_ws:
         await check_ws(rep, symbol, seg, sec_id, client_id, token)
@@ -260,6 +287,11 @@ async def main(argv: Optional[list[str]] = None) -> int:
             rows = []
         for sym in args.symbols:
             futs = nearest_futures(rows, sym) if rows else []
+            if rows and not futs:
+                print("       " + future_expiry_summary(rows, sym))
+                futs = option_underlyings(rows, sym)
+                if futs:
+                    rep.add(sym, "instrument", "WARN", "no live future in master; using the underlying id of live options instead (checks below test it)")
             if not futs:
                 rep.add(sym, "instrument", "FAIL", "no live future found in master")
                 for line in diagnose_missing(rows, sym):

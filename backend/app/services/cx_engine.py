@@ -515,10 +515,12 @@ class CxEngine:
             bars = completed_bars(bars_df, now)
             if mine or enabled:
                 expiry, oc = await self.provider.chain(sym, contract, now)
-                if not oc and not mine and len(cs) > 1:
-                    contract = cs[1]
-                    bars = completed_bars(await self.provider.candles(sym, contract, now), now)
-                    expiry, oc = await self.provider.chain(sym, contract, now)
+                if expiry and not mine:
+                    # the chain is written on the first future expiring on/after the option expiry, which is not always the nearest one
+                    under = ci.underlying_for_option_expiry(cs, expiry)
+                    if under is not None and under["security_id"] != contract["security_id"]:
+                        contract = under
+                        bars = completed_bars(await self.provider.candles(sym, contract, now), now)
             for pos in mine:
                 if await self._manage(pos, now, bars, oc):
                     result["closed"].append(pos["id"])

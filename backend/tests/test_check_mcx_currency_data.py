@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from scripts.check_mcx_currency_data import diagnose_missing, nearest_futures, parity_atm, summarize_chain
+from scripts.check_mcx_currency_data import diagnose_missing, future_expiry_summary, nearest_futures, option_underlyings, parity_atm, summarize_chain
 
 
 def _row(sym, inst, exch, exp, sid, lot="100"):
@@ -38,3 +38,11 @@ def test_summarize_chain_counts_quality():
                   "pe": {"last_price": 0}}}
     s = summarize_chain(oc)
     assert s == {"strikes": 1, "legs": 2, "with_price": 1, "with_bid_ask": 1, "with_greeks": 1, "with_oi": 1}
+
+
+def test_option_underlying_fallback_and_stale_future_summary():
+    rows = [_row("USDINR", "FUTCUR", "NSE", "2024-08-28", "1"),
+            {**_row("USDINR", "OPTCUR", "NSE", "2026-10-28", "5"), "UNDERLYING_SECURITY_ID": "20001.0"}]
+    assert nearest_futures(rows, "USDINR", today=datetime(2026, 10, 19)) == []
+    assert option_underlyings(rows, "USDINR", today=datetime(2026, 10, 19))[0]["security_id"] == "20001"
+    assert "2024-08-28" in future_expiry_summary(rows, "USDINR")
