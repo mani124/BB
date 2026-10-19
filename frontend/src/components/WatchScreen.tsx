@@ -9,6 +9,9 @@ import { SignalTable } from './SignalTable';
 import { SignalDetails } from './SignalDetails';
 import { WatchStatus } from './WatchStatus';
 import type { StreamStatus } from './Header';
+import type { DashboardWatch, WatchBook } from '../types/dashboard';
+import { WatchCandidateList } from './WatchCandidateList';
+import { WatchCandidateDetail } from './WatchCandidateDetail';
 
 const SIGNALS_SHOWN = 12;
 
@@ -20,6 +23,7 @@ export interface WatchFilters {
 }
 
 interface WatchScreenProps {
+  dashboardWatch?: DashboardWatch | null;
   state: ScannerState;
   loaded: boolean;
   wsConnected: boolean;
@@ -37,12 +41,16 @@ interface WatchScreenProps {
 
 /** Live screen: one header band, positions and today's tally on the left, signals on the right. */
 export const WatchScreen: React.FC<WatchScreenProps> = ({
-  state, loaded, wsConnected, stream, filters, onFilters, filteredSignals, closedTrades, activeSignalIds,
+  dashboardWatch, state, loaded, wsConnected, stream, filters, onFilters, filteredSignals, closedTrades, activeSignalIds,
   onPaperBuy, onClosePosition, onToggleAutoTrade, onChangeLots,
 }) => {
   const [showAll, setShowAll] = useState(false);
   const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null);
   const [sortBy, setSortBy] = useState<'newest' | 'symbol' | 'setup'>('newest');
+  const [bookFilter, setBookFilter] = useState<'all' | WatchBook>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'actionable' | 'waiting'>('all');
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [showScannerDetails, setShowScannerDetails] = useState(false);
   // Confirmed signals first (stable), short list by default.
   const sorted = [...filteredSignals].sort((x, y) => {
     const confirmation = Number(y.is_confirmed !== false) - Number(x.is_confirmed !== false);
@@ -56,8 +64,59 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
   const currentSelection = selectedSignal && state.signals.find((sig) => sig.id === selectedSignal.id);
   const confirmedCount = state.signals.filter((sig) => sig.is_confirmed !== false).length;
 
+  if (dashboardWatch && !showScannerDetails) {
+    const candidates = dashboardWatch.candidates
+      .filter((candidate) => bookFilter === 'all' || candidate.book === bookFilter)
+      .filter((candidate) => {
+        const actionable = ['READY', 'CONFIRMED', 'SIGNAL'].includes(candidate.stage);
+        return statusFilter === 'all' || (statusFilter === 'actionable' ? actionable : !actionable);
+      })
+      .sort((a, b) => {
+        const priority = (stage: string) => stage === 'READY' || stage === 'CONFIRMED' || stage === 'SIGNAL' ? 0 : 1;
+        return priority(a.stage) - priority(b.stage) || (b.observed_at || '').localeCompare(a.observed_at || '');
+      });
+    const selected = candidates.find((candidate) => candidate.id === selectedCandidateId) ?? candidates[0] ?? null;
+    return (
+      <div className="flex flex-col gap-3 lg:flex-1 lg:min-h-0">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold">What the scanners are watching</h1>
+            <p className="desk-muted text-sm">Select a candidate to see its last recorded checks and entry block.</p>
+          </div>
+          <button type="button" className="desk-btn" onClick={() => setShowScannerDetails(true)}>Open scanner details</button>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          {dashboardWatch.sources.map((source) => (
+            <span key={source.book} className={`desk-pill ${source.state === 'error' ? 'down' : source.state === 'ready' ? 'up' : 'warn'}`}>
+              {source.book === 'cx' ? 'CX' : source.book === 'paper' ? 'Main scanner' : source.book === 'setup16' ? 'Setup 16' : 'Earnings'} · {source.state}
+              {source.message ? ` · ${source.message}` : ''}
+              {source.state === 'ready' && !dashboardWatch.candidates.some((candidate) => candidate.book === source.book) ? ' · no candidates' : ''}
+            </span>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(260px,0.85fr)_minmax(0,1.5fr)] gap-3 lg:min-h-0 lg:flex-1">
+          <section className="desk-panel overflow-hidden lg:overflow-y-auto" aria-label="Watched candidates">
+            <div className="desk-ph justify-between">
+              <h2>{candidates.length} candidates</h2>
+              <label className="text-xs desk-muted">Book filter <select className="desk-input ml-2" style={{ width: 'auto' }} value={bookFilter} onChange={(event) => setBookFilter(event.target.value as typeof bookFilter)}>
+                <option value="all">All books</option><option value="paper">Main scanner</option><option value="setup16">Setup 16</option>
+                <option value="cx">Commodities & FX</option><option value="earnings">Earnings</option>
+              </select></label>
+              <label className="text-xs desk-muted">Status filter <select className="desk-input ml-2" style={{ width: 'auto' }} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
+                <option value="all">All states</option><option value="actionable">Ready / signaled</option><option value="waiting">Waiting / blocked</option>
+              </select></label>
+            </div>
+            <WatchCandidateList candidates={candidates} selectedId={selected?.id ?? null} onSelect={setSelectedCandidateId} />
+          </section>
+          <WatchCandidateDetail candidate={selected} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
+      {dashboardWatch && showScannerDetails && <button type="button" className="desk-btn self-start" onClick={() => setShowScannerDetails(false)}>← Back to all scanners</button>}
       <WatchStatus state={state} stream={stream} confirmedCount={confirmedCount} />
       <div className="desk-panel desk-band overflow-hidden">
         <CompactStrip portfolio={pf} />

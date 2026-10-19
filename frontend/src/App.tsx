@@ -584,6 +584,7 @@ const DashboardContent: React.FC = () => {
             onResetPortfolio={handleResetPortfolio} />
         ) : activeTab === 'watch' ? (
           <WatchScreen
+            dashboardWatch={dashboardWatch}
             state={state}
             loaded={loaded}
             wsConnected={wsConnected}

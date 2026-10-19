@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ScannerState, Signal } from '../types';
 import { WatchScreen } from './WatchScreen';
+import type { DashboardWatch } from '../types/dashboard';
 
 const signal = {
   id: 's1', symbol: 'NIFTY 50', timeframe: '5m', setup_type: 'SETUP_1_SQUEEZE_EXPANSION',
@@ -19,6 +20,56 @@ const state = {
 } as ScannerState;
 
 describe('WatchScreen', () => {
+  const watch: DashboardWatch = {
+    observed_at: '2026-10-19T10:45:00+05:30',
+    sources: [
+      { book: 'paper', mode: 'demo', as_of: '2026-10-19T10:40:00+05:30', state: 'ready', message: '' },
+      { book: 'cx', mode: 'paper', as_of: null, state: 'error', message: 'Feed unavailable' },
+      { book: 'earnings', mode: 'paper', as_of: null, state: 'unknown', message: '' },
+    ],
+    candidates: [
+      { id: 'paper:s1', book: 'paper', stage: 'CONFIRMED', observed_at: '2026-10-19T10:40:00+05:30',
+        is_preview: false, checks: [{ name: 'rsi', value: 61.2 }], block_reason: null,
+        instrument: 'NIFTY 50', setup: 'Setup 1', detail: 'Band break', source_ref: {} },
+      { id: 'earnings:INFY:A', book: 'earnings', stage: 'READY', observed_at: '2026-10-19T10:42:00+05:30',
+        is_preview: true, checks: [], block_reason: null, instrument: 'INFY', setup: 'MODE_A', detail: '', source_ref: {} },
+    ],
+  };
+
+  const props = { state, loaded: true, wsConnected: true, stream: { state: 'live' as const, ageSec: 0 },
+    filters: { setup: 'ALL', optionType: 'ALL', instrumentType: 'ALL', timeframe: 'ALL' }, onFilters: () => {},
+    filteredSignals: [signal], closedTrades: [], activeSignalIds: new Set<string>(), onPaperBuy: () => {},
+    onClosePosition: () => {}, onToggleAutoTrade: () => {}, onChangeLots: () => {} };
+
+  it('shows mixed-book candidates with preview, source error, and recorded measurements', () => {
+    render(<WatchScreen {...props} dashboardWatch={watch} />);
+    expect(screen.getByRole('button', { name: /NIFTY 50.*recorded/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /INFY.*preview/i })).toBeInTheDocument();
+    expect(screen.getByText(/CX.*Feed unavailable/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /NIFTY 50.*recorded/i }));
+    expect(screen.getByText('61.2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /INFY.*preview/i }));
+    expect(screen.getByText(/Preview only/i)).toBeInTheDocument();
+  });
+
+  it('filters by book and keeps the selected candidate after refresh', () => {
+    const { rerender } = render(<WatchScreen {...props} dashboardWatch={watch} />);
+    fireEvent.click(screen.getByRole('button', { name: /INFY.*preview/i }));
+    rerender(<WatchScreen {...props} dashboardWatch={{ ...watch, observed_at: '2026-10-19T10:46:00+05:30' }} />);
+    expect(screen.getByRole('heading', { name: 'INFY' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Book filter'), { target: { value: 'paper' } });
+    expect(screen.queryByRole('button', { name: /INFY.*preview/i })).not.toBeInTheDocument();
+  });
+
+  it('can focus on candidates still waiting for a condition', () => {
+    const waiting = { ...watch.candidates[0], id: 'setup16:WAIT', book: 'setup16' as const,
+      instrument: 'BANKNIFTY', stage: 'NO_BREAKOUT', is_preview: false };
+    render(<WatchScreen {...props} dashboardWatch={{ ...watch, candidates: [...watch.candidates, waiting] }} />);
+    fireEvent.change(screen.getByLabelText('Status filter'), { target: { value: 'waiting' } });
+    expect(screen.getByRole('button', { name: /BANKNIFTY.*recorded/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /NIFTY 50.*recorded/i })).not.toBeInTheDocument();
+  });
+
   it('asks the operator to inspect a signal before paper buying', () => {
     const onBuy = vi.fn();
     render(<WatchScreen state={state} loaded wsConnected stream={{ state: 'live', ageSec: 0 }}
