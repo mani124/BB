@@ -27,6 +27,7 @@ from app.services.relative_strength import evaluate_relative_strength, NIFTY_SYM
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size, option_exchange_segment
 from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.setup13 import evaluate_option_vwap_reclaim
+from app.services.setup16 import evaluate_option_squeeze_breakout
 from app.services.setup12 import evaluate_adx_ema_cross
 from app.services.setup14 import WALL_REFRESH_S, compute_oi_walls, evaluate_oi_wall_bounce
 from app.services.straddle_squeeze import StraddleLeg, evaluate_straddle_squeeze
@@ -907,6 +908,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         inst_type_dhan = "OPTIDX" if inst.instrument_type == "INDEX" else "OPTSTK"
         straddle_legs: dict[str, StraddleLeg] = {}
         s13_candidates: list[Signal] = []
+        s16_candidates: list[Signal] = []
 
         # Setup 13 compares the option's VWAP reclaim with the underlying's own VWAP (completed spot bars)
         spot_bars = self._candle_history.get(inst.symbol, [])
@@ -1047,6 +1049,29 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                     s13 = None
                 if s13:
                     s13_candidates.append(s13)
+                try:
+                    rt = paper_trader.runtime
+                    s16 = evaluate_option_squeeze_breakout(
+                        symbol=inst.symbol,
+                        strike_symbol=strike_symbol,
+                        option_type=opt_type,
+                        option_df=ind_opt,
+                        underlying_price=underlying_price,
+                        strike_price=atm_strike,
+                        expiry_date=expiry,
+                        lot_size=lot_size,
+                        option_security_id=sec_id_str,
+                        timeframe="5m",
+                        current_quote=leg_quote,
+                        stop_pct=float(rt.get("setup16_stop_pct")),
+                        window_start=rt.get("setup16_window_start"),
+                        window_end=rt.get("setup16_window_end"),
+                    )
+                except Exception as e:
+                    logger.warning(f"Setup 16 evaluation failed for {strike_symbol}: {e}")
+                    s16 = None
+                if s16:
+                    s16_candidates.append(s16)
 
         # Setup 10: ATM straddle premium squeeze, from the same two completed-bar series.
         # Skipped when Setup 5 already fired on this side, so one contract is never entered twice.
@@ -1069,6 +1094,14 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             if not any(r.option_type == s13.option_type and r.setup_type in (
                     SetupType.SETUP_5_OPTION_BB, SetupType.SETUP_10_STRADDLE_SQUEEZE) for r in results):
                 results.append(s13)
+
+        # Setup 16: one contract, one entry. Setups 5, 10 and 13 win a same-side collision (Setup 5 is the
+        # unfiltered breakout and fires on most bars Setup 16 would).
+        for s16 in s16_candidates:
+            if not any(r.option_type == s16.option_type and r.setup_type in (
+                    SetupType.SETUP_5_OPTION_BB, SetupType.SETUP_10_STRADDLE_SQUEEZE,
+                    SetupType.SETUP_13_OPTION_VWAP_RECLAIM) for r in results):
+                results.append(s16)
 
         return results
 

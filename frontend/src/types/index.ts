@@ -15,6 +15,7 @@ export type SetupType =
   | 'Setup 12: ADX + EMA 20 Trend Cross'
   | 'Setup 13: Option VWAP Reclaim'
   | 'Setup 14: OI Wall Bounce'
+  | 'Setup 16: Option Squeeze Breakout'
   | 'SETUP_1_SQUEEZE_EXPANSION'
   | 'SETUP_2_WALKING_BANDS'
   | 'SETUP_3_WM_REVERSAL'
@@ -28,7 +29,8 @@ export type SetupType =
   | 'SETUP_11_FILTERED_OPTION_BB'
   | 'SETUP_12_ADX_EMA_CROSS'
   | 'SETUP_13_OPTION_VWAP_RECLAIM'
-  | 'SETUP_14_OI_WALL_BOUNCE';
+  | 'SETUP_14_OI_WALL_BOUNCE'
+  | 'SETUP_16_OPTION_SQUEEZE_BREAK';
 
 export interface OptionStrikeRecommendation {
   symbol: string;

@@ -32,6 +32,7 @@ export const SETUP_FILTERS: { key: string; label: string; title: string }[] = [
   { key: 'Setup 12: ADX + EMA 20 Trend Cross', label: 'S12 ADX EMA Cross', title: 'Setup 12: ADX + EMA 20 Trend Cross' },
   { key: 'Setup 13: Option VWAP Reclaim', label: 'S13 Option VWAP', title: 'Setup 13: Option VWAP Reclaim' },
   { key: 'Setup 14: OI Wall Bounce', label: 'S14 OI Wall', title: 'Setup 14: OI Wall Bounce' },
+  { key: 'Setup 16: Option Squeeze Breakout', label: 'S16 Squeeze Break', title: 'Setup 16: Option Squeeze Breakout' },
 ];
 
 const Seg: React.FC<{

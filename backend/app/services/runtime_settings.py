@@ -58,6 +58,7 @@ G_EARN = "Earnings options strategy"
 G_LIVE = "Live broker routing"
 G_REC = "Market data recorder"
 G_SWING = "Swing equity book (Setup 15)"
+G_S16 = "Option squeeze breakout (Setup 16)"
 
 DEFINITIONS: tuple[SettingDef, ...] = (
     # ---- RMS ----
@@ -243,6 +244,16 @@ DEFINITIONS: tuple[SettingDef, ...] = (
        default=60, min=15, max=3600),
     _d(key="earnings_starting_capital", label="Starting paper capital", group=G_EARN, type="float", unit="INR",
        description="Capital the earnings paper book reports returns against.", default=500000.0, min=0),
+    # ---- Setup 16 (setup16.py) ----
+    _d(key="setup16_stop_pct", label="Setup 16 max stop distance", group=G_S16, type="float", unit="% below entry",
+       description="The stop is the nearer of the option's lower Bollinger Band and this percentage below the entry. "
+                   "After a breakout the lower band is often 30-50% under the price; this keeps the risk inside the cap.",
+       default=12.0, min=4, max=40),
+    _d(key="setup16_window_start", label="Setup 16 first entry bar", group=G_S16, type="time", unit="IST",
+       description="Earliest 5m bar start that may produce a Setup 16 entry.", default="09:30"),
+    _d(key="setup16_window_end", label="Setup 16 last entry bar", group=G_S16, type="time", unit="IST",
+       description="Latest 5m bar start that may produce a Setup 16 entry. Mid-morning entries lost heavily on 2026-10-19; "
+                   "narrow the window here if that repeats.", default="14:25"),
     # ---- swing equity book (swing_engine.py / swing_signals.py) ----
     _d(key="swing_enabled", label="Swing book enabled", group=G_SWING, type="bool",
        description="Allow the swing paper book to queue new daily-bar entries. Open positions are always managed.", default=False),
