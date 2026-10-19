@@ -249,3 +249,12 @@ def test_completed_bars_drops_the_forming_bar():
     df = pd.DataFrame({"timestamp": pd.to_datetime(["2026-10-19 14:50", "2026-10-19 14:55"]), "close": [1, 2]})
     assert len(ce.completed_bars(df, at("2026-10-19 14:58"))) == 1
     assert len(ce.completed_bars(df, at("2026-10-19 15:00"))) == 2
+
+
+def test_overview_lists_open_closed_and_decisions(tmp_path, monkeypatch):
+    force_signal(monkeypatch)
+    eng = make(tmp_path)
+    run(eng, NOW)
+    o = eng.overview()
+    assert len(o["open_positions"]) == 1 and o["closed_today"] == [] and o["settings"]["symbols"] == ["CRUDEOIL"]
+    assert o["summary"]["open_positions"] == 1

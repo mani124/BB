@@ -291,6 +291,19 @@ class CxEngine:
     def positions(self, status: Optional[str] = None) -> list[dict]:
         return [p for p in self.store.positions() if status is None or p["status"] == status]
 
+    def overview(self) -> dict:
+        """Everything the Commodities & Currency tab shows, in one call (no broker traffic)."""
+        today = market_hours.now_ist().date().isoformat()
+        allp = self.store.positions()
+        closed = [p for p in allp if p["status"] == "CLOSED"]
+        done_today = [p for p in closed if str(p.get("closed_at", ""))[:10] == today]
+        return {"summary": self.summary(), "open_positions": [p for p in allp if p["status"] == "OPEN"],
+                "closed_today": done_today, "recent_closed": sorted(closed, key=lambda p: p.get("closed_at", ""), reverse=True)[:30],
+                "decisions": self.telemetry.decisions(hours=24, book=BOOK, limit=100),
+                "settings": {"lots": int(self.runtime.get("cx_lots")), "sl_pct": float(self.runtime.get("cx_sl_pct")),
+                             "target_pct": float(self.runtime.get("cx_target_pct")), "symbols": self.symbols()},
+                "as_of": market_hours.now_ist().strftime("%H:%M:%S")}
+
     # ---------------------------------------------------------------- entry gate
     def entry_block(self, u: ci.CxUnderlying, now: datetime, side_open: list[dict]) -> Optional[tuple[str, str]]:
         g = self.runtime.get

@@ -11,6 +11,7 @@ import { AppTab, PaperPortfolio, PaperPosition, ScannerState, SetupMode, Signal 
 import { SettingsPanel } from './components/SettingsPanel';
 import { EarningsPanel } from './components/EarningsPanel';
 import { Setup16Screen } from './components/Setup16Screen';
+import { CxScreen } from './components/CxScreen';
 import { AlertCircle, X } from 'lucide-react';
 import { isIndexSymbol } from './components/instruments';
 import { apiFetch, bootstrapDashboardSession, getDashboardCapability, setDashboardCapability } from './api/client';
@@ -565,6 +566,8 @@ const DashboardContent: React.FC = () => {
           />
         ) : activeTab === 'setup16' ? (
           <div className="flex flex-col lg:flex-1 lg:min-h-0"><Setup16Screen /></div>
+        ) : activeTab === 'cx' ? (
+          <div className="flex flex-col lg:flex-1 lg:min-h-0"><CxScreen /></div>
         ) : activeTab === 'earnings' ? (
           <div className="flex flex-col lg:flex-1 lg:min-h-0"><EarningsPanel /></div>
         ) : activeTab === 'settings' ? (

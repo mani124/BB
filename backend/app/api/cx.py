@@ -8,6 +8,11 @@ from app.services.cx_registry import get_engine
 router = APIRouter(prefix="/cx", tags=["commodities-currency"])
 
 
+@router.get("/overview")
+async def overview() -> dict:
+    return get_engine().overview()
+
+
 @router.get("/summary")
 async def summary() -> dict:
     return get_engine().summary()
