@@ -10,6 +10,13 @@ from app.services.performance_report import build_report
 router = APIRouter(prefix="/telemetry", tags=["telemetry"])
 
 
+@router.get("/dhan-rate-limit")
+async def dhan_rate_limit() -> dict:
+    """How many times Dhan answered HTTP 429 today (IST) and in the last days, and whether calls are paused now."""
+    from app.main import worker
+    return worker.dhan_client.rate_limit_status()
+
+
 @router.get("/insights")
 async def insights(hours: float = Query(24, gt=0, le=24 * 365)) -> dict:
     return paper_trader.telemetry.insights(hours)

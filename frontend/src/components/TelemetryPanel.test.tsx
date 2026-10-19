@@ -26,6 +26,11 @@ describe('TelemetryPanel', () => {
     expect(screen.getByText('Setup 1')).toBeInTheDocument();
   });
 
+  it('shows how many Dhan 429s happened today', () => {
+    render(<TelemetryPanel initial={{ ...props.initial, rateLimit: { today: 1400, by_day: {}, cooldown_s: 0 } }} />);
+    expect(screen.getByTestId('dhan-429')).toHaveTextContent('Dhan 429s today 1400');
+  });
+
   it('shows skip reasons on the decision trail', () => {
     render(<TelemetryPanel initial={props.initial} />);
     fireEvent.click(screen.getByText('Decision trail'));

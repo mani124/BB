@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
-import type { DecisionRow, ErrorRow, PerfBucket, PerformanceReport, TelemetryInsights } from '../types';
+import type { DecisionRow, DhanRateLimit, ErrorRow, PerfBucket, PerformanceReport, TelemetryInsights } from '../types';
 
 const money = (v: number | null | undefined, plus = false) => {
   if (v === null || v === undefined) return '-';
@@ -24,6 +24,7 @@ export interface TelemetryInitial {
   insights?: TelemetryInsights;
   decisions?: DecisionRow[];
   errors?: ErrorRow[];
+  rateLimit?: DhanRateLimit;
 }
 
 function useJson<T>(url: string, initial?: T, key = 0): { data: T | null; failed: boolean } {
@@ -76,6 +77,7 @@ export const TelemetryPanel: React.FC<{ initial?: TelemetryInitial }> = ({ initi
   const ins = useJson<TelemetryInsights>(`/api/telemetry/insights?hours=${hours}`, initial?.insights, hours);
   const dec = useJson<DecisionRow[]>(`/api/telemetry/decisions?hours=${hours}&limit=300`, initial?.decisions, hours);
   const errs = useJson<ErrorRow[]>(`/api/telemetry/errors?hours=${hours}&limit=300`, initial?.errors, hours);
+  const rl = useJson<DhanRateLimit>('/api/telemetry/dhan-rate-limit', initial?.rateLimit);
   const [decisionFilter, setDecisionFilter] = useState<string>('ALL');
   const [openErr, setOpenErr] = useState<number | null>(null);
 
@@ -88,6 +90,12 @@ export const TelemetryPanel: React.FC<{ initial?: TelemetryInitial }> = ({ initi
           <div className="desk-seg" role="group" aria-label="Analytics view">
             {VIEWS.map((v) => <button key={v.id} type="button" aria-pressed={view === v.id} onClick={() => setView(v.id)}>{v.label}</button>)}
           </div>
+          {rl.data && (
+            <span className={`desk-pill ${rl.data.today >= 50 ? 'warn' : ''}`} data-testid="dhan-429"
+              title="Times Dhan answered HTTP 429 (too many requests) today. Many of them delay scans and quotes.">
+              Dhan 429s today <b className="desk-num">{rl.data.today}</b>{rl.data.cooldown_s > 0 ? ' · paused' : ''}
+            </span>
+          )}
           {view !== 'performance' && (
             <div className="desk-seg ml-auto" role="group" aria-label="Time window">
               {WINDOWS.map((w) => <button key={w.h} type="button" aria-pressed={hours === w.h} onClick={() => setHours(w.h)}>{w.l}</button>)}

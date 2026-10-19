@@ -29,6 +29,7 @@ OK, WARN, FAIL = "ok", "warn", "fail"
 BACKUP_STATE_DIR = os.getenv("BB_BACKUP_STATE_DIR", "/var/lib/bb-backup")
 DEPLOY_STATE_DIR = os.getenv("BB_DEPLOY_STATE_DIR", "/var/lib/bb-deploy")
 BACKUP_MAX_AGE_HOURS = 36.0  # same limit as bb-backup --status
+RATE_LIMIT_WARN = 50  # Dhan 429s per day before readiness warns
 DISK_WARN_PCT, DISK_FAIL_PCT = 80.0, 90.0
 # Checks that need the market day to be on; the rest are about the machine and are reported every day.
 MARKET_CHECKS = ("dhan_login", "feed")
@@ -87,7 +88,7 @@ def check_disk(path: str, usage: Callable = shutil.disk_usage) -> Check:
 def run_checks(*, has_dhan_login: bool, feed_live: bool, router_mode: str = "off", broker_session: bool = True,
                kill_switch: bool = False, now: Optional[datetime] = None, data_dir: Optional[str] = None,
                backup_dir: str = BACKUP_STATE_DIR, deploy_dir: str = DEPLOY_STATE_DIR,
-               telegram: Optional[bool] = None) -> list[Check]:
+               telegram: Optional[bool] = None, rate_limit: Optional[dict] = None) -> list[Check]:
     n = now or market_hours.now_ist()
     out: list[Check] = []
     trading = market_hours.is_trading_day(n.date())
@@ -111,6 +112,11 @@ def run_checks(*, has_dhan_login: bool, feed_live: bool, router_mode: str = "off
         out.append(Check("live_routing", FAIL, "live routing is ON but there is no broker session"))
     else:
         out.append(Check("live_routing", OK, f"live routing mode: {router_mode}"))
+    if rate_limit is not None:
+        n429 = int(rate_limit.get("today", 0))
+        out.append(Check("dhan_rate_limit", WARN if n429 >= RATE_LIMIT_WARN else OK,
+                         f"Dhan returned HTTP 429 (too many requests) {n429} times today"
+                         + (" (calls are delayed: check for a retry loop)" if n429 >= RATE_LIMIT_WARN else "")))
     out.append(Check("kill_switch", WARN if kill_switch else OK,
                      "kill switch is ENGAGED: no new entries" if kill_switch else "kill switch is off"))
     return out

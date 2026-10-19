@@ -241,6 +241,7 @@ class DhanChainProvider:
         self.get_credentials = get_credentials
         self.universe_path = universe_path or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "fno_universe.json")
         self._universe: Optional[dict] = None
+        self._expiry_cache: dict[str, tuple[float, list]] = {}  # symbol -> (monotonic ts, raw expiry list)
 
     def _load(self) -> dict:
         if self._universe is None:
@@ -274,7 +275,14 @@ class DhanChainProvider:
         inst, creds = self.instrument(symbol), self.get_credentials()
         if not inst or not creds:
             return []
-        raw = await self.dhan.fetch_expiry_list(creds[0], creds[1], int(inst["security_id"]), inst["exchange_segment"])
+        now = time.monotonic()
+        cache = self._expiry_cache
+        hit = cache.get(symbol.upper())
+        if hit and now - hit[0] < (600.0 if hit[1] else 20.0):
+            raw = hit[1]
+        else:
+            raw = await self.dhan.fetch_expiry_list(creds[0], creds[1], int(inst["security_id"]), inst["exchange_segment"])
+            cache[symbol.upper()] = (now, raw or [])
         out = []
         for e in raw or []:
             try:

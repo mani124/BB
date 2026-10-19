@@ -298,6 +298,7 @@ export interface TelemetryInsights {
   errors: { code: string; component: string; severity: string; n: number; last_seen: string }[];
   excursions: { strategy: string; trades: number; avg_mfe: number; avg_mae: number; avg_final: number }[];
 }
+export interface DhanRateLimit { today: number; by_day: Record<string, number>; cooldown_s: number }
 export interface DecisionRow {
   id: number; ts: string; book: string; strategy: string; symbol: string; side: string;
   decision: string; reason: string; metrics: Record<string, unknown>;
