@@ -343,3 +343,23 @@ export interface LiveOrderRow {
   id: number; ts: string; side: 'BUY' | 'SELL'; mode: 'LIVE' | 'DRY'; trading_symbol: string | null; qty: number;
   order_type: string | null; price: number | null; status: string; filled_qty: number; message: string | null;
 }
+
+export interface WatchlistCandidate {
+  symbol: string;
+  bw_percentile: number;
+  bandwidth: number;
+  nr7: boolean;
+  avg_value_cr: number;
+  reasons: string[];
+}
+
+export interface WatchlistState {
+  enabled?: boolean;
+  built_for?: string;
+  built_on?: string;
+  built_at?: string;
+  last_bar_day?: string | null;
+  screened?: number;
+  candidates?: WatchlistCandidate[];
+  last_cycle?: { status?: string };
+}

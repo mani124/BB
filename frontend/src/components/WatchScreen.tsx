@@ -6,6 +6,7 @@ import { OpenPositionsPanel } from './OpenPositionsPanel';
 import { TodaySummary } from './TodaySummary';
 import { SetupFilterTabs } from './SetupFilterTabs';
 import { SignalTable } from './SignalTable';
+import { WatchlistPanel } from './WatchlistPanel';
 
 const SIGNALS_SHOWN = 12;
 
@@ -76,6 +77,7 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
             )}
           />
           <TodaySummary trades={closedTrades} />
+          <WatchlistPanel />
         </div>
 
         <section className="desk-panel desk-pane" aria-labelledby="signals-title">
