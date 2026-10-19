@@ -235,9 +235,11 @@ class CxEngine:
 
     def symbols(self) -> list[str]:
         raw = str(self.runtime.get("cx_symbols") or "")
-        return [s for s in (x.strip().upper() for x in raw.split(",")) if s in ci.UNDERLYINGS]
+        return [s for s in (x.strip().upper() for x in raw.split(",")) if s in ci.UNDERLYINGS and s not in ci.PARKED]
 
     def pool_enabled(self, pool: str) -> bool:
+        if pool in ci.PARKED_POOLS:
+            return False
         return bool(self.runtime.get("cx_commodity_enabled" if pool == "commodity" else "cx_currency_enabled"))
 
     def loss_cap(self, pool: str) -> float:
@@ -309,7 +311,7 @@ class CxEngine:
         pools = {}
         for pool in ci.POOLS:
             pools[pool] = {**block([p for p in closed if p["pool"] == pool], [p for p in opens if p["pool"] == pool]),
-                           "enabled": self.pool_enabled(pool), "day_pnl": self.pool_day_pnl(pool), "loss_cap": self.loss_cap(pool),
+                           "enabled": self.pool_enabled(pool), "parked": pool in ci.PARKED_POOLS, "day_pnl": self.pool_day_pnl(pool), "loss_cap": self.loss_cap(pool),
                            "loss_cap_tripped": self.loss_cap_tripped(pool)}
         cfg = self.session_cfg()
         now = market_hours.now_ist()
@@ -340,6 +342,8 @@ class CxEngine:
         g = self.runtime.get
         if not g("cx_enabled"):
             return "CX_DISABLED", "Commodities & Currency book is switched off"
+        if u.symbol in ci.PARKED or u.pool in ci.PARKED_POOLS:
+            return "PARKED", f"{u.symbol} is parked until its Dhan data check passes"
         if not self.pool_enabled(u.pool):
             return "POOL_OFF", f"{u.pool} pool is switched off"
         if self.kill_switch():

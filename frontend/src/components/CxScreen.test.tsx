@@ -10,7 +10,7 @@ const pos: CxPosition = {
 const pool = { enabled: true, day_pnl: -300, loss_cap: 15000, loss_cap_tripped: false, realized_net_pnl: -300, unrealized_net_pnl: 0, open_positions: 0, closed_trades: 2, win_rate: 50, profit_factor: 0.8, total_charges: 90 };
 const base: CxOverview = {
   summary: { enabled: false, starting_capital: 500000, equity: 499700, realized_net_pnl: -300, unrealized_net_pnl: 0, open_positions: 1, closed_trades: 2, win_rate: 50, total_charges: 90,
-    pools: { commodity: pool, currency: { ...pool, loss_cap: 5000, loss_cap_tripped: true } },
+    pools: { commodity: pool, currency: { ...pool, enabled: false, parked: true, loss_cap: 5000 } },
     sessions: { MCX: { open: true, entry_allowed: true, square_off_due: false }, CURRENCY: { open: false, entry_allowed: false, square_off_due: true } },
     last_cycle: { status: 'ok' }, symbols: { CRUDEOIL: { state: 'WATCHING', contract: 'CRUDEOIL NOV FUT', expiry: '2026-10-27', last_bar: '2026-10-19 19:00:00' } } },
   open_positions: [pos], closed_today: [], recent_closed: [{ ...pos, status: 'CLOSED', closed_at: '2026-10-19T19:40:00+05:30', exit_price: 70, exit_reason: 'STOP_LOSS', net_pnl: -3100 }],
@@ -23,9 +23,9 @@ describe('CxScreen', () => {
     render(<CxScreen initial={base} />);
     expect(screen.getByText(/OFF: nothing is entered/)).toBeInTheDocument();
     expect(screen.getByText('Commodities (MCX)')).toBeInTheDocument();
-    expect(screen.getByText('Loss cap reached')).toBeInTheDocument();
+    expect(screen.getByText('Parked until a USDINR data check passes')).toBeInTheDocument();
     expect(screen.getByTestId('cx-sessions')).toHaveTextContent('MCX open');
-    expect(screen.getByTestId('cx-sessions')).toHaveTextContent('NSE currency closed');
+    expect(screen.getByTestId('cx-sessions')).not.toHaveTextContent('NSE currency');
     expect(screen.getByText('+₹1,100', { selector: 'td' })).toBeInTheDocument();
     expect(screen.getByText('STOP_LOSS')).toBeInTheDocument();
     expect(screen.getByText('Watching')).toBeInTheDocument();

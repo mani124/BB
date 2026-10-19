@@ -52,6 +52,10 @@ UNDERLYINGS: dict[str, CxUnderlying] = {
     "USDINR": CxUnderlying("USDINR", xs.CURRENCY, "NSE_CURRENCY", "FUTCUR", "OPTCUR", "NSE", "currency", "USD / INR", "INR/USD", 1000, contract_units=1000),
 }
 POOLS = ("commodity", "currency")
+# Underlyings that cannot be traded by the book. USDINR is parked (2026-10-19): Dhan's instrument master held no live USDINR
+# future or option, so there is nothing to price. Remove it here once the Phase 0 check passes for it.
+PARKED: frozenset[str] = frozenset({"USDINR"})
+PARKED_POOLS: frozenset[str] = frozenset({"currency"})
 
 
 def _num(value: Any, default: float = 0.0) -> float:

@@ -120,6 +120,7 @@ def test_resolver_caches_for_the_day(tmp_path):
 
 def test_cx_settings_are_off_by_default():
     assert BY_KEY["cx_enabled"].default is False
+    assert BY_KEY["cx_currency_enabled"].default is False and "USDINR" not in BY_KEY["cx_symbols"].default
     assert BY_KEY["cx_loss_cap_commodity"].default == 15000.0 and BY_KEY["cx_loss_cap_currency"].default == 5000.0
 
 

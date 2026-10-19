@@ -83,14 +83,14 @@ export const CxScreen: React.FC<{ initial?: CxOverview }> = ({ initial }) => {
           <thead><tr><th scope="col">Pool</th><th scope="col">Status</th><th scope="col" className="r">Today</th><th scope="col" className="r">Loss cap</th><th scope="col" className="r">Trades</th><th scope="col" className="r">Net</th></tr></thead>
           <tbody>{Object.entries(s.pools).map(([name, p]) => (
             <tr key={name}><td>{POOL_TEXT[name] ?? name}</td>
-              <td>{!p.enabled ? 'Switched off' : p.loss_cap_tripped ? 'Loss cap reached' : 'Active'}</td>
+              <td>{p.parked ? 'Parked until a USDINR data check passes' : !p.enabled ? 'Switched off' : p.loss_cap_tripped ? 'Loss cap reached' : 'Active'}</td>
               <td className={`r desk-num ${tone(p.day_pnl)}`}>{money(p.day_pnl, true)}</td>
               <td className="r desk-num">{p.loss_cap > 0 ? money(-p.loss_cap) : 'off'}</td>
               <td className="r desk-num">{p.closed_trades}</td>
               <td className={`r desk-num ${tone(p.realized_net_pnl)}`}>{money(p.realized_net_pnl, true)}</td></tr>
           ))}</tbody></table></div>
         <div className="px-3.5 py-2.5 flex flex-wrap gap-2" data-testid="cx-sessions">
-          {Object.entries(s.sessions).map(([ex, st]) => (
+          {Object.entries(s.sessions).filter(([ex]) => ex !== 'CURRENCY' || !s.pools.currency?.parked).map(([ex, st]) => (
             <span key={ex} className={`desk-pill ${st.open ? 'up' : ''}`}>{ex === 'MCX' ? 'MCX' : 'NSE currency'} {st.open ? (st.entry_allowed ? 'open' : 'open, no new entries') : 'closed'}</span>
           ))}
         </div>

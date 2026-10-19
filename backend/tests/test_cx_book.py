@@ -319,3 +319,16 @@ def test_overview_lists_open_closed_and_decisions(tmp_path, monkeypatch):
     o = eng.overview()
     assert len(o["open_positions"]) == 1 and o["closed_today"] == [] and o["settings"]["symbols"] == ["CRUDEOIL"]
     assert o["summary"]["open_positions"] == 1
+
+
+def test_currency_is_parked_everywhere(tmp_path, monkeypatch):
+    force_signal(monkeypatch)
+    prov = FakeProvider("USDINR", lot=1000)
+    eng = make(tmp_path, prov, cx_symbols="USDINR,CRUDEOIL", cx_currency_enabled=True)
+    assert eng.symbols() == ["CRUDEOIL"] and not eng.pool_enabled("currency")
+    u = ce.ci.UNDERLYINGS["USDINR"]
+    assert eng.entry_block(u, NOW, [])[0] == "PARKED"
+    run(eng, NOW)
+    assert all(p["symbol"] != "USDINR" for p in eng.positions())
+    assert eng.summary()["pools"]["currency"]["parked"] is True
+    assert RuntimeSettings(str(tmp_path / "d.db")).get("cx_symbols") == "CRUDEOIL,GOLDM"

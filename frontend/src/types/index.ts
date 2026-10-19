@@ -429,7 +429,7 @@ export interface CxPosition {
   exit_price?: number; exit_reason?: string; unrealized_net?: number; net_pnl?: number; invalidate_level: number;
 }
 export interface CxPoolSummary {
-  enabled: boolean; day_pnl: number; loss_cap: number; loss_cap_tripped: boolean; realized_net_pnl: number;
+  enabled: boolean; parked?: boolean; day_pnl: number; loss_cap: number; loss_cap_tripped: boolean; realized_net_pnl: number;
   unrealized_net_pnl: number; open_positions: number; closed_trades: number; win_rate: number; profit_factor: number | null; total_charges: number;
 }
 export interface CxOverview {
