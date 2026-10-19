@@ -3,6 +3,7 @@ import time
 import json
 import os
 import uuid
+from types import SimpleNamespace
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Callable, Literal, Optional
@@ -411,10 +412,17 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                 self._log_skip(signal, feed_mode, self._skip_code(quote_block), quote_block)
                 return None
 
-        liq_block = liquidity_filter.check_recommendation(rec, signal.symbol, signal.option_type)
+        liq_block = liquidity_filter.check_recommendation(
+            rec, signal.symbol, signal.option_type,
+            cfg=SimpleNamespace(
+                LIQ_FILTER_ENABLED=bool(self.runtime.get("liquidity_gate_enabled")),
+                LIQ_MAX_SPREAD_PCT=float(self.runtime.get("liquidity_max_spread_pct")),
+                LIQ_MIN_OI=float(self.runtime.get("liquidity_min_oi")),
+                LIQ_MIN_VOLUME=float(self.runtime.get("liquidity_min_volume")),
+                LIQ_MIN_PREMIUM=settings.LIQ_MIN_PREMIUM))
         if liq_block:
             self._processed_signal_ids.add(signal.id)
-            self._log_skip(signal, feed_mode, "LIQUIDITY_FILTER", str(liq_block))
+            self._log_skip(signal, feed_mode, "LIQUIDITY_SKIP", str(liq_block))
             return None
 
         lot_size = rec.lot_size

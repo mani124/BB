@@ -73,14 +73,14 @@ def test_entry_logs_liquidity_snapshot(tmp_path):
     eng = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
     sig = make_signal("LQ_1", symbol="IRFC", entry=40.0)
     rec = sig.strike_recommendation
-    rec.real_ask_price, rec.real_bid_price = 40.0, 38.0
+    rec.real_ask_price, rec.real_bid_price = 40.0, 39.0
     rec.real_volume, rec.real_oi, rec.real_bid_qty, rec.real_ask_qty = 12000, 90000, 500, 700
     pos = eng.open_position_from_signal(sig, feed_mode="demo")
-    assert pos.entry_bid == 38.0 and pos.entry_spread_pct == 5.0
+    assert pos.entry_bid == 39.0 and pos.entry_spread_pct == 2.5
     assert (pos.option_volume, pos.option_oi, pos.bid_qty, pos.ask_qty) == (12000, 90000, 500, 700)
     eng2 = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
     loaded = eng2.get_portfolio().active_positions[0]
-    assert loaded.entry_spread_pct == 5.0 and loaded.option_oi == 90000
+    assert loaded.entry_spread_pct == 2.5 and loaded.option_oi == 90000
 
 
 def test_entry_without_bid_leaves_liquidity_empty(tmp_path):

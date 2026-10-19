@@ -1,8 +1,8 @@
-"""Entry liquidity filter: wide bid-ask spread, thin volume / open interest, optional premium floor.
+"""Entry liquidity gate: wide bid-ask spread, thin volume / open interest, optional premium floor.
 
-Thresholds are PROVISIONAL. No real liquidity data existed when this was written, so the
-defaults only drive the "would skip" log. The filter does not block entries unless
-LIQ_FILTER_ENABLED=1. Use scripts/liquidity_analysis.py on trades.db to pick real values.
+Runtime settings (liquidity_gate_enabled, liquidity_max_spread_pct, liquidity_min_oi, liquidity_min_volume) drive it;
+the LIQ_* env values are their defaults. With the gate off it only logs "would_skip".
+Use scripts/liquidity_analysis.py on trades.db to review thresholds.
 A threshold of 0 disables that check; a missing quote field never triggers a skip.
 """
 import logging

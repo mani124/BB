@@ -73,3 +73,47 @@ def test_analysis_script_runs(tmp_path):
     conn.close()
     out = subprocess.run([sys.executable, "scripts/liquidity_analysis.py", str(db)], capture_output=True, text=True, check=True).stdout
     assert "3 closed trades" in out and "Skip if spread" in out
+
+
+def _gate_engine(tmp_path):
+    return PaperTradingEngine(db_path=str(tmp_path / "g.db"))
+
+
+def _liq_signal(sig_id, bid, ask, oi, volume=5000, symbol="IRFC", sec_id="55001"):
+    sig = make_signal(sig_id, symbol=symbol, sec_id=sec_id, entry=ask)
+    rec = sig.strike_recommendation
+    rec.real_ask_price, rec.real_bid_price, rec.real_oi, rec.real_volume = ask, bid, oi, volume
+    return sig
+
+
+def test_gate_defaults_on_with_3pct_and_5000_oi(tmp_path):
+    eng = _gate_engine(tmp_path)
+    assert eng.runtime.get("liquidity_gate_enabled") is True
+    assert eng.runtime.get("liquidity_max_spread_pct") == 3
+    assert eng.runtime.get("liquidity_min_oi") == 5000
+
+
+def test_gate_skips_wide_spread_and_thin_oi_with_liquidity_skip(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "REENTRY_COOLDOWN_SECONDS", 0)
+    eng = _gate_engine(tmp_path)
+    logged = []
+    monkeypatch.setattr(eng, "_log_skip", lambda sig, mode, code, detail="": logged.append((code, detail)))
+    wide = _liq_signal("G_1", bid=525, ask=690, oi=90000)
+    thin = _liq_signal("G_2", bid=99, ask=100, oi=1200, symbol="TCS", sec_id="9001")
+    good = _liq_signal("G_3", bid=99, ask=100, oi=90000, symbol="SBIN", sec_id="9002")
+    assert eng.open_position_from_signal(wide, feed_mode="demo") is None
+    assert eng.open_position_from_signal(thin, feed_mode="demo") is None
+    assert eng.open_position_from_signal(good, feed_mode="demo") is not None
+    assert [c for c, _ in logged] == ["LIQUIDITY_SKIP", "LIQUIDITY_SKIP"]
+    assert "spread" in logged[0][1] and "OI" in logged[1][1]
+
+
+def test_gate_toggle_and_thresholds_are_runtime_settings(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "REENTRY_COOLDOWN_SECONDS", 0)
+    eng = _gate_engine(tmp_path)
+    wide = _liq_signal("G_4", bid=90, ask=100, oi=90000)
+    eng.runtime.set("liquidity_max_spread_pct", 15)
+    assert eng.open_position_from_signal(wide, feed_mode="demo") is not None
+    eng2 = PaperTradingEngine(db_path=str(tmp_path / "g2.db"))
+    eng2.runtime.set("liquidity_gate_enabled", False)
+    assert eng2.open_position_from_signal(_liq_signal("G_5", bid=50, ask=100, oi=10), feed_mode="demo") is not None
