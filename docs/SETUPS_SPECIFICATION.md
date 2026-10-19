@@ -690,7 +690,7 @@ A separate paper book (`earnings` in the decision trail), **paper only**, off by
 ### Risk and management
 * Entry: signal close. Stop: the tighter of the wall strike and the candle extreme, with a buffer of max(0.1 ATR, 0.03% of price); the strike selector enforces its usual minimum stop distance. T1 1.5R (book half, stop to breakeven), T2 2.5R, sizing, caps, re-entry gate and exits are the Setups 1-4 ones. The opposite wall is logged in the snapshot (`opposite_wall`) but is not used as a target.
 * Default per-setup switch: `index` (stock chains are thin and walls are noisy).
-* Snapshot logs `wall_strike`, `wall_oi`, `wall_oi_ratio`, `pcr`, `opposite_wall`, `opposite_wall_oi`, `wick`, `body`, `chain_age_s`.
+* Snapshot logs `wall_strike`, `wall_oi`, `wall_oi_ratio`, `pcr`, `opposite_wall`, `opposite_wall_oi`, `wick`, `body`, `chain_age_s`. The snapshot holds numbers only: when a value has no wall (typically `opposite_wall` / `opposite_wall_oi` on the far side of price) the key is omitted instead of set to null. (Fixed 2026-10-19: null values failed signal validation and silently dropped valid bounces. Entry logic is unchanged.)
 
 ### Notes
 * Thresholds (1.5x dominance, 5% range, PCR 1.2 / 0.8, 0.1 ATR touch, 15-minute refresh, 120 s chain age) are starting values chosen before any replay. Past option-chain OI is not stored, so the setup can only be validated by paper trading; store signal snapshots to tune it.
