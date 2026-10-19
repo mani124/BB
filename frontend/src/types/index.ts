@@ -235,7 +235,7 @@ export interface ScannerState {
 
 
 // ---- runtime settings, telemetry and earnings ----
-export type AppTab = 'scanner' | 'paper' | 'earnings' | 'settings';
+export type AppTab = 'scanner' | 'paper' | 'setup16' | 'earnings' | 'settings';
 
 export interface RuntimeSetting {
   key: string;
@@ -362,4 +362,61 @@ export interface WatchlistState {
   screened?: number;
   candidates?: WatchlistCandidate[];
   last_cycle?: { status?: string };
+}
+
+export interface Setup16Contract {
+  symbol: string;
+  side: 'CE' | 'PE';
+  strike_symbol: string;
+  source: 'scan' | 'watchlist';
+  stage: string;
+  bar_time?: string;
+  close?: number;
+  upper_bb?: number;
+  lower_bb?: number;
+  pct_to_upper?: number;
+  bandwidth?: number;
+  session_bw_min?: number;
+  recent_bw_min?: number;
+  squeeze_limit?: number;
+  in_squeeze?: boolean;
+  volume?: number;
+  stop?: number;
+  session_bars?: number;
+  needed_bars?: number;
+  updated_at?: string;
+  stale?: boolean;
+}
+
+export interface Setup16Trade {
+  id: string;
+  strike_symbol: string;
+  symbol: string;
+  side: string;
+  entry_time?: string;
+  exit_time?: string | null;
+  entry: number;
+  stop: number;
+  target_1: number;
+  target_2: number;
+  price: number;
+  status: string;
+  exit_reason?: string | null;
+  lots: number;
+  net_pnl: number;
+}
+
+export interface Setup16Overview {
+  mode: string;
+  settings: { stop_pct: number; window_start: string; window_end: string };
+  watchlist: WatchlistState;
+  funnel: Record<string, number>;
+  contracts_checked: number;
+  contracts: Setup16Contract[];
+  open_positions: Setup16Trade[];
+  today_closed: Setup16Trade[];
+  today_net_pnl: number;
+  stats_all_time: { trades: number; wins: number; win_rate: number; net_pnl: number; avg_r: number | null } | null;
+  decisions: { ts: string; symbol: string; side: string; decision: string; reason: string }[];
+  as_of: string;
 }

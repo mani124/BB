@@ -61,6 +61,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             self.ws_manager.on_tick_callback = self._handle_incoming_ws_tick
 
         self.momentum_ranker = MomentumRanker(top_n=10)
+        self._s16_status: dict[str, dict] = {}  # strike symbol -> where Setup 16 stands on that contract (dashboard)
         self.watchlist = None  # WatchlistService, set in app.main: after-close squeeze list, checked for Setup 16 only
         self._state = ScannerState(universe_count=len(universe_mgr.get_universe()))
         self._listeners: list[asyncio.Queue] = []
@@ -1076,6 +1077,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                     s13 = None
                 if s13:
                     s13_candidates.append(s13)
+                s16_diag: dict = {}
                 try:
                     rt = paper_trader.runtime
                     s16 = evaluate_option_squeeze_breakout(
@@ -1093,12 +1095,22 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                         stop_pct=float(rt.get("setup16_stop_pct")),
                         window_start=rt.get("setup16_window_start"),
                         window_end=rt.get("setup16_window_end"),
+                        diag=s16_diag,
                     )
                 except Exception as e:
                     logger.warning(f"Setup 16 evaluation failed for {strike_symbol}: {e}")
                     s16 = None
                 if s16:
                     s16_candidates.append(s16)
+                if s16_diag:
+                    s16_diag.update({"symbol": inst.symbol, "side": opt_type, "strike_symbol": strike_symbol,
+                                     "source": "watchlist" if only_setup16 else "scan",
+                                     "updated_at": market_hours.now_ist_naive().strftime("%H:%M:%S"),
+                                     "updated_ts": time.time()})
+                    for old in [k for k, v in self._s16_status.items()
+                                if v.get("symbol") == inst.symbol and v.get("side") == opt_type and k != strike_symbol]:
+                        del self._s16_status[old]  # the ATM strike moved: the old contract is no longer checked
+                    self._s16_status[strike_symbol] = s16_diag
 
         # Setup 10: ATM straddle premium squeeze, from the same two completed-bar series.
         # Skipped when Setup 5 already fired on this side, so one contract is never entered twice.

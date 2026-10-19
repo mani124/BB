@@ -61,50 +61,74 @@ def evaluate_option_squeeze_breakout(
     stop_pct: float = STOP_PCT,
     window_start=WINDOW_START,
     window_end=WINDOW_END,
+    diag: Optional[dict] = None,
 ) -> Optional[Signal]:
-    """`option_df` is completed option bars (per-bar volume; bars flagged volume_known=False never pass)."""
-    if timeframe != "5m" or option_df is None or option_df.empty or not REQUIRED.issubset(option_df.columns):
+    """`option_df` is completed option bars (per-bar volume; bars flagged volume_known=False never pass).
+
+    ``diag``, when given, is filled with where the contract stands (``stage`` and the numbers behind it) so the
+    dashboard can show why there was no signal: NO_DATA, WARMUP, OUT_OF_WINDOW, NO_BREAKOUT, RED_BAR, NO_SQUEEZE,
+    LOW_VOLUME or SIGNAL."""
+    d = diag if diag is not None else {}
+
+    def stop(stage: str, **kv):
+        d["stage"] = stage
+        d.update({k: v for k, v in kv.items() if v is not None})
         return None
+
+    if timeframe != "5m" or option_df is None or option_df.empty or not REQUIRED.issubset(option_df.columns):
+        return stop("NO_DATA")
     df = option_df.reset_index(drop=True)
     dates = pd.to_datetime(df["timestamp"]).dt.date
     t_all = len(df) - 1
     sess = df.iloc[int((dates != dates.iloc[t_all]).sum()):].reset_index(drop=True)
     if len(sess) < MIN_SESSION_BARS + 1:
-        return None
+        return stop("WARMUP", session_bars=len(sess), needed_bars=MIN_SESSION_BARS + 1)
 
     t = len(sess) - 1
     curr = sess.iloc[t]
     start = window_start if isinstance(window_start, dtime) else _parse_time(window_start, WINDOW_START)
     end = window_end if isinstance(window_end, dtime) else _parse_time(window_end, WINDOW_END)
     ts = pd.to_datetime(curr["timestamp"])
-    if ts.time() < start or ts.time() > end:
-        return None
-
     close, open_ = float(curr["close"]), float(curr["open"])
-    if pd.isna(close) or close <= 0 or close <= open_:
-        return None
+    d.update({"bar_time": ts.strftime("%H:%M"), "close": round(close, 2)})
+    if ts.time() < start or ts.time() > end:
+        return stop("OUT_OF_WINDOW")
+    if pd.isna(close) or close <= 0:
+        return stop("NO_DATA")
 
     bands = session_bands(sess["close"].astype(float))
     upper, lower, bw = bands["upper"].iloc[t], bands["lower"].iloc[t], bands["bw"].iloc[t]
-    if pd.isna(upper) or pd.isna(lower) or close <= upper:
-        return None
+    if pd.isna(upper) or pd.isna(lower):
+        return stop("WARMUP", session_bars=len(sess), needed_bars=MIN_SESSION_BARS + 1)
+    d.update({"upper_bb": round(float(upper), 2), "lower_bb": round(float(lower), 2),
+              "pct_to_upper": round((float(upper) / close - 1.0) * 100.0, 2), "bandwidth": round(float(bw), 2)})
+    prior_all = bands["bw"].iloc[:t].dropna()
+    if not prior_all.empty:
+        d["session_bw_min"] = round(float(prior_all.min()), 2)
+        d["recent_bw_min"] = round(float(prior_all.iloc[-SQUEEZE_LOOKBACK:].min()), 2)
+        d["squeeze_limit"] = round(float(prior_all.min()) * SQUEEZE_BW_FACTOR, 2)
+        d["in_squeeze"] = bool(d["recent_bw_min"] <= d["squeeze_limit"])
+    if close <= upper:
+        return stop("NO_BREAKOUT")
+    if close <= open_:
+        return stop("RED_BAR")
 
     # Squeeze just before the breakout: a bar among the last SQUEEZE_LOOKBACK before this one had BandWidth
     # within 1.3x of the tightest BandWidth the session has shown, and the breakout bar widened it.
-    prior = bands["bw"].iloc[:t].dropna()
+    prior = prior_all
     if prior.empty:
-        return None
+        return stop("NO_SQUEEZE")
     recent_min = float(prior.iloc[-SQUEEZE_LOOKBACK:].min())
     if recent_min > float(prior.min()) * SQUEEZE_BW_FACTOR or not bw > float(prior.iloc[-1]):
-        return None
+        return stop("NO_SQUEEZE")
 
     if "volume_known" in sess.columns:
         flag = sess["volume_known"].iloc[t]
         if not pd.isna(flag) and not bool(flag):
-            return None
+            return stop("LOW_VOLUME", volume=None)
     vol = sess["volume"].iloc[t]
     if pd.isna(vol) or float(vol) < MIN_VOLUME:
-        return None
+        return stop("LOW_VOLUME", volume=None if pd.isna(vol) else float(vol))
 
     floor_stop = close * (1.0 - stop_pct / 100.0)
     stop_price = max(float(lower), floor_stop)   # the nearer (higher) of the lower band and the percentage stop
@@ -120,7 +144,7 @@ def evaluate_option_squeeze_breakout(
     bar["ema_9"] = float(bar["ema_9"]) if "ema_9" in bar and not pd.isna(bar["ema_9"]) else close
     bar["percent_b"] = (close - float(lower)) / max(float(upper) - float(lower), 1e-9)
 
-    return build_option_chart_signal(
+    sig = build_option_chart_signal(
         setup_type=SetupType.SETUP_16_OPTION_SQUEEZE_BREAK,
         rationale="Option premium closed above its upper Bollinger Band after a BandWidth squeeze",
         tag="S16",
@@ -145,3 +169,8 @@ def evaluate_option_squeeze_breakout(
         },
         stop_price=round(stop_price, 2),
     )
+    if sig is None:
+        return stop("OUT_OF_WINDOW")  # the shared builder's time guards (prior-day bar, entry cutoff, expiry-day cutoff)
+    d["stage"] = "SIGNAL"
+    d["stop"] = sig.stop_loss
+    return sig

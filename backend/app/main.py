@@ -20,6 +20,7 @@ from app.api.telemetry import router as telemetry_router
 from app.api.earnings import router as earnings_router
 from app.api.swing import router as swing_router
 from app.api.watchlist import router as watchlist_router
+from app.api.setup16 import router as setup16_router
 from app.api.live import router as live_router_api
 from app.api.readiness import router as readiness_router
 from app.api.recorder import router as recorder_router
@@ -269,6 +270,7 @@ def create_app() -> FastAPI:
     app.include_router(earnings_router, prefix=settings.API_PREFIX)
     app.include_router(swing_router, prefix=settings.API_PREFIX)
     app.include_router(watchlist_router, prefix=settings.API_PREFIX)
+    app.include_router(setup16_router, prefix=settings.API_PREFIX)
     app.include_router(live_router_api, prefix=settings.API_PREFIX)
     app.include_router(readiness_router, prefix=settings.API_PREFIX)
     app.include_router(recorder_router, prefix=settings.API_PREFIX)
