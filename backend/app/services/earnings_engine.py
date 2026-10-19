@@ -55,10 +55,12 @@ class EarningsStore:
                 c.execute("""CREATE TABLE IF NOT EXISTS earnings_calendar (
                     symbol TEXT NOT NULL, earnings_date TEXT NOT NULL, session TEXT DEFAULT '', sector TEXT DEFAULT '',
                     note TEXT DEFAULT '', PRIMARY KEY (symbol, earnings_date))""")
-                try:
-                    c.execute("ALTER TABLE earnings_calendar ADD COLUMN source TEXT DEFAULT 'manual'")
-                except sqlite3.OperationalError:
-                    pass
+                for ddl in ("ALTER TABLE earnings_calendar ADD COLUMN source TEXT DEFAULT 'manual'",
+                            "ALTER TABLE earnings_calendar ADD COLUMN session_source TEXT DEFAULT ''"):
+                    try:
+                        c.execute(ddl)
+                    except sqlite3.OperationalError:
+                        pass
                 c.execute("CREATE TABLE IF NOT EXISTS earnings_meta (key TEXT PRIMARY KEY, value TEXT)")
                 c.execute("""CREATE TABLE IF NOT EXISTS earnings_iv_history (
                     symbol TEXT NOT NULL, day TEXT NOT NULL, iv REAL NOT NULL, spot REAL, PRIMARY KEY (symbol, day))""")
@@ -72,9 +74,11 @@ class EarningsStore:
 
     # ---- calendar ----
     def upsert_calendar(self, symbol: str, earnings_date: str, session: str = "", sector: str = "", note: str = "",
-                        source: str = "manual") -> dict:
+                        source: str = "manual", session_source: Optional[str] = None) -> dict:
         row = {"symbol": symbol.strip().upper(), "earnings_date": _d(earnings_date).isoformat(),
                "session": (session or "").strip().upper(), "sector": sector.strip(), "note": note.strip(), "source": source}
+        # A session typed in by hand is "manual" and always wins; the NSE sync passes "inferred".
+        row["session_source"] = (session_source if session_source is not None else "manual") if row["session"] else ""
         if row["session"] not in ("", *es.SESSIONS):
             raise ValueError("session must be BMO, AMC or empty")
         if not row["symbol"]:
@@ -84,8 +88,8 @@ class EarningsStore:
                 self._mem_calendar[(row["symbol"], row["earnings_date"])] = row
             else:
                 with self._conn() as c:
-                    c.execute("INSERT OR REPLACE INTO earnings_calendar (symbol, earnings_date, session, sector, note, source) VALUES (?,?,?,?,?,?)",
-                              (row["symbol"], row["earnings_date"], row["session"], row["sector"], row["note"], row["source"]))
+                    c.execute("INSERT OR REPLACE INTO earnings_calendar (symbol, earnings_date, session, sector, note, source, session_source) VALUES (?,?,?,?,?,?,?)",
+                              (row["symbol"], row["earnings_date"], row["session"], row["sector"], row["note"], row["source"], row["session_source"]))
         return row
 
     def sync_rows(self, rows: list[dict], today: date, horizon_days: int) -> dict:
@@ -98,9 +102,18 @@ class EarningsStore:
             manual = {(r["symbol"], r["earnings_date"]) for r in existing if r.get("source", "manual") != "NSE"}
             for r in rows:
                 key = (r["symbol"], r["earnings_date"])
-                if key in manual or any((e["symbol"], e["earnings_date"]) == key for e in existing):
+                if key in manual:
                     continue
-                self.upsert_calendar(r["symbol"], r["earnings_date"], "", "", r.get("note", ""), source="NSE")
+                inferred = r.get("session", "")
+                old = next((e for e in existing if (e["symbol"], e["earnings_date"]) == key), None)
+                if old is not None:
+                    # An NSE row keeps its session unless it was set by hand; a newly inferred session refreshes it.
+                    if inferred and old.get("session_source") != "manual" and old.get("session") != inferred:
+                        self.upsert_calendar(old["symbol"], old["earnings_date"], inferred, old.get("sector", ""),
+                                             r.get("note", old.get("note", "")), source="NSE", session_source="inferred")
+                    continue
+                self.upsert_calendar(r["symbol"], r["earnings_date"], inferred, "", r.get("note", ""), source="NSE",
+                                     session_source="inferred")
                 added += 1
             limit = (today + timedelta(days=horizon_days)).isoformat()
             for e in existing:
@@ -140,6 +153,8 @@ class EarningsStore:
                     rows = [dict(r) for r in c.execute("SELECT * FROM earnings_calendar ORDER BY earnings_date, symbol")]
         if from_date:
             rows = [r for r in rows if r["earnings_date"] >= from_date.isoformat()]
+        for r in rows:
+            r["session_source"] = r.get("session_source") or ("manual" if r.get("session") else "")
         return sorted(rows, key=lambda r: (r["earnings_date"], r["symbol"]))
 
     # ---- IV history ----
@@ -323,6 +338,17 @@ class EarningsEngine:
         self.store.set_meta("last_sync", today.isoformat())
         self.store.set_meta("last_sync_result", json.dumps(res))
         return {"status": "ok", **res}
+
+    def calendar_view(self) -> list[dict]:
+        """Calendar rows with the session the engine will use and where it comes from:
+        manual (set by hand, wins), inferred (from NSE's event text), default (the setting) or skip (not traded)."""
+        policy = self.runtime.get("earnings_default_session")
+        out = []
+        for r in self.store.calendar():
+            eff = es.resolve_session(r["session"], policy)
+            origin = r["session_source"] if r["session"] else ("default" if eff else "skip")
+            out.append({**r, "effective_session": eff or "", "session_origin": origin})
+        return out
 
     # ---------------------------------------------------------------- config
     def cfg(self) -> dict:

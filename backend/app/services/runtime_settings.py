@@ -225,8 +225,9 @@ DEFINITIONS: tuple[SettingDef, ...] = (
     _d(key="earnings_mode_b_exit_time", label="Mode B: exit time", group=G_EARN, type="time", unit="IST",
        description="Time of day on the reaction day when the condor is closed (after the IV crush).", default="09:20"),
     _d(key="earnings_default_session", label="Unspecified announcement session", group=G_EARN, type="str",
-       description="How to treat calendar rows with no session: BMO (before market open), AMC (after market close) "
-                   "or SKIP (do not trade them).", default="SKIP", choices=("BMO", "AMC", "SKIP")),
+       description="Used when NSE gave no usable time and the row has no session set by hand: BMO (before market "
+                   "open), AMC (after market close; most Indian results come after the close) or SKIP (do not trade them).",
+       default="AMC", choices=("BMO", "AMC", "SKIP")),
     _d(key="earnings_iv_lookback_days", label="IV history window", group=G_EARN, type="int", unit="days",
        description="Days of stored at-the-money IV used for IV percentile and IV rank.", default=252, min=20, max=2000),
     _d(key="earnings_iv_min_history", label="IV history required", group=G_EARN, type="int", unit="days",

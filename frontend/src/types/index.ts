@@ -328,7 +328,8 @@ export interface EarningsCandidate {
   symbol: string; mode: string; ready: boolean; code: string; detail: string;
   earnings_date?: string; expiry?: string; exit_date?: string; net_unit?: number; max_risk?: number;
 }
-export interface EarningsCalendarRow { symbol: string; earnings_date: string; session: string; sector: string; note: string; source?: string }
+export interface EarningsCalendarRow { symbol: string; earnings_date: string; session: string; sector: string; note: string; source?: string;
+  effective_session?: string; session_origin?: 'manual' | 'inferred' | 'default' | 'skip' }
 
 export interface LivePositionRow {
   position_id: string; strike_symbol: string; setup: string; mode: 'LIVE' | 'DRY'; state: string;

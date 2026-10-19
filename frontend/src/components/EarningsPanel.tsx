@@ -157,7 +157,7 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
 
       {tab === 'calendar' && (
       <section className="desk-panel" aria-label="Earnings calendar">
-        <div className="desk-ph"><h3>Earnings calendar</h3><span className="desk-muted text-xs">Filled daily from NSE (F&O stocks with a financial-results board meeting). NSE does not say before open or after close, so set the session per row (BMO = before open, AMC = after close), or pick a default in Settings.</span>
+        <div className="desk-ph"><h3>Earnings calendar</h3><span className="desk-muted text-xs">Filled daily from NSE (F&O stocks with a financial-results board meeting). NSE gives no before/after flag, so the session is inferred from its event text when possible, else the default in Settings (AMC) applies. Choosing BMO or AMC on a row overrides both.</span>
           <button type="button" className="desk-btn accent ml-auto" disabled={busy} onClick={() => call('/api/earnings/calendar/sync', { method: 'POST' }, 'Calendar updated from NSE')}>Sync from NSE</button></div>
         <form className="px-3.5 py-3 flex flex-wrap gap-2 items-end" onSubmit={addRow}>
           <label className="text-xs">Symbol<input className="desk-input" required value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} aria-label="Symbol" /></label>
@@ -177,8 +177,8 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
                 <select className="desk-input" aria-label={`Session for ${r.symbol}`} value={r.session} disabled={busy}
                   onChange={(e) => call('/api/earnings/calendar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ rows: [{ ...r, session: e.target.value }] }) }, `Session set for ${r.symbol}`)}>
-                  <option value="">Unknown</option><option value="BMO">BMO</option><option value="AMC">AMC</option>
-                </select></td><td>{r.sector}</td><td className="desk-muted text-xs">{r.source ?? 'manual'}</td>
+                  <option value="">{r.session_origin === 'skip' ? 'Not set (skipped)' : `Auto${r.effective_session ? ` (${r.effective_session})` : ''}`}</option><option value="BMO">BMO</option><option value="AMC">AMC</option>
+                </select> <span className="desk-muted text-xs" data-testid={`origin-${r.symbol}`}>{r.session_origin ?? ''}</span></td><td>{r.sector}</td><td className="desk-muted text-xs">{r.source ?? 'manual'}</td>
                 <td className="r"><button type="button" className="desk-btn" aria-label={`Remove ${r.symbol}`} disabled={busy}
                   onClick={() => call(`/api/earnings/calendar/${r.symbol}/${r.earnings_date}`, { method: 'DELETE' }, `Removed ${r.symbol}`)}>Remove</button></td></tr>
             ))}</tbody></table></div>
