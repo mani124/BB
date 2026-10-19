@@ -25,6 +25,7 @@ from app.api.setup16 import router as setup16_router
 from app.api.live import router as live_router_api
 from app.api.readiness import router as readiness_router
 from app.api.recorder import router as recorder_router
+from app.api.dashboard import router as dashboard_router
 
 setup_security_logging()
 
@@ -291,6 +292,7 @@ def create_app() -> FastAPI:
     app.include_router(live_router_api, prefix=settings.API_PREFIX)
     app.include_router(readiness_router, prefix=settings.API_PREFIX)
     app.include_router(recorder_router, prefix=settings.API_PREFIX)
+    app.include_router(dashboard_router, prefix=settings.API_PREFIX)
 
     return app
 
