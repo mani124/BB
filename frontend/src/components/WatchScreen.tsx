@@ -6,6 +6,9 @@ import { OpenPositionsPanel } from './OpenPositionsPanel';
 import { TodaySummary } from './TodaySummary';
 import { SetupFilterTabs } from './SetupFilterTabs';
 import { SignalTable } from './SignalTable';
+import { SignalDetails } from './SignalDetails';
+import { WatchStatus } from './WatchStatus';
+import type { StreamStatus } from './Header';
 
 const SIGNALS_SHOWN = 12;
 
@@ -20,6 +23,7 @@ interface WatchScreenProps {
   state: ScannerState;
   loaded: boolean;
   wsConnected: boolean;
+  stream: StreamStatus;
   filters: WatchFilters;
   onFilters: (next: Partial<WatchFilters>) => void;
   filteredSignals: Signal[];
@@ -33,17 +37,28 @@ interface WatchScreenProps {
 
 /** Live screen: one header band, positions and today's tally on the left, signals on the right. */
 export const WatchScreen: React.FC<WatchScreenProps> = ({
-  state, loaded, wsConnected, filters, onFilters, filteredSignals, closedTrades, activeSignalIds,
+  state, loaded, wsConnected, stream, filters, onFilters, filteredSignals, closedTrades, activeSignalIds,
   onPaperBuy, onClosePosition, onToggleAutoTrade, onChangeLots,
 }) => {
   const [showAll, setShowAll] = useState(false);
+  const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null);
+  const [sortBy, setSortBy] = useState<'newest' | 'symbol' | 'setup'>('newest');
   // Confirmed signals first (stable), short list by default.
-  const sorted = [...filteredSignals].sort((x, y) => Number(y.is_confirmed !== false) - Number(x.is_confirmed !== false));
+  const sorted = [...filteredSignals].sort((x, y) => {
+    const confirmation = Number(y.is_confirmed !== false) - Number(x.is_confirmed !== false);
+    if (confirmation) return confirmation;
+    if (sortBy === 'symbol') return x.symbol.localeCompare(y.symbol);
+    if (sortBy === 'setup') return x.setup_type.localeCompare(y.setup_type);
+    return y.timestamp.localeCompare(x.timestamp);
+  });
   const shown = showAll ? sorted : sorted.slice(0, SIGNALS_SHOWN);
   const pf = state.paper_portfolio;
+  const currentSelection = selectedSignal && state.signals.find((sig) => sig.id === selectedSignal.id);
+  const confirmedCount = state.signals.filter((sig) => sig.is_confirmed !== false).length;
 
   return (
     <>
+      <WatchStatus state={state} stream={stream} confirmedCount={confirmedCount} />
       <div className="desk-panel desk-band overflow-hidden">
         <CompactStrip portfolio={pf} />
         <IndexHeroRadar radar={state.radar} />
@@ -118,8 +133,19 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
             onSelectTimeframe={(v) => onFilters({ timeframe: v })}
             totalSignals={filteredSignals.length}
           />
+          <div className="px-3.5 py-1.5 flex items-center justify-between gap-3 text-xs" style={{ borderBottom: '1px solid var(--line)' }}>
+            <span className="desk-muted">Confirmed first · inspect a signal for reasoning and price basis</span>
+            <label className="flex items-center gap-2 whitespace-nowrap">
+              <span className="desk-muted">Sort</span>
+              <select className="desk-input" style={{ width: 'auto', padding: '3px 8px' }} value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)}>
+                <option value="newest">Newest</option>
+                <option value="symbol">Symbol</option>
+                <option value="setup">Setup</option>
+              </select>
+            </label>
+          </div>
           <div className="desk-scroll" tabIndex={0} aria-label="Signals list">
-            <SignalTable signals={shown} onPaperBuy={onPaperBuy} activeSignalIds={activeSignalIds} loading={!loaded} />
+            <SignalTable signals={shown} onInspect={setSelectedSignal} activeSignalIds={activeSignalIds} loading={!loaded} />
             {sorted.length > SIGNALS_SHOWN && (
               <button
                 type="button"
@@ -133,6 +159,14 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
           </div>
         </section>
       </div>
+      {currentSelection && (
+        <SignalDetails
+          signal={currentSelection}
+          onClose={() => setSelectedSignal(null)}
+          onPaperBuy={onPaperBuy}
+          isBought={activeSignalIds.has(currentSelection.id)}
+        />
+      )}
     </>
   );
 };

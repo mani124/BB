@@ -5,6 +5,7 @@ import { setupCode } from './setupCode';
 interface SignalTableProps {
   signals: Signal[];
   onPaperBuy?: (signal: Signal) => void;
+  onInspect?: (signal: Signal) => void;
   activeSignalIds?: Set<string>;
   /** First snapshot has not arrived yet: show placeholder rows instead of the empty state. */
   loading?: boolean;
@@ -17,7 +18,7 @@ const signalTime = (ts?: string): string => {
   return m ? m[1] : ts;
 };
 
-export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, activeSignalIds, loading = false }) => {
+export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, onInspect, activeSignalIds, loading = false }) => {
   if (loading) {
     return (
       <div className="p-3 flex flex-col gap-2" role="status" aria-label="Loading signals">
@@ -96,10 +97,12 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, a
                   <span className="desk-sub">{ind?.bandwidth != null ? `BW ${ind.bandwidth.toFixed(2)}%` : '-'}</span>
                 </td>
                 <td className="r">
-                  {onPaperBuy &&
-                    (isBought ? (
-                      <span className="desk-pill up">In portfolio</span>
-                    ) : (
+                  {onInspect && <button type="button" className="desk-btn ghost mr-1" onClick={() => onInspect(sig)} aria-label={`Inspect ${rec.strike_symbol} ${sig.option_type}`}>
+                    Inspect
+                  </button>}
+                  {isBought ? (
+                    <span className="desk-pill up">In portfolio</span>
+                  ) : onPaperBuy ? (
                       <button
                         type="button"
                         className="desk-btn ghost"
@@ -109,7 +112,7 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, a
                       >
                         Paper buy
                       </button>
-                    ))}
+                    ) : null}
                 </td>
               </tr>
             );

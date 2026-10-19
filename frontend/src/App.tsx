@@ -549,6 +549,7 @@ const DashboardContent: React.FC = () => {
             state={state}
             loaded={loaded}
             wsConnected={wsConnected}
+            stream={stream}
             filters={{ setup: selectedSetup, optionType: selectedOptionType, instrumentType: selectedInstrumentType, timeframe: selectedTimeframe }}
             onFilters={(f) => {
               if (f.setup !== undefined) setSelectedSetup(f.setup);

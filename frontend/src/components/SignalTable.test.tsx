@@ -50,4 +50,13 @@ describe('SignalTable', () => {
     render(<SignalTable signals={[{ ...signal, is_confirmed: false } as Signal]} onPaperBuy={() => {}} />);
     expect(screen.getByRole('button', { name: /paper buy/i })).toBeDisabled();
   });
+
+  it('opens inspection without placing a trade', () => {
+    const onInspect = vi.fn();
+    const onBuy = vi.fn();
+    render(<SignalTable signals={[signal]} onInspect={onInspect} onPaperBuy={onBuy} />);
+    fireEvent.click(screen.getByRole('button', { name: /inspect nifty 22550 ce/i }));
+    expect(onInspect).toHaveBeenCalledWith(signal);
+    expect(onBuy).not.toHaveBeenCalled();
+  });
 });

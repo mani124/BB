@@ -122,10 +122,10 @@ export const Header: React.FC<HeaderProps> = ({
             items={[
               {
                 id: 'scanner',
-                name: openPositionsCount > 0 ? `Watch, ${openPositionsCount} open` : 'Watch',
+                name: openPositionsCount > 0 ? `Now, ${openPositionsCount} open` : 'Now',
                 label: (
                   <>
-                    Watch
+                    Now
                     {openPositionsCount > 0 && <span className="desk-pill up desk-num" aria-hidden="true">{openPositionsCount}</span>}
                   </>
                 ),
