@@ -87,9 +87,11 @@ class FakeProvider:
         return pd.DataFrame({"timestamp": ts, "open": self.price, "high": self.price + 1, "low": self.price - 1, "close": self.price, "volume": 0})
 
     async def chain(self, symbol, contract, now):
-        leg = {"top_bid_price": self.bid, "top_ask_price": self.ask, "last_price": self.bid, "security_id": "777", "greeks": {"delta": 0.5}}
-        return "2026-10-27", {"6400.000000": {"ce": {**leg, "top_bid_price": 99, "top_ask_price": 99}, "pe": leg},
-                              "6500.000000": {"ce": leg, "pe": leg}, "6600.000000": {"ce": leg, "pe": {**leg, "top_bid_price": 99}}}
+        leg = {"top_bid_price": self.bid, "top_ask_price": self.ask, "last_price": (self.bid + self.ask) / 2, "security_id": "777", "greeks": {"delta": 0.5}}
+        deep = {"top_bid_price": 99, "top_ask_price": 99.5, "last_price": 99, "security_id": "778"}
+        far = {"top_bid_price": 1, "top_ask_price": 1.1, "last_price": 1, "security_id": "779"}
+        # parity ATM is 6500 (call and put priced alike); 6400 and 6600 are clearly in / out of the money
+        return "2026-10-27", {"6400.000000": {"ce": deep, "pe": far}, "6500.000000": {"ce": leg, "pe": leg}, "6600.000000": {"ce": far, "pe": deep}}
 
 
 _n = [0]
@@ -243,6 +245,42 @@ def test_summary_reports_pools_and_sessions(tmp_path):
     assert set(s["pools"]) == {"commodity", "currency"} and s["enabled"] is True
     assert s["pools"]["commodity"]["loss_cap"] == 15000.0 and s["pools"]["currency"]["loss_cap"] == 5000.0
     assert set(s["sessions"]) == {"MCX", "CURRENCY"}
+
+
+def test_pick_leg_uses_parity_atm_and_skips_unquoted_legs():
+    q = {"top_bid_price": 4.0, "top_ask_price": 4.2}
+    oc = {"100": {"ce": {"last_price": 9.0, **q}, "pe": {"last_price": 1.0, **q}},
+          "110": {"ce": {"last_price": 5.0}, "pe": {"last_price": 5.1}},               # parity ATM, but no bid/ask
+          "120": {"ce": {"last_price": 2.0, **q}, "pe": {"last_price": 9.0, **q}}}
+    assert ce.atm_strike(oc, 500.0) == 110.0   # the candle price (far off) is ignored when parity is available
+    assert ce.pick_leg(oc, "CE", 500.0)["strike"] in (100.0, 120.0)  # nearest quoted strike
+    assert ce.pick_leg({"100": {"ce": {"last_price": 1.0}}}, "CE", 100.0)["strike"] == 100.0  # none quoted: ATM returned for the skip log
+    assert ce.pick_leg({}, "CE", 100.0) is None
+
+
+def test_missing_oi_is_unknown_not_illiquid(tmp_path, monkeypatch):
+    force_signal(monkeypatch)
+    eng = make(tmp_path, cx_min_oi=100.0)
+    run(eng, NOW)  # fake chain legs carry no OI: allowed
+    assert len(eng.positions("OPEN")) == 1
+
+
+def test_known_low_oi_blocks(tmp_path, monkeypatch):
+    force_signal(monkeypatch)
+    prov = FakeProvider()
+    orig = prov.chain
+
+    async def chain(symbol, contract, now):
+        expiry, oc = await orig(symbol, contract, now)
+        for row in oc.values():
+            for leg in row.values():
+                leg["oi"] = 5
+        return expiry, oc
+
+    prov.chain = chain
+    eng = make(tmp_path, prov, cx_min_oi=100.0)
+    run(eng, NOW)
+    assert eng.positions() == []
 
 
 def test_completed_bars_drops_the_forming_bar():

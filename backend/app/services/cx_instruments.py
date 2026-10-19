@@ -36,16 +36,20 @@ class CxUnderlying:
     price_unit: str      # what an option premium / future price is quoted in
     default_lot: int     # used only when the master gives no lot size; entries are refused if lot_size_known is False
     quote_unit: int = 1  # contract units covered by one quoted price: GOLDM is quoted per 10 g but a lot is 100 g, so 10
+    contract_units: int = 1  # units in one lot by the exchange contract spec (CRUDEOIL 100 bbl, GOLDM 100 g, USDINR 1000 USD)
 
-    def pnl_multiplier(self, lot_size: int) -> float:
-        """Rupees of P&L per 1.0 of premium move for one lot."""
-        return lot_size / max(1, self.quote_unit)
+    def pnl_multiplier(self, lot_size: Optional[int] = None) -> float:
+        """Rupees of P&L per 1.0 of premium move for one lot.
+
+        Uses the exchange contract spec, not the master's LOT_SIZE: Dhan's master reported 1 for the CRUDEOIL and GOLDM
+        futures on 2026-10-19 (it counts lots, not units), which would understate P&L a hundredfold."""
+        return self.contract_units / max(1, self.quote_unit)
 
 
 UNDERLYINGS: dict[str, CxUnderlying] = {
-    "CRUDEOIL": CxUnderlying("CRUDEOIL", xs.MCX, "MCX_COMM", "FUTCOM", "OPTFUT", "MCX", "commodity", "Crude oil", "INR/bbl", 100),
-    "GOLDM": CxUnderlying("GOLDM", xs.MCX, "MCX_COMM", "FUTCOM", "OPTFUT", "MCX", "commodity", "Gold mini", "INR/10g", 100, quote_unit=10),
-    "USDINR": CxUnderlying("USDINR", xs.CURRENCY, "NSE_CURRENCY", "FUTCUR", "OPTCUR", "NSE", "currency", "USD / INR", "INR/USD", 1000),
+    "CRUDEOIL": CxUnderlying("CRUDEOIL", xs.MCX, "MCX_COMM", "FUTCOM", "OPTFUT", "MCX", "commodity", "Crude oil", "INR/bbl", 100, contract_units=100),
+    "GOLDM": CxUnderlying("GOLDM", xs.MCX, "MCX_COMM", "FUTCOM", "OPTFUT", "MCX", "commodity", "Gold mini", "INR/10g", 100, quote_unit=10, contract_units=100),
+    "USDINR": CxUnderlying("USDINR", xs.CURRENCY, "NSE_CURRENCY", "FUTCUR", "OPTCUR", "NSE", "currency", "USD / INR", "INR/USD", 1000, contract_units=1000),
 }
 POOLS = ("commodity", "currency")
 
@@ -70,18 +74,40 @@ def parse_master(text: str) -> list[dict]:
     return list(csv.DictReader(io.StringIO(text)))
 
 
+def _key(value: Any) -> str:
+    return "".join(ch for ch in str(value or "").upper() if ch.isalnum())
+
+
+def _matches_underlying(r: dict, symbol: str, u: CxUnderlying) -> bool:
+    """Is this master row a future of ``symbol``? MCX needs an exact underlying (CRUDEOIL must not match CRUDEOILM);
+    currency also accepts a symbol or display name that starts with the pair, because the underlying column of the
+    currency rows was not confirmed against the real file."""
+    if _key(r.get("UNDERLYING_SYMBOL")) == symbol:
+        return True
+    if u.exchange == xs.CURRENCY:
+        return any(_key(r.get(c)).startswith(symbol) for c in ("SYMBOL_NAME", "DISPLAY_NAME", "UNDERLYING_SYMBOL"))
+    return False
+
+
+def _exchange_ok(r: dict, u: CxUnderlying) -> bool:
+    exch = (r.get("EXCH_ID") or "").strip().upper()
+    if exch:
+        return exch == u.master_exch
+    return True  # no exchange column: rely on the instrument type, which is segment specific
+
+
 def nearest_futures(rows: list[dict], symbol: str, today: Optional[date] = None, limit: int = 3) -> list[dict]:
-    """Live futures of ``symbol`` (expiry today or later), earliest first, as plain dicts."""
+    """Live futures of ``symbol`` that expire AFTER today (a future expiring today is already rolled past), earliest first."""
     u = UNDERLYINGS[symbol]
     today = today or market_hours.now_ist().date()
     found: list[tuple[date, dict]] = []
     for r in rows:
-        if r.get("INSTRUMENT") != u.fut_type or r.get("EXCH_ID") != u.master_exch:
+        if (r.get("INSTRUMENT") or "").strip().upper() != u.fut_type or not _exchange_ok(r, u):
             continue
-        if (r.get("UNDERLYING_SYMBOL") or "").strip().upper() != symbol:
+        if not _matches_underlying(r, symbol, u):
             continue
         exp = _parse_date(r.get("SM_EXPIRY_DATE") or "")
-        if exp is None or exp < today:
+        if exp is None or exp <= today:
             continue
         found.append((exp, r))
     found.sort(key=lambda x: x[0])
@@ -121,7 +147,7 @@ class ContractResolver:
     async def resolve(self, symbols: list[str], today: Optional[date] = None) -> dict[str, list[dict]]:
         today = today or market_hours.now_ist().date()
         stale = [s for s in symbols if self._cache.get("day") != today.isoformat() or not self.cached(s)
-                 or _parse_date(self.cached(s)[0]["expiry"]) < today]
+                 or _parse_date(self.cached(s)[0]["expiry"]) <= today]
         if stale:
             try:
                 rows = parse_master(await self._fetch_master())

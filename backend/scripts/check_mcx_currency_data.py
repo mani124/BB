@@ -50,30 +50,57 @@ def _parse_date(value: str) -> Optional[datetime]:
     return None
 
 
-def nearest_future(rows: list[dict], symbol: str, today: Optional[datetime] = None) -> Optional[dict]:
-    """Nearest non-expired future of `symbol` from instrument-master rows (None when absent)."""
+def _key(value: Any) -> str:
+    return "".join(ch for ch in str(value or "").upper() if ch.isalnum())
+
+
+def _matches(r: dict, symbol: str, exchange: str) -> bool:
+    """Same matching as app/services/cx_instruments.py: MCX needs the exact underlying (CRUDEOIL is not CRUDEOILM);
+    currency also accepts a symbol or display name that starts with the pair."""
+    if _key(r.get("UNDERLYING_SYMBOL")) == symbol:
+        return True
+    return exchange == "NSE" and any(_key(r.get(c)).startswith(symbol) for c in ("SYMBOL_NAME", "DISPLAY_NAME", "UNDERLYING_SYMBOL"))
+
+
+def nearest_futures(rows: list[dict], symbol: str, today: Optional[datetime] = None, limit: int = 2) -> list[dict]:
+    """Futures of `symbol` expiring AFTER today (one expiring today is already rolled past), earliest first."""
     fut_type, _opt_type, _seg, exch = UNDERLYINGS[symbol]
     today = (today or datetime.now()).replace(hour=0, minute=0, second=0, microsecond=0)
-    best: Optional[tuple[datetime, dict]] = None
+    found: list[tuple[datetime, dict]] = []
     for r in rows:
-        if r.get("INSTRUMENT") != fut_type or r.get("EXCH_ID") != exch:
+        if (r.get("INSTRUMENT") or "").strip().upper() != fut_type:
             continue
-        if (r.get("UNDERLYING_SYMBOL") or "").strip().upper() != symbol:
+        if (r.get("EXCH_ID") or "").strip().upper() not in ("", exch):
+            continue
+        if not _matches(r, symbol, exch):
             continue
         exp = _parse_date(r.get("SM_EXPIRY_DATE") or "")
-        if exp is None or exp < today:
+        if exp is None or exp <= today:
             continue
-        if best is None or exp < best[0]:
-            best = (exp, r)
-    if best is None:
-        return None
-    exp, r = best
-    return {
-        "security_id": str(r["SECURITY_ID"]).strip(),
-        "lot_size": int(_num(r.get("LOT_SIZE"), 0)),
-        "expiry": exp.strftime("%Y-%m-%d"),
-        "display": (r.get("DISPLAY_NAME") or r.get("SYMBOL_NAME") or "").strip(),
-    }
+        found.append((exp, r))
+    found.sort(key=lambda x: x[0])
+    return [{"security_id": str(r["SECURITY_ID"]).strip(), "lot_size": int(_num(r.get("LOT_SIZE"), 0)),
+             "expiry": exp.strftime("%Y-%m-%d"), "display": (r.get("DISPLAY_NAME") or r.get("SYMBOL_NAME") or "").strip()}
+            for exp, r in found[:limit]]
+
+
+def diagnose_missing(rows: list[dict], symbol: str) -> list[str]:
+    """Why no future was found: what the master holds for this symbol and instrument type."""
+    fut_type, _o, _s, exch = UNDERLYINGS[symbol]
+    out = []
+    by_type: dict[tuple, int] = {}
+    for r in rows:
+        if _key(symbol) in (_key(r.get("UNDERLYING_SYMBOL")), _key(r.get("SYMBOL_NAME"))[:len(symbol)], _key(r.get("DISPLAY_NAME"))[:len(symbol)]):
+            k = (r.get("EXCH_ID"), r.get("SEGMENT"), r.get("INSTRUMENT"))
+            by_type[k] = by_type.get(k, 0) + 1
+    out.append(f"rows mentioning {symbol} by (EXCH_ID, SEGMENT, INSTRUMENT): {by_type or 'none'}")
+    futs = [r for r in rows if (r.get("INSTRUMENT") or "").strip().upper() == fut_type][:3]
+    for r in futs:
+        out.append("sample " + fut_type + " row: " + json.dumps({k: r.get(k) for k in ("EXCH_ID", "SEGMENT", "SECURITY_ID", "INSTRUMENT", "UNDERLYING_SYMBOL", "SYMBOL_NAME", "DISPLAY_NAME", "SM_EXPIRY_DATE", "LOT_SIZE")}))
+    if not futs:
+        types = sorted({(r.get("INSTRUMENT") or "") for r in rows})[:40]
+        out.append(f"no {fut_type} rows at all; INSTRUMENT values in the file: {types}")
+    return out
 
 
 def summarize_chain(chain: dict) -> dict:
@@ -110,11 +137,23 @@ async def _post(client: httpx.AsyncClient, headers: dict, path: str, body: dict)
         return resp.status_code, resp.text[:200]
 
 
+def parity_atm(chain: dict) -> Optional[float]:
+    """Strike where the call and put last prices are closest: the chain's own at-the-money forward."""
+    best, gap = None, None
+    for k, row in chain.items():
+        ce, pe = (row.get("ce") or {}), (row.get("pe") or {})
+        if _num(ce.get("last_price")) > 0 and _num(pe.get("last_price")) > 0:
+            g = abs(_num(ce["last_price"]) - _num(pe["last_price"]))
+            if gap is None or g < gap:
+                best, gap = _num(k), g
+    return best
+
+
 async def check_symbol(client: httpx.AsyncClient, headers: dict, rep: Report, symbol: str, fut: dict, with_ws: bool,
-                       client_id: str, token: str) -> None:
+                       client_id: str, token: str, tag: str = "") -> None:
     _fut_type, _opt_type, seg, _exch = UNDERLYINGS[symbol]
     sec_id = fut["security_id"]
-    rep.add(symbol, "instrument", "PASS", f"{fut['display']} id={sec_id} lot={fut['lot_size']} expiry={fut['expiry']}")
+    rep.add(symbol, "instrument" + tag, "PASS", f"{fut['display']} id={sec_id} lot={fut['lot_size']} expiry={fut['expiry']}")
     if fut["lot_size"] <= 0:
         rep.add(symbol, "lot size", "FAIL", "lot size missing in master")
 
@@ -135,6 +174,12 @@ async def check_symbol(client: httpx.AsyncClient, headers: dict, rep: Report, sy
         s = summarize_chain(oc) if isinstance(oc, dict) else {"strikes": 0}
         ok = code == 200 and s.get("strikes", 0) > 0 and s.get("with_price", 0) > 0
         rep.add(symbol, "option chain", "PASS" if ok else "FAIL", f"http={code} {s}")
+        atm = parity_atm(oc) if isinstance(oc, dict) else None
+        if ok and atm and ltp > 0:
+            off = abs(atm - ltp) / ltp * 100
+            rep.add(symbol, "chain vs future", "PASS" if off <= 3.0 else "FAIL",
+                    f"future ltp {ltp}, chain parity ATM strike {atm} ({off:.2f}% apart): "
+                    + ("this future is the chain's underlying" if off <= 3.0 else "this future is probably NOT the chain's underlying month"))
         if ok and s.get("with_greeks", 0) == 0:
             rep.add(symbol, "chain greeks", "FAIL", "no delta in chain (setups would use assumed delta)")
         elif ok:
@@ -214,11 +259,14 @@ async def main(argv: Optional[list[str]] = None) -> int:
             rep.add("-", "instrument master", "FAIL", f"{type(exc).__name__}: {str(exc)[:100]}")
             rows = []
         for sym in args.symbols:
-            fut = nearest_future(rows, sym) if rows else None
-            if fut is None:
+            futs = nearest_futures(rows, sym) if rows else []
+            if not futs:
                 rep.add(sym, "instrument", "FAIL", "no live future found in master")
+                for line in diagnose_missing(rows, sym):
+                    print("       " + line)
                 continue
-            await check_symbol(client, headers, rep, sym, fut, args.ws, client_id, token)
+            for i, fut in enumerate(futs):
+                await check_symbol(client, headers, rep, sym, fut, args.ws and i == 0, client_id, token, f" #{i + 1}")
 
     print("\nRESULT:", "FAIL (see FAIL lines above)" if rep.failed else "PASS")
     if args.json:

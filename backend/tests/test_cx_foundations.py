@@ -79,9 +79,27 @@ def test_nearest_futures_and_unknown_lot():
     assert got[0]["lot_size_known"] and not got[1]["lot_size_known"] and got[1]["lot_size"] == 1000
 
 
-def test_goldm_pnl_multiplier_uses_quote_unit():
-    assert ci.UNDERLYINGS["GOLDM"].pnl_multiplier(100) == 10
-    assert ci.UNDERLYINGS["CRUDEOIL"].pnl_multiplier(100) == 100
+def test_pnl_multiplier_uses_the_contract_spec_not_the_master_lot():
+    assert ci.UNDERLYINGS["GOLDM"].pnl_multiplier() == 10        # 100 g lot quoted per 10 g
+    assert ci.UNDERLYINGS["CRUDEOIL"].pnl_multiplier(1) == 100   # the master said lot 1 on 2026-10-19
+    assert ci.UNDERLYINGS["USDINR"].pnl_multiplier() == 1000
+
+
+def test_future_expiring_today_is_rolled_past_and_crudeoilm_is_not_crudeoil():
+    rows = [_row("CRUDEOIL", "FUTCOM", "MCX", "2026-10-19", "1", "1"), _row("CRUDEOIL", "FUTCOM", "MCX", "2026-11-19", "2", "1"),
+            _row("CRUDEOILM", "FUTCOM", "MCX", "2026-11-19", "3", "10")]
+    got = ci.nearest_futures(rows, "CRUDEOIL", date(2026, 10, 19))
+    assert [g["security_id"] for g in got] == ["2"]
+
+
+def test_currency_future_found_when_underlying_column_is_blank_or_oddly_formatted():
+    base = {"INSTRUMENT": "FUTCUR", "EXCH_ID": "NSE", "SM_EXPIRY_DATE": "2026-10-28", "SECURITY_ID": "55", "LOT_SIZE": "1"}
+    for extra in ({"UNDERLYING_SYMBOL": "USDINR"}, {"UNDERLYING_SYMBOL": "", "SYMBOL_NAME": "USDINR"},
+                  {"UNDERLYING_SYMBOL": "USD-INR"}, {"UNDERLYING_SYMBOL": "", "DISPLAY_NAME": "USDINR 28 OCT FUT"}):
+        got = ci.nearest_futures([{**base, **extra}], "USDINR", date(2026, 10, 19))
+        assert got and got[0]["security_id"] == "55", extra
+    other = {**base, "UNDERLYING_SYMBOL": "EURINR"}
+    assert ci.nearest_futures([other], "USDINR", date(2026, 10, 19)) == []
 
 
 def test_resolver_caches_for_the_day(tmp_path):

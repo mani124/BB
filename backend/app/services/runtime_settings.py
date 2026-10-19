@@ -393,6 +393,9 @@ DEFINITIONS: tuple[SettingDef, ...] = (
        description="Same for USDINR options, whose premiums are a few paise to rupees.", default=0.05, min=0),
     _d(key="cx_max_spread_pct", label="Max entry spread", group=G_CX, type="float", unit="% of mid",
        description="Skip when the option's bid-ask spread is wider than this.", default=15.0, min=1, max=100),
+    _d(key="cx_min_oi", label="Min option open interest", group=G_CX, type="float", unit="contracts",
+       description="Skip an option whose reported open interest is below this. An option with no OI in the chain is treated as "
+                   "unknown, not as illiquid (only about a third of MCX chain legs report OI). 0 disables the check.", default=0.0, min=0, zero_disables=True),
     _d(key="cx_slippage_pct", label="Slippage per side", group=G_CX, type="float", unit="% of premium",
        description="Added to the ask on entry and taken off the bid on exit, on top of the quoted spread.", default=0.5, min=0, max=10),
     _d(key="cx_brokerage_per_order", label="Brokerage per order", group=G_CX, type="float", unit="INR",

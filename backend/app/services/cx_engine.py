@@ -151,20 +151,51 @@ def completed_bars(df: pd.DataFrame, now: datetime) -> pd.DataFrame:
     return df[ts <= cut].reset_index(drop=True)
 
 
-def pick_leg(oc: dict, side: str, price: float) -> Optional[dict]:
-    """The at-the-money ``side`` leg: nearest strike to ``price`` that has the leg. Returns the leg plus its strike."""
+def _two_sided(leg: dict) -> bool:
+    return _f(leg.get("top_bid_price")) > 0 and _f(leg.get("top_ask_price")) > 0
+
+
+def atm_strike(oc: dict, fallback_price: float) -> Optional[float]:
+    """The at-the-money strike. Put-call parity first (the strike where call and put last prices are closest, which is the
+    chain's own forward and does not depend on which futures month the candles came from); the candle price otherwise."""
     best, best_gap = None, None
+    strikes = []
+    for k, row in oc.items():
+        strike = _f(k, float("nan"))
+        if strike != strike or not isinstance(row, dict):
+            continue
+        strikes.append(strike)
+        ce, pe = row.get("ce"), row.get("pe")
+        if isinstance(ce, dict) and isinstance(pe, dict) and _f(ce.get("last_price")) > 0 and _f(pe.get("last_price")) > 0:
+            gap = abs(_f(ce.get("last_price")) - _f(pe.get("last_price")))
+            if best is None or gap < best_gap:
+                best, best_gap = strike, gap
+    if best is not None:
+        return best
+    return min(strikes, key=lambda x: abs(x - fallback_price)) if strikes else None
+
+
+def pick_leg(oc: dict, side: str, price: float) -> Optional[dict]:
+    """The ``side`` leg to buy: the ATM strike, or the nearest of the next two strikes either side that has a two-sided
+    quote (a third of chain legs have no bid or ask). When none of them is quoted the ATM leg is returned so the caller
+    can log why it skipped. The leg carries its ``strike``."""
+    center = atm_strike(oc, price)
+    if center is None:
+        return None
+    legs = []
     for k, row in oc.items():
         leg = row.get(LEG_KEY[side]) if isinstance(row, dict) else None
-        if not isinstance(leg, dict):
-            continue
         strike = _f(k, float("nan"))
-        if strike != strike:
-            continue
-        gap = abs(strike - price)
-        if best is None or gap < best_gap:
-            best, best_gap = {**leg, "strike": strike}, gap
-    return best
+        if isinstance(leg, dict) and strike == strike:
+            legs.append({**leg, "strike": strike})
+    legs.sort(key=lambda l: abs(l["strike"] - center))
+    near = legs[:5]
+    if not near:
+        return None
+    for leg in near:
+        if _two_sided(leg):
+            return leg
+    return near[0]
 
 
 def leg_for(oc: dict, strike: float, side: str) -> Optional[dict]:
@@ -396,7 +427,7 @@ class CxEngine:
     def _enter(self, u: ci.CxUnderlying, contract: dict, expiry: str, sig: sg.CxSignal, leg: dict, now: datetime) -> Optional[dict]:
         g = self.runtime.get
         bid, ask = _f(leg.get("top_bid_price")), _f(leg.get("top_ask_price"))
-        metrics = {**sig.as_dict(), "strike": leg["strike"], "bid": bid, "ask": ask, "expiry": expiry}
+        metrics = {**sig.as_dict(), "strike": leg["strike"], "bid": bid, "ask": ask, "expiry": expiry, "oi": leg.get("oi")}
         if bid <= 0 or ask <= 0 or ask < bid:
             self._log("SKIPPED", u.symbol, "NO_TWO_SIDED_QUOTE", metrics, strategy=sig.setup, side=sig.side)
             return None
@@ -412,13 +443,18 @@ class CxEngine:
         if not contract.get("lot_size_known"):
             self._log("SKIPPED", u.symbol, "LOT_SIZE_UNKNOWN", metrics, strategy=sig.setup, side=sig.side)
             return None
+        oi = _f(leg.get("oi"), -1.0) if leg.get("oi") is not None else -1.0
+        min_oi = float(g("cx_min_oi"))
+        if min_oi > 0 and 0 <= oi < min_oi:  # an option with no OI reported is unknown, not illiquid: only a known low OI blocks
+            self._log("SKIPPED", u.symbol, "OPEN_INTEREST_TOO_LOW", {**metrics, "oi": oi}, strategy=sig.setup, side=sig.side)
+            return None
         lots = int(g("cx_lots"))
         lot_size = int(contract["lot_size"])
         entry = round(ask * (1 + self._slip()), 4)
         pos = {"id": f"CX_{u.symbol}_{uuid.uuid4().hex[:8]}", "symbol": u.symbol, "pool": u.pool, "setup": sig.setup, "side": sig.side,
                "status": "OPEN", "opened_at": now.isoformat(), "strike": leg["strike"], "expiry": expiry,
                "option_security_id": str(leg.get("security_id", "")), "future_security_id": contract["security_id"],
-               "lots": lots, "lot_size": lot_size, "units": u.pnl_multiplier(lot_size) * lots, "entry_price": entry,
+               "lots": lots, "lot_size": lot_size, "units": u.pnl_multiplier() * lots, "entry_price": entry,
                "entry_bid": bid, "entry_ask": ask, "underlying_entry": sig.price, "invalidate_level": sig.invalidate_level,
                "last_bid": bid, "max_bid": bid, "unrealized_net": 0.0, "signal": sig.as_dict()}
         self.store.save_position(pos)
