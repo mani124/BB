@@ -156,6 +156,7 @@ def test_window_follows_settings(tmp_path):
 
 def test_session_unknown_is_skipped_until_policy_changes(tmp_path):
     eng = make_engine(tmp_path)
+    eng.runtime.set("earnings_default_session", "SKIP")
     add_a_candidate(eng, session="")
     assert run(eng.run_cycle(NOW))["opened"] == []
     assert eng.telemetry.decisions(book="earnings", decision="SKIPPED")[0]["reason"] == "SESSION_UNKNOWN"
@@ -417,6 +418,52 @@ def test_sync_adds_only_future_fno_result_dates(tmp_path):
     assert row["symbol"] == "ABC" and row["session"] == "" and row["source"] == "NSE"
 
 
+def test_default_session_is_amc_so_unset_rows_trade(tmp_path):
+    eng = make_engine(tmp_path)
+    assert eng.runtime.get("earnings_default_session") == "AMC"
+    add_a_candidate(eng, session="")
+    assert len(run(eng.run_cycle(NOW))["opened"]) == 1
+
+
+def test_infer_session_from_nse_event_text():
+    from app.services.earnings_calendar_sync import infer_session as inf
+    assert inf({"bm_desc": "Results to be announced before market hours"}) == "BMO"
+    assert inf({"bm_desc": "Meeting held post market"}) == "AMC"
+    assert inf({"bm_timestamp": "2026-10-21 08:30:00"}) == "BMO"
+    assert inf({"bm_timestamp": "21-Oct-2026 16:45:00"}) == "AMC"
+    assert inf({"time": "2 pm"}) == "AMC"
+    assert inf({"time": "8:00 AM"}) == "BMO"
+    assert inf({"purpose": "Financial Results/Dividend Rs. 2.50 per share"}) == ""
+    assert inf({"purpose": "Financial Results"}) == ""
+
+
+def test_sync_infers_session_and_manual_wins(tmp_path):
+    ev = [{**EVENTS[0], "bm_desc": "Outcome before market hours"}]
+    eng, box = sync_engine(tmp_path, ev)
+    run(eng.sync_calendar(TODAY, force=True))
+    row = eng.calendar_view()[0]
+    assert row["session"] == "BMO" and row["session_origin"] == "inferred" and row["effective_session"] == "BMO"
+    # NSE text changes: an inferred session follows it
+    box["events"] = [{**EVENTS[0], "bm_desc": "after market"}]
+    run(eng.sync_calendar(TODAY, force=True))
+    assert eng.calendar_view()[0]["session"] == "AMC"
+    # a hand-set session is never replaced by a later inference
+    r = eng.store.calendar()[0]
+    eng.store.upsert_calendar(r["symbol"], r["earnings_date"], "BMO", r["sector"], r["note"], source="NSE")
+    run(eng.sync_calendar(TODAY, force=True))
+    v = eng.calendar_view()[0]
+    assert v["session"] == "BMO" and v["session_origin"] == "manual"
+
+
+def test_calendar_view_reports_default_and_skip(tmp_path):
+    eng, _ = sync_engine(tmp_path, EVENTS)
+    run(eng.sync_calendar(TODAY, force=True))
+    v = eng.calendar_view()[0]
+    assert v["session"] == "" and v["session_origin"] == "default" and v["effective_session"] == "AMC"
+    eng.runtime.set("earnings_default_session", "SKIP")
+    assert eng.calendar_view()[0]["session_origin"] == "skip"
+
+
 def test_sync_runs_once_a_day_and_respects_switch(tmp_path):
     eng, _ = sync_engine(tmp_path, EVENTS)
     assert run(eng.sync_calendar(TODAY))["status"] == "ok"
@@ -458,7 +505,7 @@ def test_parse_handles_real_nse_shape():
     ev = [{"symbol": "BAJFINANCE", "company": "Bajaj Finance Limited", "purpose": "Financial Results",
            "bm_desc": "To consider ...", "date": "19-Oct-2026"}]
     rows = parse_results_rows(ev, {"BAJFINANCE"}, date(2026, 10, 17), 45)
-    assert rows == [{"symbol": "BAJFINANCE", "earnings_date": "2026-10-19", "note": "Financial Results"}]
+    assert rows == [{"symbol": "BAJFINANCE", "earnings_date": "2026-10-19", "note": "Financial Results", "session": ""}]
 
 
 def test_bulk_calendar_import_is_all_or_nothing():

@@ -22,11 +22,12 @@ describe('EarningsPanel', () => {
     render(<EarningsPanel initial={{
       summary, positions: [],
       candidates: [{ symbol: 'TCS', mode: 'MODE_A_RUNUP', ready: false, code: 'SPREAD_TOO_WIDE', detail: 'CE spread 40%' }],
-      calendar: [{ symbol: 'TCS', earnings_date: '2026-10-20', session: 'AMC', sector: 'IT', note: '' }],
+      calendar: [{ symbol: 'TCS', earnings_date: '2026-10-20', session: 'AMC', sector: 'IT', note: '', effective_session: 'AMC', session_origin: 'inferred' }],
     }} />);
     fireEvent.click(screen.getByRole('tab', { name: /Signals now/ }));
     expect(screen.getByText('SPREAD_TOO_WIDE')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: /Calendar/ }));
     expect(screen.getByRole('button', { name: 'Remove TCS' })).toBeInTheDocument();
+    expect(screen.getByTestId('origin-TCS')).toHaveTextContent('inferred');
   });
 });

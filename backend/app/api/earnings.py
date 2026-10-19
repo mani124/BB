@@ -50,7 +50,7 @@ async def candidates() -> list[dict]:
 
 @router.get("/calendar")
 async def get_calendar() -> list[dict]:
-    return get_engine().store.calendar()
+    return get_engine().calendar_view()
 
 
 @router.post("/calendar/sync")
@@ -78,7 +78,7 @@ async def add_calendar(body: CalendarBulk) -> list[dict]:
             store.upsert_calendar(r.symbol, r.earnings_date, r.session, r.sector, r.note)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    return store.calendar()
+    return get_engine().calendar_view()
 
 
 @router.delete("/calendar/{symbol}/{earnings_date}")
