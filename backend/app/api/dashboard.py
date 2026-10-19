@@ -76,16 +76,39 @@ def trade_detail(book: str, position_id: str) -> dict:
 @router.get("/trades/{book}/{position_id}/chart")
 def trade_chart(book: str, position_id: str) -> dict:
     trade = _trade(book, position_id)
+    # The legacy chart and saved dashboard evidence encode IST wall time as UTC.
+    # Convert at this API boundary so the redesigned chart receives real epochs.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    ist = ZoneInfo("Asia/Kolkata")
+    def actual_epoch(value):
+        if not value:
+            return None
+        try:
+            stamp = datetime.fromisoformat(str(value))
+            return int((stamp.replace(tzinfo=ist) if stamp.tzinfo is None else stamp).timestamp())
+        except ValueError:
+            return None
+    def actual_bar_time(value):
+        return actual_epoch(datetime.fromtimestamp(value, ZoneInfo("UTC")).replace(tzinfo=None).isoformat())
+    def convert_series(series):
+        for item in series:
+            item["candles"] = [{**bar, "time": actual_bar_time(bar["time"])} for bar in item["candles"]]
+            item["indicators"] = {name: [{**point, "time": actual_bar_time(point["time"])} for point in points]
+                                  for name, points in item.get("indicators", {}).items()}
+        return series
     if book == "paper":
         from app.api.position_chart import build_position_chart
         data = build_position_chart(position_id)
         series = [{"key": key, "label": key.title(), **data[key]} for key in ("option", "underlying") if data[key]["candles"]]
-        return {"candle_state": "recorded" if series else "unavailable", "entry_time": data["entry_time"],
-                "exit_time": data["exit_time"], "series": series}
+        return {"candle_state": "recorded" if any(s["key"] == "option" for s in series) else "unavailable",
+                "entry_time": actual_epoch(trade.get("opened_at")), "exit_time": actual_epoch(trade.get("closed_at")),
+                "series": convert_series(series)}
     evidence = get_trade_evidence(book, position_id)
-    from app.api.position_chart import _epoch_ist
     series = [{"key": key, "label": key.replace("leg:", "Leg ").title(), "candles": rows,
                "indicators": {}, "levels": {}, "interval": "5m"}
               for key, rows in (evidence or {}).get("bars", {}).items() if rows]
-    return {"candle_state": "recorded" if series else "unavailable", "entry_time": _epoch_ist(trade.get("opened_at")),
-            "exit_time": _epoch_ist(trade.get("closed_at")), "series": series}
+    traded_keys = {"option"} if book == "cx" else {f"leg:{i}" for i in range(len((evidence or {}).get("decision", {}).get("legs", [])))}
+    return {"candle_state": "recorded" if any(s["key"] in traded_keys for s in series) else "unavailable",
+            "entry_time": actual_epoch(trade.get("opened_at")), "exit_time": actual_epoch(trade.get("closed_at")),
+            "series": convert_series(series)}

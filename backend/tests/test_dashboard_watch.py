@@ -79,3 +79,18 @@ def test_watch_handles_mixed_naive_and_timezone_aware_times():
         {}, {}, {}, observed_at="2026-10-19T09:38:00+05:30")
     paper = next(source for source in watch["sources"] if source["book"] == "paper")
     assert paper["state"] == "ready"
+
+
+def test_no_credentials_is_unhealthy_and_candidate_ids_survive_reordering():
+    from app.services.dashboard_read import build_dashboard_watch
+    a = {"symbol": "CRUDEOIL", "setup": "Setup 17", "side": "CE", "bar_time": "09:30", "code": "READY"}
+    b = {"symbol": "CRUDEOIL", "setup": "Setup 17", "side": "PE", "bar_time": "09:35", "code": "READY"}
+    payload = {"summary": {"enabled": True, "last_cycle": {"at": "2026-10-19T09:37:00+05:30", "status": "no_credentials"}},
+               "candidates": [a, b]}
+    first = build_dashboard_watch({}, {}, payload, {}, observed_at="2026-10-19T09:38:00+05:30")
+    payload["candidates"] = [b, a]
+    second = build_dashboard_watch({}, {}, payload, {}, observed_at="2026-10-19T09:38:00+05:30")
+    source = next(source for source in first["sources"] if source["book"] == "cx")
+    assert source["state"] == "error"
+    assert "login" in source["message"].lower()
+    assert {candidate["id"] for candidate in first["candidates"]} == {candidate["id"] for candidate in second["candidates"]}

@@ -71,6 +71,7 @@ def _row(book: str, raw: Any) -> dict:
         "net_pnl": net, "net_kind": net_kind, "evidence_state": "unavailable",
         "exit_reason": _value(raw, "exit_reason"),
         "signal_id": _value(raw, "signal_id"),
+        "quarantine_reason": _value(raw, "quarantine_reason") if book == "paper" else None,
     }
 
 
@@ -147,13 +148,17 @@ def get_dashboard_session(day: str) -> dict:
                        "evidence_id": f"setting:{row['id']}", "evidence_state": "recorded"})
 
     by_book: list[dict] = []
-    for book in ("paper", "cx", "earnings"):
-        rows = [row for row in all_trades if row["book"] == book]
+    for book, mode, label in (("paper", "demo", "Main + Setup 16 · demo"),
+                              ("paper", "live", "Main + Setup 16 · live"),
+                              ("cx", None, "Commodities & FX"),
+                              ("earnings", None, "Earnings")):
+        rows = [row for row in all_trades if row["book"] == book and (mode is None or row.get("mode", "demo") == mode)]
         touched = [row for row in rows if any((_ist_iso(row.get(key)) or "")[:10] == day for key in ("opened_at", "closed_at"))]
-        realized = [row["net_pnl"] for row in touched if row.get("net_kind") == "realized" and row.get("closed_at") and (_ist_iso(row["closed_at"]) or "")[:10] == day and row.get("net_pnl") is not None]
+        realized = [row["net_pnl"] for row in touched if not row.get("quarantine_reason") and row.get("net_kind") == "realized" and row.get("closed_at") and (_ist_iso(row["closed_at"]) or "")[:10] == day and row.get("net_pnl") is not None]
         is_today = day == now_ist().date().isoformat()
-        estimated = [row["net_pnl"] for row in rows if is_today and row.get("net_kind") == "estimated" and row.get("net_pnl") is not None]
-        by_book.append({"book": book, "display_book": {"paper": "Main + Setup 16", "cx": "Commodities & FX", "earnings": "Earnings"}[book],
+        estimated = [row["net_pnl"] for row in rows if is_today and not row.get("quarantine_reason") and row.get("net_kind") == "estimated" and row.get("net_pnl") is not None]
+        by_book.append({"book": book, "display_book": label,
+                        "mode": mode,
                         "entries": sum(1 for row in touched if (_ist_iso(row.get("opened_at")) or "")[:10] == day),
                         "exits": sum(1 for row in touched if (_ist_iso(row.get("closed_at")) or "")[:10] == day),
                         "open_positions": sum(1 for row in rows if row.get("status") in ("OPEN", "TARGET_1")) if is_today else None,
@@ -191,7 +196,7 @@ def get_dashboard_session(day: str) -> dict:
 def _source(book: str, mode: str, as_of: str | None, observed_at: str, *, disabled: bool = False,
             error: str | None = None) -> dict:
     state = "unknown"
-    if error or mode == "error":
+    if error or mode in ("error", "no_credentials"):
         state = "error"
     elif disabled:
         state = "disabled"
@@ -253,13 +258,16 @@ def build_dashboard_watch(snapshot: dict, setup16: dict, cx: dict, earnings: dic
         summary = payload.get("summary") or {}
         cycle = summary.get("last_cycle") or {}
         as_of = _timestamp(cycle.get("at"))
+        cycle_status = str(cycle.get("status") or "unknown")
+        cycle_error = cycle.get("error") or cycle.get("message") or ("Broker login unavailable; open positions may be unmanaged" if cycle_status == "no_credentials" else None)
         sources.append(_source(name, "paper", as_of, observed_at, disabled=summary.get("enabled") is False,
-                               error=payload.get("_error") or (cycle.get("error") if cycle.get("status") == "error" else None)))
-        for idx, candidate in enumerate(payload.get("candidates") or []):
+                               error=payload.get("_error") or (cycle_error if cycle_status in ("error", "no_credentials") else None)))
+        for candidate in payload.get("candidates") or []:
             symbol = str(candidate.get("symbol", "unknown"))
             setup = str(candidate.get("setup") or candidate.get("mode") or "")
             code = str(candidate.get("code") or ("READY" if candidate.get("ready") else "WATCHING"))
-            candidates.append({"id": f"{name}:{symbol}:{setup}:{idx}", "book": name, "stage": code,
+            identity = ":".join(str(candidate.get(key) or "") for key in ("side", "option_type", "strike", "expiry", "contract", "security_id", "bar_time", "earnings_date"))
+            candidates.append({"id": f"{name}:{symbol}:{setup}:{identity}", "book": name, "stage": code,
                                "observed_at": observed_at, "is_preview": True,
                                "checks": _checks(candidate.get("metrics")),
                                "block_reason": candidate.get("detail") or (None if candidate.get("ready") else code),

@@ -17,6 +17,7 @@ import { isIndexSymbol } from './components/instruments';
 import { apiFetch, bootstrapDashboardSession, getDashboardCapability, setDashboardCapability } from './api/client';
 import { closeTrade, fetchDashboardSession, fetchDashboardTradeChart, fetchDashboardTradeDetail, fetchDashboardTrades, fetchDashboardWatch } from './api/dashboard';
 import { DashboardStatus } from './components/DashboardStatus';
+import { countOpenTrades } from './lib/dashboardCounts';
 import { TradesScreen } from './components/TradesScreen';
 import { SessionScreen } from './components/SessionScreen';
 import { ControlScreen } from './components/ControlScreen';
@@ -41,6 +42,7 @@ const DashboardContent: React.FC = () => {
   const [dashboardWatch, setDashboardWatch] = useState<DashboardWatch | null>(null);
   const [watchError, setWatchError] = useState<string | null>(null);
   const [dashboardTrades, setDashboardTrades] = useState<DashboardTrade[]>([]);
+  const [tradesLoaded, setTradesLoaded] = useState(false);
   const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
   const [tradesError, setTradesError] = useState<string | null>(null);
   const [selectedSetup, setSelectedSetup] = useState<string>('ALL');
@@ -66,17 +68,17 @@ const DashboardContent: React.FC = () => {
     try {
       const rows = await fetchDashboardTrades();
       setDashboardTrades(rows);
+      setTradesLoaded(true);
       setTradesError(null);
     } catch (error) {
       setTradesError(error instanceof Error ? error.message : 'Trades unavailable');
     }
   };
   useEffect(() => {
-    if (activeTab !== 'trades' && activeTab !== 'watch') return;
     refreshTrades();
     const timer = window.setInterval(refreshTrades, 30000);
     return () => window.clearInterval(timer);
-  }, [activeTab, sessionNonce]);
+  }, [sessionNonce]);
   useEffect(() => {
     let alive = true;
     const load = () => fetchDashboardWatch()
@@ -521,7 +523,9 @@ const DashboardContent: React.FC = () => {
     return true;
   });
 
-  const activePositionsCount = state.paper_portfolio?.active_positions?.length || 0;
+  const activePositionsCount = tradesLoaded && !tradesError
+    ? countOpenTrades(dashboardTrades)
+    : null;
 
   const activeSignalIds = React.useMemo(() => {
     return new Set(state.paper_portfolio?.active_positions?.map((p) => p.signal_id) || []);
@@ -562,7 +566,7 @@ const DashboardContent: React.FC = () => {
         wsConnected={state.ws_connected || wsConnected}
         activeTab={activeTab}
         onTabChange={(tab) => { setActiveTab(tab); setDetailView(null); }}
-        openPositionsCount={activePositionsCount}
+        openPositionsCount={activePositionsCount ?? undefined}
         onOpenAccessKey={openCapabilityModal}
         risk={state.paper_portfolio?.risk}
         onKillSwitch={handleKillSwitch}

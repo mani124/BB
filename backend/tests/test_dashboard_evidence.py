@@ -92,6 +92,24 @@ def test_cx_chart_uses_trade_times_for_entry_and_exit_markers(monkeypatch):
         "underlying": [{"time": 1792375200, "open": 1, "high": 2, "low": 1, "close": 2}],
     }})
     chart = dashboard.trade_chart("cx", "one")
-    assert chart["candle_state"] == "recorded"
+    assert chart["candle_state"] == "unavailable"
+    assert chart["series"][0]["label"] == "Underlying"
     assert chart["entry_time"] is not None
     assert chart["exit_time"] > chart["entry_time"]
+
+
+def test_chart_converts_ist_wall_epochs_to_real_instants(monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from app.api import dashboard
+
+    moment = datetime(2026, 10, 19, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
+    fake_wall_epoch = int((moment.replace(tzinfo=None) - datetime(1970, 1, 1)).total_seconds())
+    trade = {"id": "cx:one", "book": "cx", "source_id": "one", "status": "OPEN", "opened_at": moment.isoformat()}
+    monkeypatch.setattr(dashboard, "list_dashboard_trades", lambda **_filters: [trade])
+    monkeypatch.setattr(dashboard, "get_trade_evidence", lambda _book, _id: {"decision": {}, "bars": {
+        "underlying": [{"time": fake_wall_epoch, "open": 1, "high": 2, "low": 1, "close": 2}],
+    }})
+    chart = dashboard.trade_chart("cx", "one")
+    assert chart["entry_time"] == int(moment.timestamp())
+    assert chart["series"][0]["candles"][0]["time"] == int(moment.timestamp())

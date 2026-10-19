@@ -34,7 +34,7 @@ export const SessionScreen: React.FC<Props> = ({ initialDay, loadSession, onOpen
     {error && <p role="alert" className="desk-alert p-3">{error}</p>}
     {!data && !error && <p className="desk-muted">Loading recorded session…</p>}
     {data && <>
-      <div className="grid sm:grid-cols-3 gap-2">{data.by_book.map((book) => <section key={book.book} className="desk-panel p-3">
+      <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2">{data.by_book.map((book) => <section key={`${book.book}:${book.mode || ''}`} className="desk-panel p-3">
         <h2 className="font-semibold text-sm">{book.display_book}</h2>
         <p className="desk-muted text-xs mt-1">{book.entries} entries · {book.exits} exits</p>
         {book.open_positions != null && <p className="desk-muted text-xs">{book.open_positions} open now</p>}

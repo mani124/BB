@@ -18,6 +18,7 @@ export const TradeQueue: React.FC<Props> = ({ trades, selectedId, onSelect }) =>
         <span className="min-w-0">
           <strong className="block truncate">{trade.instrument}</strong>
           <span className="desk-muted text-xs block">{trade.display_book} · {trade.setup}</span>
+          {trade.quarantine_reason && <span className="desk-muted text-xs block">Data quality · excluded from totals</span>}
           <span className="desk-muted text-xs desk-num block mt-1">{timeLabel(trade.opened_at)}</span>
         </span>
         <span className="shrink-0 text-right">

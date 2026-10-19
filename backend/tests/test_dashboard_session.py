@@ -28,7 +28,26 @@ def test_session_orders_cross_book_events_and_links_observation(monkeypatch):
     assert result["by_book"][0]["realized_net"] is None
     assert result["by_book"][0]["estimated_net"] == 30
     assert result["by_book"][0]["open_positions"] == 1
-    assert result["by_book"][1]["realized_net"] == 200
+    assert result["by_book"][1]["display_book"].endswith("live")
+    assert result["by_book"][2]["realized_net"] == 200
+
+
+def test_session_separates_paper_modes_and_excludes_quarantined_financials(monkeypatch):
+    from app.services import dashboard_read
+    monkeypatch.setattr(dashboard_read.paper_trader.telemetry, "day_events", lambda day: {"decisions": [], "errors": []})
+    monkeypatch.setattr(dashboard_read.paper_trader.runtime, "audit_day", lambda day: [])
+    monkeypatch.setattr(dashboard_read, "list_dashboard_trades", lambda: [
+        {"id": f"paper:{i}", "book": "paper", "mode": mode, "instrument": "NIFTY", "status": "CLOSED",
+         "opened_at": "2026-10-19T09:30:00+05:30", "closed_at": "2026-10-19T10:00:00+05:30",
+         "net_kind": "realized", "net_pnl": pnl, "quarantine_reason": quarantine, "evidence_state": "unavailable"}
+        for i, mode, pnl, quarantine in ((1, "demo", 10, None), (2, "live", 20, None), (3, "live", 900, "BAD_FILL"))
+    ])
+    result = dashboard_read.get_dashboard_session("2026-10-19")
+    demo, live = result["by_book"][:2]
+    assert demo["realized_net"] == 10
+    assert live["realized_net"] == 20
+    assert live["exits"] == 2
+    assert len([event for event in result["events"] if event["type"] == "exit"]) == 3
 
 
 def test_session_uses_selected_ist_day_and_does_not_invent_decisions(monkeypatch):

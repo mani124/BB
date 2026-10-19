@@ -9,7 +9,7 @@ const labels: Record<DashboardSource['book'], string> = {
 
 interface Props {
   sources: DashboardSource[];
-  openCount: number;
+  openCount: number | null;
   risk?: RiskStatus | null;
   stream?: StreamStatus;
   error?: string | null;
@@ -17,7 +17,7 @@ interface Props {
 }
 
 const SourceItems: React.FC<Omit<Props, 'entriesAllowed'>> = ({ sources, openCount, risk, stream, error }) => <div className="flex flex-wrap items-center gap-2 text-xs">
-  <strong className="mr-1 text-sm">{openCount} open {openCount === 1 ? 'position' : 'positions'}</strong>
+  <strong className="mr-1 text-sm">{openCount == null ? 'Open count unavailable' : `${openCount} open ${openCount === 1 ? 'position' : 'positions'}`}</strong>
   {sources.map((source) => (
     <span key={source.book} className={`desk-pill ${source.state === 'error' ? 'down' : source.state === 'stale' || source.state === 'unknown' ? 'warn' : source.state === 'ready' ? 'up' : ''}`}
       title={source.message || (source.as_of ? `Last evaluation: ${source.as_of}` : 'Last evaluation time unavailable')}>
@@ -35,7 +35,7 @@ export const DashboardStatus: React.FC<Props> = ({ sources, openCount, risk, str
     <div className="hidden sm:block"><SourceItems sources={sources} openCount={openCount} risk={risk} stream={stream} error={error} /></div>
     <details className="sm:hidden desk-status-mobile">
       <summary className="flex items-center justify-between gap-2 text-xs">
-        <strong>{openCount} open · paper entries {risk?.kill_switch_active || risk?.entries_blocked ? 'blocked' : entriesAllowed == null ? 'unknown' : entriesAllowed ? 'on' : 'paused'}</strong>
+        <strong>{openCount == null ? 'Open count unavailable' : `${openCount} open`} · paper entries {risk?.kill_switch_active || risk?.entries_blocked ? 'blocked' : entriesAllowed == null ? 'unknown' : entriesAllowed ? 'on' : 'paused'}</strong>
         <span className={`desk-pill ${error || risk?.kill_switch_active || sources.some((source) => source.state === 'error') ? 'down' : stream?.state !== 'live' ? 'warn' : 'up'}`}>
           {error || risk?.kill_switch_active || sources.some((source) => source.state === 'error') ? 'Needs attention' : stream?.state !== 'live' ? 'Updating' : 'Status'} ▾
         </span>

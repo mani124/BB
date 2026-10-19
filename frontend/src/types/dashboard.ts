@@ -46,6 +46,7 @@ export interface DashboardTrade {
   evidence_state: 'recorded' | 'unavailable';
   exit_reason?: string | null;
   signal_id?: string | null;
+  quarantine_reason?: string | null;
 }
 
 export interface DashboardTradeDetail extends DashboardTrade {
@@ -87,6 +88,6 @@ export interface DashboardSession {
   day: string;
   timezone: string;
   events: DashboardSessionEvent[];
-  by_book: { book: DashboardBook; display_book: string; entries: number; exits: number; open_positions?: number | null; realized_net: number | null; estimated_net: number | null }[];
+  by_book: { book: DashboardBook; mode?: string | null; display_book: string; entries: number; exits: number; open_positions?: number | null; realized_net: number | null; estimated_net: number | null }[];
   observations: { id: string; title: string; detail: string; event_ids: string[] }[];
 }

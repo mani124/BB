@@ -72,17 +72,18 @@ export const TradeChart: React.FC<Props> = ({ data }) => {
     return () => { window.removeEventListener('resize', resize); observer?.disconnect(); chart.remove(); };
   }, [selected, data.entry_time, data.exit_time, themeRevision]);
 
-  if (data.candle_state === 'unavailable' || !selected?.candles.length) {
+  if (!selected?.candles.length) {
     return <div className="desk-panel p-5 text-sm desk-muted">Candles were not recorded for this trade. The trade facts above are still available.</div>;
   }
   return (
     <section className="desk-panel p-3" aria-label="Trade candlestick chart">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-        <h3 className="font-semibold text-sm">Real candlestick chart</h3>
+        <h3 className="font-semibold text-sm">{data.candle_state === 'recorded' ? 'Real candlestick chart' : 'Related market candlesticks'}</h3>
         <label className="text-xs desk-muted">Instrument <select className="desk-input ml-2" value={selected.key} onChange={(event) => setSelectedKey(event.target.value)}>
           {data.series.map((series) => <option key={series.key} value={series.key}>{series.label}</option>)}
         </select></label>
       </div>
+      {data.candle_state === 'unavailable' && <p className="text-xs desk-muted mb-2">Candles for the traded instrument were not recorded. The chart below shows recorded related market data.</p>}
       <div ref={box} className="trade-chart-canvas w-full min-w-0 overflow-hidden" />
       <p className="text-xs desk-muted mt-2">{selected.label} · {selected.interval} · recorded OHLC only</p>
     </section>

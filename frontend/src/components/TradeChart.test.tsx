@@ -25,6 +25,15 @@ describe('TradeChart', () => {
     expect(screen.getByText(/Candles were not recorded/i)).toBeInTheDocument();
   });
 
+  it('labels underlying candles as related data when traded candles are missing', () => {
+    render(<TradeChart data={{ candle_state: 'unavailable', entry_time: null, exit_time: null, series: [
+      { key: 'underlying', label: 'Underlying', interval: '5m', indicators: {}, levels: {},
+        candles: [{ time: 10, open: 100, high: 103, low: 99, close: 101 }] },
+    ] }} />);
+    expect(screen.getByText('Related market candlesticks')).toBeInTheDocument();
+    expect(screen.getByText(/Candles for the traded instrument were not recorded/i)).toBeInTheDocument();
+  });
+
   it('recolors the existing candles when the theme changes', async () => {
     const data: DashboardChart = { candle_state: 'recorded', entry_time: null, exit_time: null, series: [
       { key: 'option', label: 'Option', interval: '5m', indicators: {}, levels: {}, candles: [{ time: 10, open: 100, high: 103, low: 99, close: 101 }] },
