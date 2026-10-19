@@ -36,6 +36,10 @@ from app.services.momentum_ranker import MomentumRanker, MomentumRankings
 logger = logging.getLogger(__name__)
 
 
+class _SkipSetup(Exception):
+    """Internal: skip a setup evaluation (Setup 16 only mode)."""
+
+
 from app.services import notifier
 
 
@@ -57,6 +61,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             self.ws_manager.on_tick_callback = self._handle_incoming_ws_tick
 
         self.momentum_ranker = MomentumRanker(top_n=10)
+        self.watchlist = None  # WatchlistService, set in app.main: after-close squeeze list, checked for Setup 16 only
         self._state = ScannerState(universe_count=len(universe_mgr.get_universe()))
         self._listeners: list[asyncio.Queue] = []
         self._last_tick_broadcast: dict[str, float] = {}
@@ -519,6 +524,18 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             if inst and inst not in deep_scan_targets:
                 deep_scan_targets.append(inst)
 
+        # Stocks on the after-close watchlist are checked for Setup 16 only; the other setups never see them
+        s16_only: set[str] = set()
+        if self.watchlist is not None and mode == "live":
+            try:
+                for sym in self.watchlist.symbols_for():
+                    inst = self.universe_mgr.get_instrument(sym)
+                    if inst and inst not in deep_scan_targets:
+                        deep_scan_targets.append(inst)
+                        s16_only.add(inst.symbol)
+            except Exception:
+                logger.warning("watchlist lookup failed", exc_info=True)
+
         # In demo mode fallback if quotes are synthetic, include core momentum stocks
         if mode == "demo" and len(deep_scan_targets) <= 4:
             for inst in self.universe_mgr.get_momentum_stocks():
@@ -532,7 +549,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 seg_quotes = quotes_dict.get(inst.exchange_segment, {})
                 inst_quote = seg_quotes.get(str(inst.security_id)) or seg_quotes.get(int(inst.security_id))
 
-            if mode == "live" and cid and tok and len(self._candle_history.get(inst.symbol, [])) < 20:
+            if mode == "live" and cid and tok and inst.symbol not in s16_only and len(self._candle_history.get(inst.symbol, [])) < 20:
                 await self.seed_historical_candles_if_needed(cid, tok, inst)
                 if self._session_generation != gen or (cid and not self._session_credentials and not client_id):
                     return self._state
@@ -803,7 +820,8 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
 
                         # Also evaluate Setup 5 (Option Chart BB Scalp) directly on live option candles
                         if current_price > 0:
-                            opt_signals = await self._evaluate_option_chart_setups(cid, tok, inst, oc, expiry, current_price)
+                            opt_signals = await self._evaluate_option_chart_setups(
+                                cid, tok, inst, oc, expiry, current_price, only_setup16=inst.symbol in s16_only)
                             # Finding 5: Abort if disconnected or session generation changed during option candle await
                             if self._session_generation != gen or (cid and not self._session_credentials and not client_id):
                                 logger.info("Scan cycle aborted after option chart setups evaluation: session disconnected")
@@ -811,6 +829,9 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                             detected.extend(opt_signals)
                 except Exception as e:
                     logger.warning(f"Error processing option chain for {inst.symbol}: {e}")
+
+            if inst.symbol in s16_only:
+                detected = [s for s in detected if s.setup_type == SetupType.SETUP_16_OPTION_SQUEEZE_BREAK]
 
             # Closed session: candles are yesterday's, so nothing is a live/confirmed signal.
             if mode != "closed":
@@ -875,7 +896,8 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         inst: Instrument,
         oc: dict,
         expiry: str,
-        underlying_price: float
+        underlying_price: float,
+        only_setup16: bool = False,
     ) -> list[Signal]:
         results: list[Signal] = []
         if not oc or underlying_price <= 0:
@@ -1014,7 +1036,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 straddle_legs[opt_type] = StraddleLeg(
                     df=ind_opt, strike_symbol=strike_symbol, security_id=sec_id_str, quote=leg_quote,
                 )
-                sig = evaluate_option_chart_signal(
+                sig = None if only_setup16 else evaluate_option_chart_signal(
                     symbol=inst.symbol,
                     strike_symbol=strike_symbol,
                     option_type=opt_type,
@@ -1029,7 +1051,10 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 )
                 if sig:
                     results.append(sig)
+                s13 = None
                 try:
+                    if only_setup16:
+                        raise _SkipSetup
                     s13 = evaluate_option_vwap_reclaim(
                         symbol=inst.symbol,
                         strike_symbol=strike_symbol,
@@ -1044,6 +1069,8 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                         timeframe="5m",
                         current_quote=leg_quote,
                     )
+                except _SkipSetup:
+                    pass
                 except Exception as e:
                     logger.warning(f"Setup 13 evaluation failed for {strike_symbol}: {e}")
                     s13 = None
@@ -1075,7 +1102,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
 
         # Setup 10: ATM straddle premium squeeze, from the same two completed-bar series.
         # Skipped when Setup 5 already fired on this side, so one contract is never entered twice.
-        if len(straddle_legs) == 2:
+        if len(straddle_legs) == 2 and not only_setup16:
             s10 = evaluate_straddle_squeeze(
                 symbol=inst.symbol,
                 legs=straddle_legs,
