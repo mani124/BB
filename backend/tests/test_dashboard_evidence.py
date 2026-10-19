@@ -80,3 +80,18 @@ def test_earnings_entry_keeps_each_actual_leg(tmp_path, monkeypatch):
     evidence = dashboard_evidence.get_trade_evidence("earnings", position["id"])
     assert len(evidence["decision"]["legs"]) == len(position["legs"])
     assert evidence["bars"] == {}
+
+
+def test_cx_chart_uses_trade_times_for_entry_and_exit_markers(monkeypatch):
+    from app.api import dashboard
+
+    trade = {"id": "cx:one", "book": "cx", "source_id": "one", "status": "CLOSED",
+             "opened_at": "2026-10-19T10:00:00+05:30", "closed_at": "2026-10-19T10:30:00+05:30"}
+    monkeypatch.setattr(dashboard, "list_dashboard_trades", lambda **_filters: [trade])
+    monkeypatch.setattr(dashboard, "get_trade_evidence", lambda _book, _id: {"decision": {}, "bars": {
+        "underlying": [{"time": 1792375200, "open": 1, "high": 2, "low": 1, "close": 2}],
+    }})
+    chart = dashboard.trade_chart("cx", "one")
+    assert chart["candle_state"] == "recorded"
+    assert chart["entry_time"] is not None
+    assert chart["exit_time"] > chart["entry_time"]

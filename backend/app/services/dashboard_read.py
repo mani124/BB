@@ -46,7 +46,10 @@ def _row(book: str, raw: Any) -> dict:
     elif book == "cx":
         setup = str(_value(raw, "setup", ""))
         display_book = "Commodities & FX"
-        instrument = _value(raw, "option_symbol") or _value(raw, "symbol", "")
+        strike = _value(raw, "strike")
+        strike_label = f"{strike:g}" if isinstance(strike, (int, float)) else str(strike or "")
+        instrument = _value(raw, "option_symbol") or " ".join(part for part in (
+            str(_value(raw, "symbol", "")), strike_label, str(_value(raw, "side", ""))) if part)
         opened = _timestamp(_value(raw, "opened_at"))
         closed = _timestamp(_value(raw, "closed_at"))
         mode = "paper"
@@ -64,6 +67,8 @@ def _row(book: str, raw: Any) -> dict:
         "source_id": source_id, "status": status, "instrument": str(instrument),
         "setup": setup, "opened_at": opened, "closed_at": closed, "mode": mode,
         "net_pnl": net, "net_kind": net_kind, "evidence_state": "unavailable",
+        "exit_reason": _value(raw, "exit_reason"),
+        "signal_id": _value(raw, "signal_id"),
     }
 
 

@@ -44,4 +44,27 @@ export interface DashboardTrade {
   net_pnl: number | null;
   net_kind: 'estimated' | 'realized';
   evidence_state: 'recorded' | 'unavailable';
+  exit_reason?: string | null;
+  signal_id?: string | null;
+}
+
+export interface DashboardTradeDetail extends DashboardTrade {
+  reason_state: 'recorded' | 'unavailable';
+  decision: Record<string, unknown> | null;
+}
+
+export interface DashboardCandle { time: number; open: number; high: number; low: number; close: number }
+export interface DashboardChartSeries {
+  key: string;
+  label: string;
+  candles: DashboardCandle[];
+  indicators: Record<string, { time: number; value: number }[]>;
+  levels: Record<string, number>;
+  interval: string;
+}
+export interface DashboardChart {
+  candle_state: 'recorded' | 'unavailable';
+  entry_time: number | null;
+  exit_time: number | null;
+  series: DashboardChartSeries[];
 }

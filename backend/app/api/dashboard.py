@@ -67,7 +67,7 @@ def trade_detail(book: str, position_id: str) -> dict:
 
 @router.get("/trades/{book}/{position_id}/chart")
 def trade_chart(book: str, position_id: str) -> dict:
-    _trade(book, position_id)
+    trade = _trade(book, position_id)
     if book == "paper":
         from app.api.position_chart import build_position_chart
         data = build_position_chart(position_id)
@@ -75,8 +75,9 @@ def trade_chart(book: str, position_id: str) -> dict:
         return {"candle_state": "recorded" if series else "unavailable", "entry_time": data["entry_time"],
                 "exit_time": data["exit_time"], "series": series}
     evidence = get_trade_evidence(book, position_id)
+    from app.api.position_chart import _epoch_ist
     series = [{"key": key, "label": key.replace("leg:", "Leg ").title(), "candles": rows,
                "indicators": {}, "levels": {}, "interval": "5m"}
               for key, rows in (evidence or {}).get("bars", {}).items() if rows]
-    return {"candle_state": "recorded" if series else "unavailable", "entry_time": None,
-            "exit_time": None, "series": series}
+    return {"candle_state": "recorded" if series else "unavailable", "entry_time": _epoch_ist(trade.get("opened_at")),
+            "exit_time": _epoch_ist(trade.get("closed_at")), "series": series}

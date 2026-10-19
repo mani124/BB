@@ -15,9 +15,10 @@ import { CxScreen } from './components/CxScreen';
 import { AlertCircle, X } from 'lucide-react';
 import { isIndexSymbol } from './components/instruments';
 import { apiFetch, bootstrapDashboardSession, getDashboardCapability, setDashboardCapability } from './api/client';
-import { fetchDashboardWatch } from './api/dashboard';
+import { closeTrade, fetchDashboardTradeChart, fetchDashboardTradeDetail, fetchDashboardTrades, fetchDashboardWatch } from './api/dashboard';
 import { DashboardStatus } from './components/DashboardStatus';
-import type { DashboardWatch } from './types/dashboard';
+import { TradesScreen } from './components/TradesScreen';
+import type { DashboardTrade, DashboardWatch } from './types/dashboard';
 
 type DetailView = 'legacy-review' | 'setup16' | 'cx' | 'earnings' | 'settings' | null;
 
@@ -37,6 +38,8 @@ const DashboardContent: React.FC = () => {
   const [detailView, setDetailView] = useState<DetailView>(null);
   const [dashboardWatch, setDashboardWatch] = useState<DashboardWatch | null>(null);
   const [watchError, setWatchError] = useState<string | null>(null);
+  const [dashboardTrades, setDashboardTrades] = useState<DashboardTrade[]>([]);
+  const [tradesError, setTradesError] = useState<string | null>(null);
   const [selectedSetup, setSelectedSetup] = useState<string>('ALL');
   const [selectedOptionType, setSelectedOptionType] = useState<string>('ALL');
   const [selectedInstrumentType, setSelectedInstrumentType] = useState<string>('ALL');
@@ -56,6 +59,21 @@ const DashboardContent: React.FC = () => {
   const [capabilityError, setCapabilityError] = useState<string | null>(null);
   const [capabilitySuccess, setCapabilitySuccess] = useState(false);
   const [sessionNonce, setSessionNonce] = useState(0);
+  const refreshTrades = async () => {
+    try {
+      const rows = await fetchDashboardTrades();
+      setDashboardTrades(rows);
+      setTradesError(null);
+    } catch (error) {
+      setTradesError(error instanceof Error ? error.message : 'Trades unavailable');
+    }
+  };
+  useEffect(() => {
+    if (activeTab !== 'trades') return;
+    refreshTrades();
+    const timer = window.setInterval(refreshTrades, 30000);
+    return () => window.clearInterval(timer);
+  }, [activeTab, sessionNonce]);
   useEffect(() => {
     let alive = true;
     const load = () => fetchDashboardWatch()
@@ -604,6 +622,12 @@ const DashboardContent: React.FC = () => {
             onToggleAutoTrade={handleToggleAutoTrade}
             onChangeLots={handleChangeLots}
           />
+        ) : activeTab === 'trades' ? (
+          <>
+            {tradesError && <p role="alert" className="desk-alert p-3">{tradesError}</p>}
+            <TradesScreen trades={dashboardTrades} loadDetail={fetchDashboardTradeDetail} loadChart={fetchDashboardTradeChart}
+              onClosePaper={(sourceId) => closeTrade('paper', sourceId)} onRefresh={refreshTrades} />
+          </>
         ) : activeTab === 'control' ? (
           <div className="flex flex-col gap-3 lg:overflow-y-auto">
             <section className="desk-panel p-4">
