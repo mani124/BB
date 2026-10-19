@@ -29,7 +29,6 @@ export const SETUP_FILTERS: { key: string; label: string; title: string }[] = [
   { key: 'Setup 8: Climax Swing Divergence Fade', label: 'S8 Divergence Fade', title: 'Setup 8: Divergence Fade' },
   { key: 'Setup 9: Relative Strength vs NIFTY (9 EMA Pullback)', label: 'S9 Rel. Strength', title: 'Setup 9: Relative Strength vs NIFTY' },
   { key: 'Setup 10: ATM Straddle Premium Squeeze', label: 'S10 Straddle Squeeze', title: 'Setup 10: ATM Straddle Premium Squeeze' },
-  { key: 'Setup 11: Filtered Option Chart Scalp', label: 'S11 Filtered Scalp', title: 'Setup 11: Filtered Option Chart Scalp (Setup 5 shadow)' },
   { key: 'Setup 12: ADX + EMA 20 Trend Cross', label: 'S12 ADX EMA Cross', title: 'Setup 12: ADX + EMA 20 Trend Cross' },
   { key: 'Setup 13: Option VWAP Reclaim', label: 'S13 Option VWAP', title: 'Setup 13: Option VWAP Reclaim' },
   { key: 'Setup 14: OI Wall Bounce', label: 'S14 OI Wall', title: 'Setup 14: OI Wall Bounce' },

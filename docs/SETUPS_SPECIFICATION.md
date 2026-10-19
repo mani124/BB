@@ -560,31 +560,11 @@ Trades stocks that move on their own momentum: rising while NIFTY is flat or fal
 
 ---
 
-## 14. Setup 11: Filtered Option Chart Scalper (Setup 5 shadow)
+## 14. Setup 11: removed (2026-10-19)
 
-* **Setup Enum:** `SetupType.SETUP_11_FILTERED_OPTION_BB`; code in `backend/app/services/setup11.py`, wired in `scanner_worker._evaluate_option_chart_setups`.
-* **Why it exists:** the 2026-10-16 review (`notes/trade_loss_analysis_2026-10-16.md`) found Setup 5 lost 19,925 on 26 trades, with entry slippage and wide stops the largest costs. Setups 1 and 5 are not to be changed, so Setup 11 runs next to Setup 5 and the two are compared on the same days.
+Setup 11 (filtered shadow of Setup 5) no longer generates signals: the module `setup11.py`, its scanner wiring and its dashboard filter tab were deleted. On 2026-10-19 it took 19 trades for -35,282 against Setup 5's -4,934 on 11 trades, and it traded signals Setup 5 itself was blocked from, so it was not a like-for-like comparison. See `notes/trade_loss_analysis_2026-10-19.md`.
 
-### Qualification
-Setup 11 only sees Setup 5 signals. A Setup 5 signal becomes a Setup 11 signal when all three filters, read from the same option premium chart (completed bars), pass:
-1. **Option trend strength:** the signal bar's RSI and BandWidth are both strictly higher than on the previous bar.
-2. **Candle quality:** the signal bar is green (close above open) and closes in the top 60% of its high-low range (upper wick at most 40% of the range).
-3. **Stop-width cap:** (fill - stop) / fill is at most 30%, where fill is the live ask when known and higher than the signal close, otherwise the signal close.
-
-Entry, stop, T1 (1.5R), T2 (2.5R), sizing and the option-chart-only exits are identical to Setup 5. A skipped Setup 5 signal is logged as `Setup 11 skipped <symbol> <side>: <filter reason>`.
-
-### Isolation from Setup 5
-* Setup 11 trades as its own position even on the same contract as an open Setup 5 position (the duplicate is intended, so the two can be compared).
-* Setup 11 has its own exposure caps (one position per contract and per symbol+side, max open positions, open premium notional, entries per symbol per day, re-entry cooldown and chop-box gate), counted only against Setup 11 positions, and Setup 11 positions are not counted against the other setups' caps.
-* Setup 11 has its own daily loss cap (`DAILY_LOSS_LIMIT`, latched under `<book>:s11`); its P&L does not count toward the main cap. The kill switch applies to all setups.
-* Default per-setup switch: `all`.
-
-### Notes
-* Filter thresholds (60% candle position, 30% stop width, strictly rising RSI and BandWidth) are starting values from one session; tune them from paper trades.
-* Not included on purpose: an entry-time cutoff, an entry-slippage guard, spread/volume/OI limits and a stock-trend check. The 2026-10-16 data did not support the spread and volume limits, and a stock-trend check would bring a spot signal into a setup that reads only the option chart.
-
-
----
+Kept on purpose, so earlier trades still load and report: the `SETUP_11_FILTERED_OPTION_BB` enum value, `is_setup11`, and the separate Setup 11 loss pool for positions already in the database. Nothing new enters that pool.
 
 ## 15. Setup 12: ADX + EMA 20 Trend Cross
 
@@ -611,7 +591,7 @@ Entry, stop, T1 (1.5R), T2 (2.5R), sizing and the option-chart-only exits are id
 
 Every limit below is a **runtime setting**: editable from the dashboard's Settings tab (or `PUT /api/settings`), validated, saved in the database, written to an audit trail (`settings_audit`) and applied to the next decision with no restart. A saved value wins; otherwise the environment default (`app/core/config.py`) applies. Definitions live in [`runtime_settings.py`](backend/app/services/runtime_settings.py).
 
-### New entry limits (all apply to every setup in each book (the loss streak counts the main and Setup 11 pools separately); 0 switches a limit off)
+### New entry limits (all apply to every setup in each book ; 0 switches a limit off)
 | Setting | Effect |
 |---|---|
 | `max_lots_per_trade` | Hard ceiling on lots per entry, applied after the risk-based sizing in section 8. Default 0 (off). |
@@ -653,7 +633,7 @@ A separate paper book (`earnings` in the decision trail), **paper only**, off by
 
 ## 18. Setup 13: Option VWAP Reclaim
 
-* **Setup Enum:** `SetupType.SETUP_13_OPTION_VWAP_RECLAIM`; code in `backend/app/services/setup13.py`, wired in `scanner_worker._evaluate_option_chart_setups`; signal assembly shared with Setups 5, 10 and 11 (`build_option_chart_signal`, with an optional `stop_price` that Setups 5, 10 and 11 do not pass, so their stops are unchanged).
+* **Setup Enum:** `SetupType.SETUP_13_OPTION_VWAP_RECLAIM`; code in `backend/app/services/setup13.py`, wired in `scanner_worker._evaluate_option_chart_setups`; signal assembly shared with Setups 5 and 10 (`build_option_chart_signal`, with an optional `stop_price` that Setups 5 and 10 do not pass, so their stops are unchanged).
 * **Underlying Principle:** VWAP of the option's own premium is the average price its buyers paid today. A premium above it means buyers are in profit; a dip below it and a close back above it means buyers have retaken control. Buying that reclaim enters a pullback inside an existing trend at a level many traders watch, instead of chasing a spike (Setup 5 buys the spike).
 
 ### Qualification (CE shown; PE is the same on the put's own premium), all on completed 5m bars
