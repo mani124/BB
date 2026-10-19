@@ -27,12 +27,17 @@ from app.services.relative_strength import evaluate_relative_strength, NIFTY_SYM
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size, option_exchange_segment
 from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.setup13 import evaluate_option_vwap_reclaim
+from app.services.setup16 import evaluate_option_squeeze_breakout
 from app.services.setup12 import evaluate_adx_ema_cross
 from app.services.setup14 import WALL_REFRESH_S, compute_oi_walls, evaluate_oi_wall_bounce
 from app.services.straddle_squeeze import StraddleLeg, evaluate_straddle_squeeze
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
 from app.services.momentum_ranker import MomentumRanker, MomentumRankings
 logger = logging.getLogger(__name__)
+
+
+class _SkipSetup(Exception):
+    """Internal: skip a setup evaluation (Setup 16 only mode)."""
 
 
 from app.services import notifier
@@ -56,6 +61,8 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             self.ws_manager.on_tick_callback = self._handle_incoming_ws_tick
 
         self.momentum_ranker = MomentumRanker(top_n=10)
+        self._s16_status: dict[str, dict] = {}  # strike symbol -> where Setup 16 stands on that contract (dashboard)
+        self.watchlist = None  # WatchlistService, set in app.main: after-close squeeze list, checked for Setup 16 only
         self._state = ScannerState(universe_count=len(universe_mgr.get_universe()))
         self._listeners: list[asyncio.Queue] = []
         self._last_tick_broadcast: dict[str, float] = {}
@@ -518,6 +525,18 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             if inst and inst not in deep_scan_targets:
                 deep_scan_targets.append(inst)
 
+        # Stocks on the after-close watchlist are checked for Setup 16 only; the other setups never see them
+        s16_only: set[str] = set()
+        if self.watchlist is not None and mode == "live":
+            try:
+                for sym in self.watchlist.symbols_for():
+                    inst = self.universe_mgr.get_instrument(sym)
+                    if inst and inst not in deep_scan_targets:
+                        deep_scan_targets.append(inst)
+                        s16_only.add(inst.symbol)
+            except Exception:
+                logger.warning("watchlist lookup failed", exc_info=True)
+
         # In demo mode fallback if quotes are synthetic, include core momentum stocks
         if mode == "demo" and len(deep_scan_targets) <= 4:
             for inst in self.universe_mgr.get_momentum_stocks():
@@ -531,7 +550,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 seg_quotes = quotes_dict.get(inst.exchange_segment, {})
                 inst_quote = seg_quotes.get(str(inst.security_id)) or seg_quotes.get(int(inst.security_id))
 
-            if mode == "live" and cid and tok and len(self._candle_history.get(inst.symbol, [])) < 20:
+            if mode == "live" and cid and tok and inst.symbol not in s16_only and len(self._candle_history.get(inst.symbol, [])) < 20:
                 await self.seed_historical_candles_if_needed(cid, tok, inst)
                 if self._session_generation != gen or (cid and not self._session_credentials and not client_id):
                     return self._state
@@ -802,7 +821,8 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
 
                         # Also evaluate Setup 5 (Option Chart BB Scalp) directly on live option candles
                         if current_price > 0:
-                            opt_signals = await self._evaluate_option_chart_setups(cid, tok, inst, oc, expiry, current_price)
+                            opt_signals = await self._evaluate_option_chart_setups(
+                                cid, tok, inst, oc, expiry, current_price, only_setup16=inst.symbol in s16_only)
                             # Finding 5: Abort if disconnected or session generation changed during option candle await
                             if self._session_generation != gen or (cid and not self._session_credentials and not client_id):
                                 logger.info("Scan cycle aborted after option chart setups evaluation: session disconnected")
@@ -810,6 +830,9 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                             detected.extend(opt_signals)
                 except Exception as e:
                     logger.warning(f"Error processing option chain for {inst.symbol}: {e}")
+
+            if inst.symbol in s16_only:
+                detected = [s for s in detected if s.setup_type == SetupType.SETUP_16_OPTION_SQUEEZE_BREAK]
 
             # Closed session: candles are yesterday's, so nothing is a live/confirmed signal.
             if mode != "closed":
@@ -874,7 +897,8 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         inst: Instrument,
         oc: dict,
         expiry: str,
-        underlying_price: float
+        underlying_price: float,
+        only_setup16: bool = False,
     ) -> list[Signal]:
         results: list[Signal] = []
         if not oc or underlying_price <= 0:
@@ -907,6 +931,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         inst_type_dhan = "OPTIDX" if inst.instrument_type == "INDEX" else "OPTSTK"
         straddle_legs: dict[str, StraddleLeg] = {}
         s13_candidates: list[Signal] = []
+        s16_candidates: list[Signal] = []
 
         # Setup 13 compares the option's VWAP reclaim with the underlying's own VWAP (completed spot bars)
         spot_bars = self._candle_history.get(inst.symbol, [])
@@ -1012,7 +1037,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 straddle_legs[opt_type] = StraddleLeg(
                     df=ind_opt, strike_symbol=strike_symbol, security_id=sec_id_str, quote=leg_quote,
                 )
-                sig = evaluate_option_chart_signal(
+                sig = None if only_setup16 else evaluate_option_chart_signal(
                     symbol=inst.symbol,
                     strike_symbol=strike_symbol,
                     option_type=opt_type,
@@ -1027,7 +1052,10 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 )
                 if sig:
                     results.append(sig)
+                s13 = None
                 try:
+                    if only_setup16:
+                        raise _SkipSetup
                     s13 = evaluate_option_vwap_reclaim(
                         symbol=inst.symbol,
                         strike_symbol=strike_symbol,
@@ -1042,15 +1070,51 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                         timeframe="5m",
                         current_quote=leg_quote,
                     )
+                except _SkipSetup:
+                    pass
                 except Exception as e:
                     logger.warning(f"Setup 13 evaluation failed for {strike_symbol}: {e}")
                     s13 = None
                 if s13:
                     s13_candidates.append(s13)
+                s16_diag: dict = {}
+                try:
+                    rt = paper_trader.runtime
+                    s16 = evaluate_option_squeeze_breakout(
+                        symbol=inst.symbol,
+                        strike_symbol=strike_symbol,
+                        option_type=opt_type,
+                        option_df=ind_opt,
+                        underlying_price=underlying_price,
+                        strike_price=atm_strike,
+                        expiry_date=expiry,
+                        lot_size=lot_size,
+                        option_security_id=sec_id_str,
+                        timeframe="5m",
+                        current_quote=leg_quote,
+                        stop_pct=float(rt.get("setup16_stop_pct")),
+                        window_start=rt.get("setup16_window_start"),
+                        window_end=rt.get("setup16_window_end"),
+                        diag=s16_diag,
+                    )
+                except Exception as e:
+                    logger.warning(f"Setup 16 evaluation failed for {strike_symbol}: {e}")
+                    s16 = None
+                if s16:
+                    s16_candidates.append(s16)
+                if s16_diag:
+                    s16_diag.update({"symbol": inst.symbol, "side": opt_type, "strike_symbol": strike_symbol,
+                                     "source": "watchlist" if only_setup16 else "scan",
+                                     "updated_at": market_hours.now_ist_naive().strftime("%H:%M:%S"),
+                                     "updated_ts": time.time()})
+                    for old in [k for k, v in self._s16_status.items()
+                                if v.get("symbol") == inst.symbol and v.get("side") == opt_type and k != strike_symbol]:
+                        del self._s16_status[old]  # the ATM strike moved: the old contract is no longer checked
+                    self._s16_status[strike_symbol] = s16_diag
 
         # Setup 10: ATM straddle premium squeeze, from the same two completed-bar series.
         # Skipped when Setup 5 already fired on this side, so one contract is never entered twice.
-        if len(straddle_legs) == 2:
+        if len(straddle_legs) == 2 and not only_setup16:
             s10 = evaluate_straddle_squeeze(
                 symbol=inst.symbol,
                 legs=straddle_legs,
@@ -1069,6 +1133,14 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             if not any(r.option_type == s13.option_type and r.setup_type in (
                     SetupType.SETUP_5_OPTION_BB, SetupType.SETUP_10_STRADDLE_SQUEEZE) for r in results):
                 results.append(s13)
+
+        # Setup 16: one contract, one entry. Setups 5, 10 and 13 win a same-side collision (Setup 5 is the
+        # unfiltered breakout and fires on most bars Setup 16 would).
+        for s16 in s16_candidates:
+            if not any(r.option_type == s16.option_type and r.setup_type in (
+                    SetupType.SETUP_5_OPTION_BB, SetupType.SETUP_10_STRADDLE_SQUEEZE,
+                    SetupType.SETUP_13_OPTION_VWAP_RECLAIM) for r in results):
+                results.append(s16)
 
         return results
 

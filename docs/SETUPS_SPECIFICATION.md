@@ -22,6 +22,7 @@
 16. [Runtime Settings, Entry Limits & Telemetry](#16-runtime-settings-entry-limits--telemetry)
 17. [Stock Earnings Options (paper book)](#17-stock-earnings-options-paper-book)
 20. [Setup 15: ATR Trend Flip (swing equity book)](#20-setup-15-atr-trend-flip-swing-equity-book)
+21. [Setup 16: Option Squeeze Breakout](#21-setup-16-option-squeeze-breakout)
 
 ---
 
@@ -716,3 +717,35 @@ A separate paper book (`earnings` in the decision trail), **paper only**, off by
 ### Notes
 * With the stop on the Supertrend line, the close that flips the trend has already traded through the stop that day, so in `stop` mode `TREND_FLIP` exits only appear as a safety net. `stop` and `close` modes should both be replayed: the study's numbers belong to `close`.
 * Defaults (3 / 1.0, 200-day filter, 20-day time stop, 10 bps slippage) are starting values from that single study, not optimised. Setups 1 and 5 are unchanged.
+
+---
+
+## 21. Setup 16: Option Squeeze Breakout
+
+* **Setup Enum:** `SetupType.SETUP_16_OPTION_SQUEEZE_BREAK`; code in `backend/app/services/setup16.py`, wired in `scanner_worker._evaluate_option_chart_setups`; signal assembly shared with Setups 5, 10 and 13 (`build_option_chart_signal` with the optional `stop_price`; Setups 1 and 5 are unchanged). **Paper only, default per-setup switch: `off`** (turn it on to `index` or `all` in Settings).
+* **Underlying principle:** a close above the option premium's own upper Bollinger Band is a momentum breakout, but it is only an early entry when the bands were tight just before it. After the bands have already expanded the same close is a late chase and the lower band is far below the price. So the setup asks for a squeeze first and takes the nearer of the lower band and a percentage as the stop.
+
+### Qualification (CE shown; PE is the same on the put's own premium), on completed 5m option bars
+1. **Bands of the current session only:** upper and lower band = 20-bar mean of closes ± 2 standard deviations, with at least 12 closes of the signal bar's session (first entry about 10:00 IST). The option's previous day is a different price level and is not mixed in (Setup 5 uses the plain indicator columns).
+2. **Breakout:** the signal bar closes above the upper band and closes above its own open.
+3. **Squeeze just before:** the lowest BandWidth among the 6 bars before the signal bar is at most 1.30 times the lowest BandWidth the session has shown (the Setup 1 and 10 factor), and the signal bar's BandWidth is higher than the previous bar's.
+4. **Volume:** per-bar volume at least 1,000 contracts and known (`volume_known` not False).
+5. **Window (runtime settings):** bar start between `setup16_window_start` (09:30) and `setup16_window_end` (14:25), plus the shared option-chart guards (today's bar only, entry cutoff, expiry-day cutoff). Mid-morning entries (10:00 to 11:30) lost on 2026-10-19 across other setups; the window is a setting so it can be narrowed without a release.
+
+No VWAP, RSI or volume-surge test (those are Setup 5's filters).
+
+### Which stocks are checked
+* Indices and the momentum top-10 bullish / top-10 bearish stocks plus stocks with an open position, like Setups 5, 10 and 13 (every stock's ATM CE and PE are checked; the ranker's bullish or bearish label is not used to pick the side).
+* **After-close watchlist (`backend/app/services/watchlist.py`, runtime settings `watchlist_*`):** the list is built from the finished daily bars, after `watchlist_build_time` (16:15 IST) on a trading day, for the next trading day. It does not depend on a login at that exact time: the service polls every 10 minutes and builds as soon as a Dhan session exists and the list for the target day is missing, so a late-evening login still gets one. A login or restart before the close (or on a weekend or holiday) builds the list for the next session from the bars already stored. The F&O stocks are screened on their own **daily** charts (Dhan daily candles, shared with the swing book's cache): daily BandWidth (20, 2) within the lowest `watchlist_bw_percentile` (20%) of its last 120 days, or an NR7 day (`watchlist_use_nr7`), and a 20-day average traded value (close x volume) of at least `watchlist_min_avg_value_cr` (50 crore) as a liquidity proxy for the stock's options. The tightest `watchlist_size` (40) are saved to `watchlist.json` for the next trading day only (never reused when stale). The next day the scanner checks those stocks for **Setup 16 only**: the other setups never see them, they get no spot-chart seeding, and only Setup 16 signals survive. Being on the list never opens a trade; the setup rules and the per-setup switch decide. The **Setup 16 tab** shows the watchlist panel (when it was built, for which day, the stocks and why each qualified, a "Check now" button). `GET /api/watchlist` shows the list, `POST /api/watchlist/run` rebuilds it (still only after the build time).
+* The daily-squeeze screen is a hypothesis: a daily squeeze improving next-day option breakouts is untested here.
+
+### The Setup 16 tab (what is happening)
+`GET /api/setup16/overview`, refreshed every 10 seconds by the dashboard tab: the per-setup switch state and settings (entry window, stop %); a funnel counting every checked option chart by where it stands (signal, below the upper band, broke out with no squeeze before, red bar, volume too low, outside the window, warming up, no data); the contracts closest to a breakout (close, upper band, distance, squeezed or wide, checked-at time, "WL" for watchlist stocks; a contract not re-checked for 15 minutes is dimmed); open and today's closed Setup 16 positions with net P&L and all-time stats; the watchlist; and the last 24 hours of Setup 16 entries and skips from the telemetry trail (for example `SETUP_OFF`). The stage and numbers come from the `diag` argument of `evaluate_option_squeeze_breakout`; the scanner keeps the latest one per contract in memory (not persisted).
+
+### Risk and management
+* Strike: ATM, the bought leg only; entry is the signal close. **Stop = the nearer (higher) of the option's lower band and `setup16_stop_pct` (12%) below the close**, never tighter than the 4% minimum of the shared builder. The stop is a price level checked against the live premium like every option-chart setup, not a wait for a bar to close below the band. T1 1.5R (book half, stop to breakeven), T2 2.5R, sizing (8,000 max risk per trade), caps and option-chart-only exits are the Setup 5 ones.
+* **Overlap with Setup 5:** Setup 5 is the same band-break entry with extra filters (VWAP, RSI >= 58, volume surge), so most of its signals would also qualify here unless the squeeze test fails. To avoid two entries on one contract, Setup 16 is dropped when Setup 5, Setup 10 or Setup 13 has already fired on the same side in the scan. Its own entries are the breakouts Setup 5 rejects on RSI, VWAP or volume surge, after a squeeze.
+* The signal's indicator snapshot logs `squeeze_bw_min`, `session_bw_min`, `breakout_bw`, `lower_bb` and `stop_is_lower_bb` so the squeeze factor and the stop percentage can be tuned from paper trades.
+
+### Notes
+* Thresholds (12-bar warm-up, 6-bar squeeze lookback, 1.30 factor, 1,000 contracts, 12% stop, 09:30 to 14:25 window) are starting values. **Not replayed on real option candles** (none were available when it was written); it is validated by paper trading. The market recorder (`market_bars.db`) keeps completed option bars, so a replay becomes possible after a few sessions.

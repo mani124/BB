@@ -19,6 +19,8 @@ from app.api.runtime_config import router as runtime_config_router
 from app.api.telemetry import router as telemetry_router
 from app.api.earnings import router as earnings_router
 from app.api.swing import router as swing_router
+from app.api.watchlist import router as watchlist_router
+from app.api.setup16 import router as setup16_router
 from app.api.live import router as live_router_api
 from app.api.readiness import router as readiness_router
 from app.api.recorder import router as recorder_router
@@ -63,6 +65,13 @@ swing_engine = SwingEngine(
     earnings_dates=_earnings_dates_for,
 )
 swing_registry.set_engine(swing_engine)
+
+from app.services.watchlist import WatchlistService, WatchlistStore
+from app.services import watchlist_registry
+watchlist_service = WatchlistService(
+    WatchlistStore(os.path.join(settings.DATA_DIR, "watchlist.json")), paper_trader.runtime, swing_engine.provider)
+watchlist_registry.set_service(watchlist_service)
+worker.watchlist = watchlist_service
 
 from app.services.broker_definedge import DefinedgeBroker
 from app.services.order_router import OrderRouter, set_router
@@ -124,11 +133,12 @@ async def lifespan(app: FastAPI):
     worker.start()
     earnings_task = asyncio.create_task(earnings_registry.poll_loop(earnings_engine))
     swing_task = asyncio.create_task(swing_registry.poll_loop(swing_engine))
+    watchlist_task = asyncio.create_task(watchlist_service.poll_loop())
     live_router.bind_loop(asyncio.get_running_loop())
     live_task = asyncio.create_task(live_router.run_loop())
     readiness_task = asyncio.create_task(readiness_monitor.run())
     yield
-    tasks = (earnings_task, swing_task, live_task, readiness_task)
+    tasks = (earnings_task, swing_task, watchlist_task, live_task, readiness_task)
     for task in tasks:
         task.cancel()
     # A task that already died with an error must not stop the rest of the shutdown (journal flush below).
@@ -259,6 +269,8 @@ def create_app() -> FastAPI:
     app.include_router(telemetry_router, prefix=settings.API_PREFIX)
     app.include_router(earnings_router, prefix=settings.API_PREFIX)
     app.include_router(swing_router, prefix=settings.API_PREFIX)
+    app.include_router(watchlist_router, prefix=settings.API_PREFIX)
+    app.include_router(setup16_router, prefix=settings.API_PREFIX)
     app.include_router(live_router_api, prefix=settings.API_PREFIX)
     app.include_router(readiness_router, prefix=settings.API_PREFIX)
     app.include_router(recorder_router, prefix=settings.API_PREFIX)
