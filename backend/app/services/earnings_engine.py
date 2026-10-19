@@ -617,6 +617,16 @@ class EarningsEngine:
         }
         self._reprice(pos)
         self.store.save_position(pos)
+        try:
+            from app.services.dashboard_evidence import save_trade_evidence
+            save_trade_evidence("earnings", pos["id"],
+                                {"reason": "SIGNAL_CONFIRMED", "checks": c.metrics,
+                                 "mode": c.mode, "legs": legs, "lots": c.lots,
+                                 "max_risk": c.max_risk, "opened_at": pos["opened_at"],
+                                 "earnings_date": pos["earnings_date"], "exit_date": pos["exit_date"]},
+                                {}, db_path=self.store.db_path)
+        except Exception:
+            logger.warning("Could not save dashboard evidence for %s", pos["id"], exc_info=True)
         self._log("ENTERED", c.mode, c.symbol, "SIGNAL_CONFIRMED",
                   {**c.metrics, "lots": c.lots, "qty": qty, "max_risk": c.max_risk, "exit_date": pos["exit_date"]}, pos["id"])
         return pos

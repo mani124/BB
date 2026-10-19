@@ -49,3 +49,15 @@ def test_trade_filters_match_book_status_and_entry_day(monkeypatch):
     ]
     monkeypatch.setattr(dashboard_read, "_all_trade_rows", lambda: rows)
     assert [r["id"] for r in dashboard_read.list_dashboard_trades(book="paper", status="OPEN", day="2026-10-19")] == ["paper:1"]
+
+
+def test_trade_row_marks_persisted_evidence_recorded(monkeypatch):
+    from app.services import dashboard_read
+
+    portfolio = SimpleNamespace(active_positions=[SimpleNamespace(id="one", status="OPEN", symbol="NIFTY")], closed_trades=[])
+    monkeypatch.setattr(dashboard_read.paper_trader, "get_portfolio", lambda _mode: portfolio)
+    monkeypatch.setattr(dashboard_read, "get_cx_engine", lambda: SimpleNamespace(positions=lambda: []))
+    monkeypatch.setattr(dashboard_read, "get_earnings_engine", lambda: SimpleNamespace(positions=lambda: []))
+    monkeypatch.setattr(dashboard_read, "evidence_ids", lambda book: {"one"} if book == "paper" else set(), raising=False)
+
+    assert dashboard_read.list_dashboard_trades()[0]["evidence_state"] == "recorded"

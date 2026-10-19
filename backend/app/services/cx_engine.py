@@ -428,7 +428,8 @@ class CxEngine:
         self.store.save_position(pos)
         return False
 
-    def _enter(self, u: ci.CxUnderlying, contract: dict, expiry: str, sig: sg.CxSignal, leg: dict, now: datetime) -> Optional[dict]:
+    def _enter(self, u: ci.CxUnderlying, contract: dict, expiry: str, sig: sg.CxSignal, leg: dict, now: datetime,
+               bars: Optional[pd.DataFrame] = None) -> Optional[dict]:
         g = self.runtime.get
         bid, ask = _f(leg.get("top_bid_price")), _f(leg.get("top_ask_price"))
         metrics = {**sig.as_dict(), "strike": leg["strike"], "bid": bid, "ask": ask, "expiry": expiry, "oi": leg.get("oi")}
@@ -462,6 +463,16 @@ class CxEngine:
                "entry_bid": bid, "entry_ask": ask, "underlying_entry": sig.price, "invalidate_level": sig.invalidate_level,
                "last_bid": bid, "max_bid": bid, "unrealized_net": 0.0, "signal": sig.as_dict()}
         self.store.save_position(pos)
+        try:
+            from app.services.dashboard_evidence import save_trade_evidence
+            actual_bars = bars[["timestamp", "open", "high", "low", "close"]].to_dict("records") if bars is not None and len(bars) else []
+            save_trade_evidence("cx", pos["id"],
+                                {"reason": "SIGNAL", "rationale": sig.as_dict(), "checks": sig.metrics,
+                                 "entry": entry, "invalidate_level": sig.invalidate_level,
+                                 "lots": lots, "opened_at": pos["opened_at"]},
+                                {"underlying": actual_bars}, db_path=self.store.db_path)
+        except Exception:
+            logger.warning("Could not save dashboard evidence for %s", pos["id"], exc_info=True)
         self._log("ENTERED", u.symbol, "SIGNAL", {**metrics, "entry": entry, "lots": lots}, pos["id"], sig.setup, sig.side)
         return pos
 
@@ -564,7 +575,7 @@ class CxEngine:
                 if leg is None:
                     self._log("SKIPPED", sym, "NO_STRIKE", sig.as_dict(), strategy=sig.setup, side=sig.side)
                     continue
-                pos = self._enter(u, contract, expiry, sig, leg, now)
+                pos = self._enter(u, contract, expiry, sig, leg, now, bars)
                 if pos:
                     result["entered"].append(pos["id"])
 

@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from app.services.paper_trader import paper_trader
 from app.services.cx_registry import get_engine as get_cx_engine
 from app.services.earnings_registry import get_engine as get_earnings_engine
+from app.services.dashboard_evidence import evidence_ids
 
 
 def _value(row: Any, key: str, default: Any = None) -> Any:
@@ -71,6 +72,10 @@ def _all_trade_rows() -> list[dict]:
     rows = [_row("paper", p) for p in portfolio.active_positions + portfolio.closed_trades]
     rows += [_row("cx", p) for p in get_cx_engine().positions()]
     rows += [_row("earnings", p) for p in get_earnings_engine().positions()]
+    by_book = {book: evidence_ids(book) for book in ("paper", "cx", "earnings")}
+    for row in rows:
+        if row["source_id"] in by_book[row["book"]]:
+            row["evidence_state"] = "recorded"
     return rows
 
 
