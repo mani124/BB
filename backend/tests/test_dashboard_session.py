@@ -1,0 +1,68 @@
+from types import SimpleNamespace
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+
+def test_session_orders_cross_book_events_and_links_observation(monkeypatch):
+    from app.services import dashboard_read
+    monkeypatch.setattr(dashboard_read, "now_ist", lambda: datetime(2026, 10, 19, 12, tzinfo=ZoneInfo("Asia/Kolkata")))
+
+    decisions = [
+        {"id": 1, "ts": "2026-10-19 09:01:00", "book": "paper", "strategy": "Setup 16", "symbol": "NIFTY", "decision": "SKIPPED", "reason": "SPREAD", "metrics": {"spread": 9}, "position_id": None},
+        {"id": 2, "ts": "2026-10-19 09:02:00", "book": "paper", "strategy": "Setup 16", "symbol": "NIFTY", "decision": "SKIPPED", "reason": "SPREAD", "metrics": {"spread": 8}, "position_id": None},
+        {"id": 3, "ts": "2026-10-19 09:05:00", "book": "cx", "strategy": "Setup 17", "symbol": "CRUDEOIL", "decision": "ENTERED", "reason": "READY", "metrics": {}, "position_id": "c1"},
+    ]
+    errors = [{"id": 4, "ts": "2026-10-19 09:03:00", "code": "FEED_STALE", "component": "scanner", "severity": "ERROR", "message": "Feed stale", "payload": {}}]
+    monkeypatch.setattr(dashboard_read.paper_trader.telemetry, "day_events", lambda day: {"decisions": decisions, "errors": errors})
+    monkeypatch.setattr(dashboard_read, "list_dashboard_trades", lambda: [
+        {"id": "cx:c1", "book": "cx", "display_book": "Commodities & FX", "source_id": "c1", "instrument": "CRUDEOIL", "setup": "Setup 17", "opened_at": "2026-10-19T09:05:30+05:30", "closed_at": "2026-10-19T10:00:00+05:30", "status": "CLOSED", "net_pnl": 200, "net_kind": "realized", "evidence_state": "recorded"},
+        {"id": "paper:p1", "book": "paper", "display_book": "Setup 16", "source_id": "p1", "instrument": "NIFTY CE", "setup": "Setup 16", "opened_at": "2026-10-19T09:10:00+05:30", "closed_at": None, "status": "OPEN", "net_pnl": 30, "net_kind": "estimated", "evidence_state": "unavailable"},
+    ])
+    result = dashboard_read.get_dashboard_session("2026-10-19")
+    assert [e["type"] for e in result["events"]] == ["decision", "decision", "error", "decision", "entry", "entry", "exit"]
+    assert result["events"][0]["at"].startswith("2026-10-19T09:01")
+    assert result["events"][0]["evidence_state"] == "recorded"
+    assert next(e for e in result["events"] if e["id"] == "entry:paper:p1")["evidence_state"] == "unavailable"
+    assert result["observations"][0]["event_ids"] == ["decision:1", "decision:2"]
+    assert result["by_book"][0]["realized_net"] is None
+    assert result["by_book"][0]["estimated_net"] == 30
+    assert result["by_book"][1]["realized_net"] == 200
+
+
+def test_session_uses_selected_ist_day_and_does_not_invent_decisions(monkeypatch):
+    from app.services import dashboard_read
+
+    monkeypatch.setattr(dashboard_read.paper_trader.telemetry, "day_events", lambda day: {"decisions": [], "errors": []})
+    monkeypatch.setattr(dashboard_read, "list_dashboard_trades", lambda: [
+        {"id": "paper:a", "book": "paper", "display_book": "Main scanner", "source_id": "a", "instrument": "NIFTY", "setup": "S1", "opened_at": "2026-10-18T23:59:00+05:30", "closed_at": "2026-10-19T00:01:00+05:30", "status": "CLOSED", "net_pnl": 10, "net_kind": "realized", "evidence_state": "unavailable"},
+    ])
+    result = dashboard_read.get_dashboard_session("2026-10-19")
+    assert [e["type"] for e in result["events"]] == ["exit"]
+    assert result["events"][0]["trade_id"] == "paper:a"
+    assert result["observations"] == []
+
+
+def test_telemetry_day_range_read_handles_historical_days(tmp_path):
+    from app.services.telemetry import Telemetry
+    telemetry = Telemetry(str(tmp_path / "test.db"), SimpleNamespace(get=lambda _: True))
+    with telemetry._conn() as conn:
+        conn.execute("INSERT INTO strategy_decisions (ts, book, strategy, symbol, decision, reason, metrics) VALUES (?,?,?,?,?,?,?)",
+                     ("2026-10-18 23:59:00", "paper", "S1", "NIFTY", "SKIPPED", "OLD", "{}"))
+        conn.execute("INSERT INTO strategy_decisions (ts, book, strategy, symbol, decision, reason, metrics) VALUES (?,?,?,?,?,?,?)",
+                     ("2026-10-19 00:01:00", "paper", "S1", "NIFTY", "ENTERED", "NEW", '{"x":1}'))
+    rows = telemetry.day_events("2026-10-19")
+    assert [row["reason"] for row in rows["decisions"]] == ["NEW"]
+    assert rows["decisions"][0]["metrics"] == {"x": 1}
+
+
+def test_paper_telemetry_mode_links_to_paper_trade_and_old_estimate_is_not_replayed(monkeypatch):
+    from app.services import dashboard_read
+    monkeypatch.setattr(dashboard_read.paper_trader.telemetry, "day_events", lambda day: {"decisions": [
+        {"id": 10, "ts": "2026-10-18 09:30:00", "book": "demo", "strategy": "S1", "symbol": "NIFTY", "decision": "ENTERED", "reason": "READY", "metrics": {}, "position_id": "p1"},
+    ], "errors": []})
+    monkeypatch.setattr(dashboard_read, "list_dashboard_trades", lambda: [
+        {"id": "paper:p1", "book": "paper", "display_book": "Main scanner", "source_id": "p1", "instrument": "NIFTY CE", "setup": "S1", "opened_at": "2026-10-18T09:30:00+05:30", "closed_at": None, "status": "OPEN", "net_pnl": 800, "net_kind": "estimated", "evidence_state": "recorded"},
+    ])
+    result = dashboard_read.get_dashboard_session("2026-10-18")
+    assert result["events"][0]["trade_id"] == "paper:p1"
+    assert result["by_book"][0]["estimated_net"] is None

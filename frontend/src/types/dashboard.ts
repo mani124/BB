@@ -68,3 +68,25 @@ export interface DashboardChart {
   exit_time: number | null;
   series: DashboardChartSeries[];
 }
+
+export interface DashboardSessionEvent {
+  id: string;
+  at: string;
+  type: 'decision' | 'entry' | 'exit' | 'error';
+  book: string | null;
+  trade_id: string | null;
+  instrument: string | null;
+  title: string;
+  reason: string | null;
+  metrics: Record<string, unknown>;
+  evidence_id: string | null;
+  evidence_state: 'recorded' | 'unavailable';
+}
+
+export interface DashboardSession {
+  day: string;
+  timezone: string;
+  events: DashboardSessionEvent[];
+  by_book: { book: DashboardBook; display_book: string; entries: number; exits: number; realized_net: number | null; estimated_net: number | null }[];
+  observations: { id: string; title: string; detail: string; event_ids: string[] }[];
+}

@@ -1,7 +1,8 @@
 """Source-aware read models for the decision-focused dashboard."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from collections import defaultdict
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -9,6 +10,7 @@ from app.services.paper_trader import paper_trader
 from app.services.cx_registry import get_engine as get_cx_engine
 from app.services.earnings_registry import get_engine as get_earnings_engine
 from app.services.dashboard_evidence import evidence_ids
+from app.services.market_hours import now_ist
 
 
 def _value(row: Any, key: str, default: Any = None) -> Any:
@@ -94,6 +96,77 @@ def list_dashboard_trades(*, status: str | None = None, book: str | None = None,
     if day:
         rows = [r for r in rows if (r["opened_at"] or "")[:10] == day]
     return sorted(rows, key=lambda r: (r["opened_at"] or "", r["id"]), reverse=True)
+
+
+def _ist_iso(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+        return parsed.replace(tzinfo=ZoneInfo("Asia/Kolkata")).isoformat() if parsed.tzinfo is None else parsed.astimezone(ZoneInfo("Asia/Kolkata")).isoformat()
+    except ValueError:
+        return None
+
+
+def get_dashboard_session(day: str) -> dict:
+    """A selected IST day built only from stored decisions, errors and positions."""
+    date.fromisoformat(day)
+    telemetry = paper_trader.telemetry.day_events(day)
+    events: list[dict] = []
+    for row in telemetry["decisions"]:
+        at = _ist_iso(row.get("ts"))
+        if not at:
+            continue
+        raw_book = row.get("book") or "paper"
+        book = "paper" if raw_book in ("demo", "live") else raw_book
+        position = row.get("position_id")
+        events.append({"id": f"decision:{row['id']}", "at": at, "type": "decision", "book": book,
+                       "trade_id": f"{book}:{position}" if position else None,
+                       "instrument": row.get("symbol"), "title": f"{row.get('decision', 'Decision')} · {row.get('symbol', '')}",
+                       "reason": row.get("reason"), "metrics": row.get("metrics") or {},
+                       "evidence_id": f"decision:{row['id']}", "evidence_state": "recorded"})
+    for row in telemetry["errors"]:
+        at = _ist_iso(row.get("ts"))
+        if not at:
+            continue
+        events.append({"id": f"error:{row['id']}", "at": at, "type": "error", "book": None,
+                       "trade_id": None, "instrument": None, "title": row.get("code") or "Error",
+                       "reason": row.get("message"), "metrics": row.get("payload") or {},
+                       "evidence_id": f"error:{row['id']}", "evidence_state": "recorded"})
+
+    all_trades = list_dashboard_trades()
+    by_book: list[dict] = []
+    for book in ("paper", "cx", "earnings"):
+        rows = [row for row in all_trades if row["book"] == book]
+        touched = [row for row in rows if any((_ist_iso(row.get(key)) or "")[:10] == day for key in ("opened_at", "closed_at"))]
+        realized = [row["net_pnl"] for row in touched if row.get("net_kind") == "realized" and row.get("closed_at") and (_ist_iso(row["closed_at"]) or "")[:10] == day and row.get("net_pnl") is not None]
+        estimated = [row["net_pnl"] for row in touched if day == now_ist().date().isoformat()
+                     and row.get("net_kind") == "estimated" and row.get("net_pnl") is not None]
+        by_book.append({"book": book, "display_book": {"paper": "Main + Setup 16", "cx": "Commodities & FX", "earnings": "Earnings"}[book],
+                        "entries": sum(1 for row in touched if (_ist_iso(row.get("opened_at")) or "")[:10] == day),
+                        "exits": sum(1 for row in touched if (_ist_iso(row.get("closed_at")) or "")[:10] == day),
+                        "realized_net": round(sum(realized), 2) if realized else None,
+                        "estimated_net": round(sum(estimated), 2) if estimated else None})
+        for row in touched:
+            for kind, key in (("entry", "opened_at"), ("exit", "closed_at")):
+                at = _ist_iso(row.get(key))
+                if not at or at[:10] != day:
+                    continue
+                events.append({"id": f"{kind}:{row['id']}", "at": at, "type": kind, "book": book,
+                               "trade_id": row["id"], "instrument": row.get("instrument"),
+                               "title": f"{kind.title()} · {row.get('instrument', '')}",
+                               "reason": row.get("exit_reason") if kind == "exit" else None,
+                               "metrics": {}, "evidence_id": row["id"] if row.get("evidence_state") == "recorded" else None,
+                               "evidence_state": row.get("evidence_state", "unavailable")})
+    events.sort(key=lambda row: (row["at"], row["id"]))
+    skipped: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for event in events:
+        if event["type"] == "decision" and event["title"].startswith("SKIPPED") and event["reason"]:
+            skipped[(event["book"], event["reason"])].append(event["id"])
+    observations = [{"id": f"skip:{book}:{reason}", "title": f"{len(ids)} skips: {reason}",
+                     "detail": f"{book} recorded the same skip reason {len(ids)} times on this day.", "event_ids": ids}
+                    for (book, reason), ids in skipped.items() if len(ids) >= 2]
+    return {"day": day, "timezone": "Asia/Kolkata", "events": events, "by_book": by_book, "observations": observations}
 
 
 def _source(book: str, mode: str, as_of: str | None, observed_at: str, *, disabled: bool = False,

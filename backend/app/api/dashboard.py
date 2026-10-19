@@ -3,7 +3,7 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services.dashboard_read import list_dashboard_trades, build_dashboard_watch
+from app.services.dashboard_read import list_dashboard_trades, build_dashboard_watch, get_dashboard_session
 from app.services.market_hours import now_ist
 from app.services.dashboard_evidence import get_trade_evidence
 
@@ -45,6 +45,14 @@ async def trades(
     day: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
 ) -> list[dict]:
     return list_dashboard_trades(status=status, book=book, day=day)
+
+
+@router.get("/session")
+def session(day: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$")) -> dict:
+    try:
+        return get_dashboard_session(day)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid calendar day")
 
 
 def _trade(book: str, position_id: str) -> dict:

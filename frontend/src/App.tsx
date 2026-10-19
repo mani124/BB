@@ -15,9 +15,10 @@ import { CxScreen } from './components/CxScreen';
 import { AlertCircle, X } from 'lucide-react';
 import { isIndexSymbol } from './components/instruments';
 import { apiFetch, bootstrapDashboardSession, getDashboardCapability, setDashboardCapability } from './api/client';
-import { closeTrade, fetchDashboardTradeChart, fetchDashboardTradeDetail, fetchDashboardTrades, fetchDashboardWatch } from './api/dashboard';
+import { closeTrade, fetchDashboardSession, fetchDashboardTradeChart, fetchDashboardTradeDetail, fetchDashboardTrades, fetchDashboardWatch } from './api/dashboard';
 import { DashboardStatus } from './components/DashboardStatus';
 import { TradesScreen } from './components/TradesScreen';
+import { SessionScreen } from './components/SessionScreen';
 import type { DashboardTrade, DashboardWatch } from './types/dashboard';
 
 type DetailView = 'legacy-review' | 'setup16' | 'cx' | 'earnings' | 'settings' | null;
@@ -39,6 +40,7 @@ const DashboardContent: React.FC = () => {
   const [dashboardWatch, setDashboardWatch] = useState<DashboardWatch | null>(null);
   const [watchError, setWatchError] = useState<string | null>(null);
   const [dashboardTrades, setDashboardTrades] = useState<DashboardTrade[]>([]);
+  const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
   const [tradesError, setTradesError] = useState<string | null>(null);
   const [selectedSetup, setSelectedSetup] = useState<string>('ALL');
   const [selectedOptionType, setSelectedOptionType] = useState<string>('ALL');
@@ -626,8 +628,13 @@ const DashboardContent: React.FC = () => {
           <>
             {tradesError && <p role="alert" className="desk-alert p-3">{tradesError}</p>}
             <TradesScreen trades={dashboardTrades} loadDetail={fetchDashboardTradeDetail} loadChart={fetchDashboardTradeChart}
-              onClosePaper={(sourceId) => closeTrade('paper', sourceId)} onRefresh={refreshTrades} />
+              onClosePaper={(sourceId) => closeTrade('paper', sourceId)} onRefresh={refreshTrades} initialTradeId={selectedTradeId} />
           </>
+        ) : activeTab === 'session' ? (
+          <SessionScreen initialDay={new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })}
+            loadSession={fetchDashboardSession}
+            onOpenTrade={(id) => { setSelectedTradeId(id); setActiveTab('trades'); }}
+            onOpenReview={() => setDetailView('legacy-review')} />
         ) : activeTab === 'control' ? (
           <div className="flex flex-col gap-3 lg:overflow-y-auto">
             <section className="desk-panel p-4">

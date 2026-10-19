@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import type { DashboardBook, DashboardChart, DashboardTrade, DashboardTradeDetail, DashboardWatch } from '../types/dashboard';
+import type { DashboardBook, DashboardChart, DashboardSession, DashboardTrade, DashboardTradeDetail, DashboardWatch } from '../types/dashboard';
 
 export async function fetchDashboardWatch(): Promise<DashboardWatch> {
   const response = await apiFetch('/api/dashboard/watch');
@@ -14,6 +14,7 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 export const fetchDashboardTrades = (): Promise<DashboardTrade[]> => getJson('/api/dashboard/trades');
+export const fetchDashboardSession = (day: string): Promise<DashboardSession> => getJson(`/api/dashboard/session?day=${encodeURIComponent(day)}`);
 export const fetchDashboardTradeDetail = (trade: DashboardTrade): Promise<DashboardTradeDetail> =>
   getJson(`/api/dashboard/trades/${trade.book}/${encodeURIComponent(trade.source_id)}`);
 export const fetchDashboardTradeChart = (trade: DashboardTrade): Promise<DashboardChart> =>
