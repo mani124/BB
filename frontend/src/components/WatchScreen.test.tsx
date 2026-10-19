@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ScannerState, Signal } from '../types';
 import { WatchScreen } from './WatchScreen';
-import type { DashboardWatch } from '../types/dashboard';
+import type { DashboardTrade, DashboardWatch } from '../types/dashboard';
 
 const signal = {
   id: 's1', symbol: 'NIFTY 50', timeframe: '5m', setup_type: 'SETUP_1_SQUEEZE_EXPANSION',
@@ -68,6 +68,17 @@ describe('WatchScreen', () => {
     fireEvent.change(screen.getByLabelText('Status filter'), { target: { value: 'waiting' } });
     expect(screen.getByRole('button', { name: /BANKNIFTY.*recorded/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /NIFTY 50.*recorded/i })).not.toBeInTheDocument();
+  });
+
+  it('opens a trade only when a recorded signal id matches that trade', () => {
+    const onOpenTrade = vi.fn();
+    const trade = { id: 'paper:p1', book: 'paper', signal_id: 's1' } as DashboardTrade;
+    render(<WatchScreen {...props} dashboardWatch={watch} trades={[trade]} onOpenTrade={onOpenTrade} />);
+    fireEvent.click(screen.getByRole('button', { name: /NIFTY 50.*recorded/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'View matching trade and chart' }));
+    expect(onOpenTrade).toHaveBeenCalledWith('paper:p1');
+    fireEvent.click(screen.getByRole('button', { name: /INFY.*preview/i }));
+    expect(screen.queryByRole('button', { name: 'View matching trade and chart' })).not.toBeInTheDocument();
   });
 
   it('asks the operator to inspect a signal before paper buying', () => {

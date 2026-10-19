@@ -17,7 +17,7 @@ describe('dashboard navigation', () => {
     render(<App />);
     expect(screen.getByRole('tab', { name: 'Watch' })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByRole('tab', { name: 'Control' }));
-    for (const label of ['Review and journal', 'Setup 16', 'Commodities & FX', 'Earnings', 'Settings and audit']) {
+    for (const label of ['Review and journal', 'Setup 16', 'Commodities & FX', 'Earnings calendar and IV', 'Runtime settings and audit']) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
     }
     fireEvent.click(screen.getByRole('button', { name: 'Review and journal' }));

@@ -9,7 +9,7 @@ import { SignalTable } from './SignalTable';
 import { SignalDetails } from './SignalDetails';
 import { WatchStatus } from './WatchStatus';
 import type { StreamStatus } from './Header';
-import type { DashboardWatch, WatchBook } from '../types/dashboard';
+import type { DashboardTrade, DashboardWatch, WatchBook } from '../types/dashboard';
 import { WatchCandidateList } from './WatchCandidateList';
 import { WatchCandidateDetail } from './WatchCandidateDetail';
 
@@ -37,12 +37,14 @@ interface WatchScreenProps {
   onClosePosition: (id: string) => void;
   onToggleAutoTrade: (enabled: boolean) => void;
   onChangeLots: (lots: number) => void;
+  trades?: DashboardTrade[];
+  onOpenTrade?: (id: string) => void;
 }
 
 /** Live screen: one header band, positions and today's tally on the left, signals on the right. */
 export const WatchScreen: React.FC<WatchScreenProps> = ({
   dashboardWatch, state, loaded, wsConnected, stream, filters, onFilters, filteredSignals, closedTrades, activeSignalIds,
-  onPaperBuy, onClosePosition, onToggleAutoTrade, onChangeLots,
+  onPaperBuy, onClosePosition, onToggleAutoTrade, onChangeLots, trades = [], onOpenTrade,
 }) => {
   const [showAll, setShowAll] = useState(false);
   const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null);
@@ -76,6 +78,8 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
         return priority(a.stage) - priority(b.stage) || (b.observed_at || '').localeCompare(a.observed_at || '');
       });
     const selected = candidates.find((candidate) => candidate.id === selectedCandidateId) ?? candidates[0] ?? null;
+    const signalId = selected?.book === 'paper' && selected.id.startsWith('paper:') ? selected.id.slice('paper:'.length) : null;
+    const matchedTrade = signalId ? trades.find((trade) => trade.book === 'paper' && trade.signal_id === signalId) : null;
     return (
       <div className="flex flex-col gap-3 lg:flex-1 lg:min-h-0">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -108,7 +112,7 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
             </div>
             <WatchCandidateList candidates={candidates} selectedId={selected?.id ?? null} onSelect={setSelectedCandidateId} />
           </section>
-          <WatchCandidateDetail candidate={selected} />
+          <WatchCandidateDetail candidate={selected} tradeId={matchedTrade?.id} onOpenTrade={onOpenTrade} />
         </div>
       </div>
     );

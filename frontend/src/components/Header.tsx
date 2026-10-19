@@ -115,7 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Tabs<AppTab>
             idPrefix="main"
             label="Sections"
-            className="flex items-center gap-1"
+            className="flex items-center gap-1 order-3 w-full justify-between sm:order-none sm:w-auto sm:justify-start"
             tabClassName="desk-tab"
             value={activeTab ?? 'watch'}
             onChange={onTabChange}
@@ -128,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
           />
         )}
 
-        <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2 text-xs desk-muted">
+        <div className="ml-auto hidden sm:flex flex-wrap items-center gap-x-3 gap-y-2 text-xs desk-muted">
           <RiskControls risk={risk ?? undefined} onKillSwitch={onKillSwitch} />
           {/* Feed status */}
           {isWsLive ? (
@@ -210,6 +210,23 @@ export const Header: React.FC<HeaderProps> = ({
               Connect Dhan
             </button>
           )}
+        </div>
+        <div className="sm:hidden ml-auto flex items-center gap-2">
+          <button type="button" onClick={toggleTheme} className="desk-btn" aria-label="Toggle theme">
+            {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          </button>
+          <details className="relative desk-tools-menu">
+            <summary className="desk-btn">Tools</summary>
+            <div className="absolute right-0 top-11 z-50 w-72 max-w-[calc(100vw-2rem)] desk-panel p-3 shadow-lg flex flex-col items-start gap-3">
+              <p className="desk-label">Risk and connection</p>
+              <RiskControls risk={risk ?? undefined} onKillSwitch={onKillSwitch} />
+              <p className="desk-muted text-xs">{isWsLive ? 'WS live feed' : activeMode === 'demo' ? 'Demo feed' : `Feed: ${feedStatus || activeMode}`}</p>
+              <button type="button" className="desk-btn" onClick={onScanNow} disabled={isScanning}>Scan now</button>
+              {onOpenAccessKey && <button type="button" className="desk-btn" onClick={onOpenAccessKey}>Dashboard key</button>}
+              {showAuthenticated ? <button type="button" className="desk-btn" onClick={disconnect}>Disconnect Dhan</button>
+                : <button type="button" className="desk-btn accent" onClick={() => setModalOpen(true)}>Connect Dhan</button>}
+            </div>
+          </details>
         </div>
       </header>
 

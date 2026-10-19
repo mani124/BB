@@ -19,6 +19,7 @@ import { closeTrade, fetchDashboardSession, fetchDashboardTradeChart, fetchDashb
 import { DashboardStatus } from './components/DashboardStatus';
 import { TradesScreen } from './components/TradesScreen';
 import { SessionScreen } from './components/SessionScreen';
+import { ControlScreen } from './components/ControlScreen';
 import type { DashboardTrade, DashboardWatch } from './types/dashboard';
 
 type DetailView = 'legacy-review' | 'setup16' | 'cx' | 'earnings' | 'settings' | null;
@@ -71,7 +72,7 @@ const DashboardContent: React.FC = () => {
     }
   };
   useEffect(() => {
-    if (activeTab !== 'trades') return;
+    if (activeTab !== 'trades' && activeTab !== 'watch') return;
     refreshTrades();
     const timer = window.setInterval(refreshTrades, 30000);
     return () => window.clearInterval(timer);
@@ -380,14 +381,15 @@ const DashboardContent: React.FC = () => {
         return;
       }
       if (res.ok) {
-        const portData = await res.json();
-        applyPortfolio(portData);
+        const portRes = await apiFetch('/api/paper/portfolio');
+        if (!portRes.ok) throw new Error(`Could not verify entry state (${portRes.status})`);
+        applyPortfolio(await portRes.json());
       } else {
         setActionError(await settingsError(res, 'auto-trade'));
       }
     } catch (e) {
       console.error('Toggle auto trade failed', e);
-      setActionError('Network error changing auto-trade.');
+      setActionError(e instanceof Error ? e.message : 'Could not verify paper entry state.');
     }
   };
 
@@ -416,6 +418,7 @@ const DashboardContent: React.FC = () => {
       }
       const portRes = await apiFetch('/api/paper/portfolio');
       if (portRes.ok) applyPortfolio(await portRes.json());
+      else setActionError(`Kill switch changed, but current position state could not be verified (${portRes.status}). Refresh the page.`);
     } catch (e) {
       console.error('Kill switch failed', e);
       setActionError('Network error changing the kill switch.');
@@ -569,7 +572,8 @@ const DashboardContent: React.FC = () => {
 
       <main className="flex-1 min-h-0 w-full px-4 sm:px-6 py-2 flex flex-col gap-2">
         <DashboardStatus sources={dashboardWatch?.sources ?? []} openCount={activePositionsCount}
-          risk={state.paper_portfolio?.risk} stream={stream} error={watchError} />
+          risk={state.paper_portfolio?.risk} stream={stream} error={watchError}
+          entriesAllowed={state.paper_portfolio?.auto_trade_enabled} />
         <div id="main-panel" role="tabpanel" aria-labelledby={`main-tab-${activeTab}`} className="contents">
         {actionError && (
           <div className="desk-alert flex items-center justify-between gap-3" role="alert">
@@ -623,6 +627,8 @@ const DashboardContent: React.FC = () => {
             onClosePosition={handleClosePosition}
             onToggleAutoTrade={handleToggleAutoTrade}
             onChangeLots={handleChangeLots}
+            trades={dashboardTrades}
+            onOpenTrade={(id) => { setSelectedTradeId(id); setActiveTab('trades'); }}
           />
         ) : activeTab === 'trades' ? (
           <>
@@ -636,19 +642,9 @@ const DashboardContent: React.FC = () => {
             onOpenTrade={(id) => { setSelectedTradeId(id); setActiveTab('trades'); }}
             onOpenReview={() => setDetailView('legacy-review')} />
         ) : activeTab === 'control' ? (
-          <div className="flex flex-col gap-3 lg:overflow-y-auto">
-            <section className="desk-panel p-4">
-              <h2 className="font-semibold text-base mb-2">All existing tools</h2>
-              <p className="desk-muted text-sm mb-3">Open the detailed book and review screens while the new workspace is being built.</p>
-              <div className="flex flex-wrap gap-2">
-                {([['legacy-review', 'Review and journal'], ['setup16', 'Setup 16'], ['cx', 'Commodities & FX'],
-                  ['earnings', 'Earnings'], ['settings', 'Settings and audit']] as const).map(([id, label]) => (
-                  <button key={id} type="button" className="desk-btn" onClick={() => setDetailView(id)}>{label}</button>
-                ))}
-              </div>
-            </section>
-            <SettingsPanel />
-          </div>
+          <ControlScreen portfolio={state.paper_portfolio} risk={state.paper_portfolio?.risk}
+            onPause={handleToggleAutoTrade} onKillSwitch={handleKillSwitch} onOpenView={setDetailView}
+            onScanNow={handleScanNow} onOpenAccessKey={openCapabilityModal} settings={<SettingsPanel />} />
         ) : (
           <ReviewScreen
             portfolio={state.paper_portfolio}

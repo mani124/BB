@@ -14,6 +14,7 @@ def test_session_orders_cross_book_events_and_links_observation(monkeypatch):
     ]
     errors = [{"id": 4, "ts": "2026-10-19 09:03:00", "code": "FEED_STALE", "component": "scanner", "severity": "ERROR", "message": "Feed stale", "payload": {}}]
     monkeypatch.setattr(dashboard_read.paper_trader.telemetry, "day_events", lambda day: {"decisions": decisions, "errors": errors})
+    monkeypatch.setattr(dashboard_read.paper_trader.runtime, "audit_day", lambda day: [])
     monkeypatch.setattr(dashboard_read, "list_dashboard_trades", lambda: [
         {"id": "cx:c1", "book": "cx", "display_book": "Commodities & FX", "source_id": "c1", "instrument": "CRUDEOIL", "setup": "Setup 17", "opened_at": "2026-10-19T09:05:30+05:30", "closed_at": "2026-10-19T10:00:00+05:30", "status": "CLOSED", "net_pnl": 200, "net_kind": "realized", "evidence_state": "recorded"},
         {"id": "paper:p1", "book": "paper", "display_book": "Setup 16", "source_id": "p1", "instrument": "NIFTY CE", "setup": "Setup 16", "opened_at": "2026-10-19T09:10:00+05:30", "closed_at": None, "status": "OPEN", "net_pnl": 30, "net_kind": "estimated", "evidence_state": "unavailable"},
@@ -26,6 +27,7 @@ def test_session_orders_cross_book_events_and_links_observation(monkeypatch):
     assert result["observations"][0]["event_ids"] == ["decision:1", "decision:2"]
     assert result["by_book"][0]["realized_net"] is None
     assert result["by_book"][0]["estimated_net"] == 30
+    assert result["by_book"][0]["open_positions"] == 1
     assert result["by_book"][1]["realized_net"] == 200
 
 
@@ -33,6 +35,7 @@ def test_session_uses_selected_ist_day_and_does_not_invent_decisions(monkeypatch
     from app.services import dashboard_read
 
     monkeypatch.setattr(dashboard_read.paper_trader.telemetry, "day_events", lambda day: {"decisions": [], "errors": []})
+    monkeypatch.setattr(dashboard_read.paper_trader.runtime, "audit_day", lambda day: [])
     monkeypatch.setattr(dashboard_read, "list_dashboard_trades", lambda: [
         {"id": "paper:a", "book": "paper", "display_book": "Main scanner", "source_id": "a", "instrument": "NIFTY", "setup": "S1", "opened_at": "2026-10-18T23:59:00+05:30", "closed_at": "2026-10-19T00:01:00+05:30", "status": "CLOSED", "net_pnl": 10, "net_kind": "realized", "evidence_state": "unavailable"},
     ])
@@ -60,9 +63,37 @@ def test_paper_telemetry_mode_links_to_paper_trade_and_old_estimate_is_not_repla
     monkeypatch.setattr(dashboard_read.paper_trader.telemetry, "day_events", lambda day: {"decisions": [
         {"id": 10, "ts": "2026-10-18 09:30:00", "book": "demo", "strategy": "S1", "symbol": "NIFTY", "decision": "ENTERED", "reason": "READY", "metrics": {}, "position_id": "p1"},
     ], "errors": []})
+    monkeypatch.setattr(dashboard_read.paper_trader.runtime, "audit_day", lambda day: [])
     monkeypatch.setattr(dashboard_read, "list_dashboard_trades", lambda: [
         {"id": "paper:p1", "book": "paper", "display_book": "Main scanner", "source_id": "p1", "instrument": "NIFTY CE", "setup": "S1", "opened_at": "2026-10-18T09:30:00+05:30", "closed_at": None, "status": "OPEN", "net_pnl": 800, "net_kind": "estimated", "evidence_state": "recorded"},
     ])
     result = dashboard_read.get_dashboard_session("2026-10-18")
     assert result["events"][0]["trade_id"] == "paper:p1"
     assert result["by_book"][0]["estimated_net"] is None
+
+
+def test_session_includes_recorded_setting_changes_and_repeated_errors(monkeypatch):
+    from app.services import dashboard_read
+    monkeypatch.setattr(dashboard_read.paper_trader.telemetry, "day_events", lambda day: {"decisions": [], "errors": [
+        {"id": 1, "ts": "2026-10-19 09:00:00", "code": "FEED_STALE", "component": "feed", "message": "Gap", "payload": {}},
+        {"id": 2, "ts": "2026-10-19 09:05:00", "code": "FEED_STALE", "component": "feed", "message": "Gap", "payload": {}},
+    ]})
+    monkeypatch.setattr(dashboard_read.paper_trader.runtime, "audit_day", lambda day: [
+        {"id": 7, "changed_at": "2026-10-19 09:02:00", "key": "max_open_positions", "old_value": "3", "new_value": "2", "actor": "dashboard"},
+    ])
+    monkeypatch.setattr(dashboard_read, "list_dashboard_trades", lambda: [])
+    result = dashboard_read.get_dashboard_session("2026-10-19")
+    assert [event["type"] for event in result["events"]] == ["error", "control", "error"]
+    assert result["events"][1]["metrics"] == {"from": "3", "to": "2", "by": "dashboard"}
+    assert result["observations"][0]["event_ids"] == ["error:1", "error:2"]
+
+
+def test_runtime_audit_day_reads_date_range(tmp_path):
+    from app.services.runtime_settings import RuntimeSettings
+    runtime = RuntimeSettings(str(tmp_path / "settings.db"))
+    with runtime._conn() as conn:
+        conn.execute("INSERT INTO settings_audit (changed_at, key, old_value, new_value, actor) VALUES (?,?,?,?,?)",
+                     ("2026-10-18 23:59:00", "x", "1", "2", "test"))
+        conn.execute("INSERT INTO settings_audit (changed_at, key, old_value, new_value, actor) VALUES (?,?,?,?,?)",
+                     ("2026-10-19 00:01:00", "x", "2", "3", "test"))
+    assert [row["new_value"] for row in runtime.audit_day("2026-10-19")] == ["3"]

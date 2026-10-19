@@ -37,8 +37,9 @@ export const SessionScreen: React.FC<Props> = ({ initialDay, loadSession, onOpen
       <div className="grid sm:grid-cols-3 gap-2">{data.by_book.map((book) => <section key={book.book} className="desk-panel p-3">
         <h2 className="font-semibold text-sm">{book.display_book}</h2>
         <p className="desk-muted text-xs mt-1">{book.entries} entries · {book.exits} exits</p>
-        <p className="desk-num text-sm mt-2">{book.realized_net == null ? 'Realized not recorded' : `Realized ${money(book.realized_net)}`}</p>
-        {book.estimated_net != null && <p className="desk-num desk-muted text-xs">Estimated {money(book.estimated_net)}</p>}
+        {book.open_positions != null && <p className="desk-muted text-xs">{book.open_positions} open now</p>}
+        <p className="desk-num text-sm mt-2">{book.realized_net == null ? (book.exits ? 'Exit net not recorded' : 'No realized exits') : `Realized ${money(book.realized_net)}`}</p>
+        {book.estimated_net != null && <p className="desk-num desk-muted text-xs">Current estimate {money(book.estimated_net)}</p>}
       </section>)}</div>
       <div className="grid lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.4fr)] gap-3 lg:min-h-0 lg:flex-1">
         <div className="lg:overflow-y-auto"><SessionTimeline events={data.events} selectedId={selectedId} onSelect={setSelectedId} /></div>

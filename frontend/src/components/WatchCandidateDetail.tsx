@@ -1,7 +1,7 @@
 import React from 'react';
 import type { DashboardCandidate } from '../types/dashboard';
 
-interface Props { candidate: DashboardCandidate | null }
+interface Props { candidate: DashboardCandidate | null; tradeId?: string | null; onOpenTrade?: (id: string) => void }
 
 function displayValue(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
@@ -9,7 +9,7 @@ function displayValue(value: unknown): string {
   return String(value);
 }
 
-export const WatchCandidateDetail: React.FC<Props> = ({ candidate }) => {
+export const WatchCandidateDetail: React.FC<Props> = ({ candidate, tradeId, onOpenTrade }) => {
   if (!candidate) return <section className="desk-panel p-5 desk-muted">Select a candidate to see its recorded checks.</section>;
   return (
     <section className="desk-panel p-4 sm:p-5 min-w-0" aria-label="Candidate detail">
@@ -24,6 +24,7 @@ export const WatchCandidateDetail: React.FC<Props> = ({ candidate }) => {
       <p className="text-xs desk-muted mt-3">Evaluated {candidate.observed_at || 'time unavailable'}</p>
       {candidate.detail && <p className="mt-3 text-sm">{candidate.detail}</p>}
       {candidate.block_reason && <p className="mt-3 text-sm desk-down">Blocked: {candidate.block_reason}</p>}
+      {tradeId && onOpenTrade && <button type="button" className="desk-btn accent mt-3" onClick={() => onOpenTrade(tradeId)}>View matching trade and chart</button>}
       <h3 className="text-sm font-semibold mt-5 mb-2">Recorded checks</h3>
       {candidate.checks.length ? (
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2">

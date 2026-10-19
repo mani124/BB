@@ -68,4 +68,14 @@ describe('TradesScreen', () => {
     expect(await screen.findByText(/BUY CE 1500/i)).toBeInTheDocument();
     expect(screen.getByText(/SELL PE 1400/i)).toBeInTheDocument();
   });
+
+  it('returns from phone detail with its search and selection intact', async () => {
+    render(<TradesScreen trades={trades} loadDetail={detail} loadChart={chart} onClosePaper={vi.fn()} onRefresh={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Search trades'), { target: { value: 'crude' } });
+    fireEvent.click(screen.getByRole('button', { name: /CRUDEOIL/i }));
+    expect(screen.getByRole('button', { name: 'Back to trades' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to trades' }));
+    expect(screen.getByLabelText('Search trades')).toHaveValue('crude');
+    expect(screen.getByRole('button', { name: /CRUDEOIL/i })).toHaveAttribute('aria-pressed', 'true');
+  });
 });

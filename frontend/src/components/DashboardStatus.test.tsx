@@ -14,10 +14,16 @@ const sources: DashboardSource[] = [
 describe('DashboardStatus', () => {
   it('shows each source independently and keeps its mode visible', () => {
     render(<DashboardStatus sources={sources} openCount={2} />);
-    expect(screen.getByText(/Main scanner.*demo.*ready/i)).toBeInTheDocument();
-    expect(screen.getByText(/Setup 16.*stale/i)).toBeInTheDocument();
-    expect(screen.getByText(/Commodities & FX.*error/i)).toBeInTheDocument();
-    expect(screen.getByText(/Earnings.*disabled/i)).toBeInTheDocument();
-    expect(screen.getByText(/2 open positions/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Main scanner.*demo.*ready/i)).toHaveLength(2);
+    expect(screen.getAllByText(/Setup 16.*stale/i)).toHaveLength(2);
+    expect(screen.getAllByText(/Commodities & FX.*error/i)).toHaveLength(2);
+    expect(screen.getAllByText(/Earnings.*disabled/i)).toHaveLength(2);
+    expect(screen.getAllByText(/2 open positions/i)).toHaveLength(2);
+  });
+
+  it('calls risk blocks blocked even when the paper auto-enter switch is on', () => {
+    render(<DashboardStatus sources={sources} openCount={0} entriesAllowed
+      risk={{ entries_blocked: true, kill_switch_active: false, block_reason: 'LOSS_CAP' } as never} />);
+    expect(screen.getByText(/paper entries blocked/i)).toBeInTheDocument();
   });
 });

@@ -10,21 +10,39 @@ function markerTime(series: DashboardChartSeries, timestamp: number | null): UTC
   return bar ? bar.time as UTCTimestamp : null;
 }
 
+const istTime = (value: unknown) => typeof value === 'number'
+  ? new Date(value * 1000).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false })
+  : String(value);
+
+const istDateTime = (value: unknown) => typeof value === 'number'
+  ? new Date(value * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' }) + ' IST'
+  : String(value);
+
 export const TradeChart: React.FC<Props> = ({ data }) => {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [themeRevision, setThemeRevision] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const selected = data.series.find((series) => series.key === selectedKey) ?? data.series[0];
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => setThemeRevision((value) => value + 1));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!box.current || !selected?.candles.length) return;
     const root = getComputedStyle(document.documentElement);
     const color = (name: string) => root.getPropertyValue(name).trim();
+    let chartWidth = Math.max(1, box.current.clientWidth);
     const chart = createChart(box.current, {
-      width: box.current.clientWidth || 600, height: 360,
+      width: chartWidth, height: box.current.clientHeight || 360,
       layout: { background: { type: ColorType.Solid, color: color('--panel') }, textColor: color('--muted') },
+      localization: { timeFormatter: istDateTime },
       grid: { vertLines: { color: color('--line') }, horzLines: { color: color('--line') } },
       rightPriceScale: { borderColor: color('--line') },
-      timeScale: { borderColor: color('--line'), timeVisible: true, secondsVisible: false },
+      timeScale: { borderColor: color('--line'), timeVisible: true, secondsVisible: false,
+        tickMarkFormatter: (time) => istTime(time) },
       crosshair: { mode: 1 },
     });
     const candles = chart.addCandlestickSeries({ upColor: color('--up'), downColor: color('--down'),
@@ -41,10 +59,18 @@ export const TradeChart: React.FC<Props> = ({ data }) => {
         lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: name.replaceAll('_', ' ') });
     }
     chart.timeScale().fitContent();
-    const resize = () => chart.applyOptions({ width: box.current?.clientWidth || 600 });
+    const resize = () => {
+      const nextWidth = Math.max(1, box.current?.clientWidth || 0);
+      if (nextWidth === chartWidth) return;
+      chart.applyOptions({ width: nextWidth });
+      if (chartWidth <= 1 && nextWidth > 1) chart.timeScale().fitContent();
+      chartWidth = nextWidth;
+    };
     window.addEventListener('resize', resize);
-    return () => { window.removeEventListener('resize', resize); chart.remove(); };
-  }, [selected, data.entry_time, data.exit_time]);
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
+    if (observer && box.current) observer.observe(box.current);
+    return () => { window.removeEventListener('resize', resize); observer?.disconnect(); chart.remove(); };
+  }, [selected, data.entry_time, data.exit_time, themeRevision]);
 
   if (data.candle_state === 'unavailable' || !selected?.candles.length) {
     return <div className="desk-panel p-5 text-sm desk-muted">Candles were not recorded for this trade. The trade facts above are still available.</div>;
@@ -57,7 +83,7 @@ export const TradeChart: React.FC<Props> = ({ data }) => {
           {data.series.map((series) => <option key={series.key} value={series.key}>{series.label}</option>)}
         </select></label>
       </div>
-      <div ref={box} className="w-full min-w-0" style={{ height: 360 }} />
+      <div ref={box} className="trade-chart-canvas w-full min-w-0 overflow-hidden" />
       <p className="text-xs desk-muted mt-2">{selected.label} · {selected.interval} · recorded OHLC only</p>
     </section>
   );

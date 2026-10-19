@@ -23,7 +23,7 @@ describe('SessionScreen', () => {
     render(<SessionScreen initialDay="2026-10-19" loadSession={async () => session} onOpenTrade={openTrade} />);
     expect(await screen.findByRole('button', { name: /SKIPPED · NIFTY/i })).toBeInTheDocument();
     expect(screen.getByText('2 skips: SPREAD')).toBeInTheDocument();
-    expect(screen.getByText('Estimated ₹30')).toBeInTheDocument();
+    expect(screen.getByText('Current estimate ₹30')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Entry · NIFTY CE/i }));
     expect(screen.getByText(/No saved decision for this older trade/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'View trade and chart' }));

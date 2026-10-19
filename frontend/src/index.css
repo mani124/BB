@@ -82,6 +82,11 @@
     border-radius: 8px;
     min-width: 0;
   }
+  .desk-control-link { border: 1px solid var(--line); background: var(--alt); color: var(--fg); }
+  .desk-control-link:hover, .desk-control-link:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
+  .desk-tools-menu > summary, .desk-status-mobile > summary { list-style: none; cursor: pointer; }
+  .desk-tools-menu > summary::-webkit-details-marker, .desk-status-mobile > summary::-webkit-details-marker { display: none; }
+  .trade-chart-canvas { height: 360px; }
   .desk-ph {
     display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
     padding: 10px 14px;
@@ -226,6 +231,8 @@
   }
   @media (max-width: 640px) {
     .desk-ticker > * { white-space: normal; flex-wrap: wrap; }
+    .trade-chart-canvas { height: 300px; }
+    .desk-panel { scroll-margin-top: 1rem; }
   }
   .desk-alert {
     border: 1px solid var(--down); background: var(--down-soft); color: var(--down);

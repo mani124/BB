@@ -61,3 +61,21 @@ def test_setup16_candidate_keeps_its_own_evaluation_time():
     ]}, {}, {}, observed_at="2026-10-19T09:38:00+05:30")
     a, b = [c for c in watch["candidates"] if c["book"] == "setup16"]
     assert a["observed_at"] != b["observed_at"]
+
+
+def test_scanner_error_state_does_not_look_ready_with_recent_scan():
+    from app.services.dashboard_read import build_dashboard_watch
+    watch = build_dashboard_watch(
+        {"active_mode": "error", "last_scan_at": "2026-10-19T09:37:00+05:30", "signals": []},
+        {}, {}, {}, observed_at="2026-10-19T09:38:00+05:30")
+    paper = next(source for source in watch["sources"] if source["book"] == "paper")
+    assert paper["state"] == "error"
+
+
+def test_watch_handles_mixed_naive_and_timezone_aware_times():
+    from app.services.dashboard_read import build_dashboard_watch
+    watch = build_dashboard_watch(
+        {"active_mode": "demo", "last_scan_at": "2026-10-19T09:37:00", "signals": []},
+        {}, {}, {}, observed_at="2026-10-19T09:38:00+05:30")
+    paper = next(source for source in watch["sources"] if source["book"] == "paper")
+    assert paper["state"] == "ready"

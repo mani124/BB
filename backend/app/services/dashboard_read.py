@@ -112,6 +112,8 @@ def get_dashboard_session(day: str) -> dict:
     """A selected IST day built only from stored decisions, errors and positions."""
     date.fromisoformat(day)
     telemetry = paper_trader.telemetry.day_events(day)
+    all_trades = list_dashboard_trades()
+    known_trade_ids = {row["id"] for row in all_trades}
     events: list[dict] = []
     for row in telemetry["decisions"]:
         at = _ist_iso(row.get("ts"))
@@ -120,8 +122,9 @@ def get_dashboard_session(day: str) -> dict:
         raw_book = row.get("book") or "paper"
         book = "paper" if raw_book in ("demo", "live") else raw_book
         position = row.get("position_id")
+        trade_id = f"{book}:{position}" if position else None
         events.append({"id": f"decision:{row['id']}", "at": at, "type": "decision", "book": book,
-                       "trade_id": f"{book}:{position}" if position else None,
+                       "trade_id": trade_id if trade_id in known_trade_ids else None,
                        "instrument": row.get("symbol"), "title": f"{row.get('decision', 'Decision')} · {row.get('symbol', '')}",
                        "reason": row.get("reason"), "metrics": row.get("metrics") or {},
                        "evidence_id": f"decision:{row['id']}", "evidence_state": "recorded"})
@@ -134,17 +137,26 @@ def get_dashboard_session(day: str) -> dict:
                        "reason": row.get("message"), "metrics": row.get("payload") or {},
                        "evidence_id": f"error:{row['id']}", "evidence_state": "recorded"})
 
-    all_trades = list_dashboard_trades()
+    for row in paper_trader.runtime.audit_day(day):
+        at = _ist_iso(row.get("changed_at"))
+        if not at:
+            continue
+        events.append({"id": f"setting:{row['id']}", "at": at, "type": "control", "book": None,
+                       "trade_id": None, "instrument": None, "title": f"Setting changed · {row['key']}",
+                       "reason": row["key"], "metrics": {"from": row.get("old_value"), "to": row.get("new_value"), "by": row.get("actor")},
+                       "evidence_id": f"setting:{row['id']}", "evidence_state": "recorded"})
+
     by_book: list[dict] = []
     for book in ("paper", "cx", "earnings"):
         rows = [row for row in all_trades if row["book"] == book]
         touched = [row for row in rows if any((_ist_iso(row.get(key)) or "")[:10] == day for key in ("opened_at", "closed_at"))]
         realized = [row["net_pnl"] for row in touched if row.get("net_kind") == "realized" and row.get("closed_at") and (_ist_iso(row["closed_at"]) or "")[:10] == day and row.get("net_pnl") is not None]
-        estimated = [row["net_pnl"] for row in touched if day == now_ist().date().isoformat()
-                     and row.get("net_kind") == "estimated" and row.get("net_pnl") is not None]
+        is_today = day == now_ist().date().isoformat()
+        estimated = [row["net_pnl"] for row in rows if is_today and row.get("net_kind") == "estimated" and row.get("net_pnl") is not None]
         by_book.append({"book": book, "display_book": {"paper": "Main + Setup 16", "cx": "Commodities & FX", "earnings": "Earnings"}[book],
                         "entries": sum(1 for row in touched if (_ist_iso(row.get("opened_at")) or "")[:10] == day),
                         "exits": sum(1 for row in touched if (_ist_iso(row.get("closed_at")) or "")[:10] == day),
+                        "open_positions": sum(1 for row in rows if row.get("status") in ("OPEN", "TARGET_1")) if is_today else None,
                         "realized_net": round(sum(realized), 2) if realized else None,
                         "estimated_net": round(sum(estimated), 2) if estimated else None})
         for row in touched:
@@ -166,21 +178,30 @@ def get_dashboard_session(day: str) -> dict:
     observations = [{"id": f"skip:{book}:{reason}", "title": f"{len(ids)} skips: {reason}",
                      "detail": f"{book} recorded the same skip reason {len(ids)} times on this day.", "event_ids": ids}
                     for (book, reason), ids in skipped.items() if len(ids) >= 2]
+    errors_by_code: dict[str, list[str]] = defaultdict(list)
+    for event in events:
+        if event["type"] == "error":
+            errors_by_code[event["title"]].append(event["id"])
+    observations.extend({"id": f"error:{code}", "title": f"{len(ids)} recorded errors: {code}",
+                         "detail": "Review the linked error events and source health before relying on that feed.", "event_ids": ids}
+                        for code, ids in errors_by_code.items() if len(ids) >= 2)
     return {"day": day, "timezone": "Asia/Kolkata", "events": events, "by_book": by_book, "observations": observations}
 
 
 def _source(book: str, mode: str, as_of: str | None, observed_at: str, *, disabled: bool = False,
             error: str | None = None) -> dict:
     state = "unknown"
-    if error:
+    if error or mode == "error":
         state = "error"
     elif disabled:
         state = "disabled"
+    elif mode == "stale":
+        state = "stale"
     elif as_of:
         try:
-            age = datetime.fromisoformat(observed_at) - datetime.fromisoformat(as_of)
+            age = datetime.fromisoformat(_ist_iso(observed_at)) - datetime.fromisoformat(_ist_iso(as_of))
             state = "stale" if age > timedelta(minutes=15) else "ready"
-        except ValueError:
+        except (TypeError, ValueError):
             state = "unknown"
     return {"book": book, "mode": mode, "as_of": as_of, "state": state, "message": error or ""}
 

@@ -72,7 +72,7 @@ export interface DashboardChart {
 export interface DashboardSessionEvent {
   id: string;
   at: string;
-  type: 'decision' | 'entry' | 'exit' | 'error';
+  type: 'decision' | 'entry' | 'exit' | 'error' | 'control';
   book: string | null;
   trade_id: string | null;
   instrument: string | null;
@@ -87,6 +87,6 @@ export interface DashboardSession {
   day: string;
   timezone: string;
   events: DashboardSessionEvent[];
-  by_book: { book: DashboardBook; display_book: string; entries: number; exits: number; realized_net: number | null; estimated_net: number | null }[];
+  by_book: { book: DashboardBook; display_book: string; entries: number; exits: number; open_positions?: number | null; realized_net: number | null; estimated_net: number | null }[];
   observations: { id: string; title: string; detail: string; event_ids: string[] }[];
 }
