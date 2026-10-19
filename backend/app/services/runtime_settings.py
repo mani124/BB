@@ -269,7 +269,9 @@ DEFINITIONS: tuple[SettingDef, ...] = (
        description="Liquidity filter: 20-day average of close x volume of the stock, a proxy for liquid options.",
        default=50.0, min=0),
     _d(key="watchlist_build_time", label="Build time", group=G_S16, type="time", unit="IST",
-       description="After this time on a trading day the watchlist for the next trading day is built, once.", default="16:15"),
+       description="After this time on a trading day (the daily bar is final) the watchlist for the next trading day is built, once, as "
+                   "soon as a Dhan login exists. A missed build is retried every 10 minutes, and a login or restart before "
+                   "the close still gets a list for today built from yesterday's bars.", default="16:15"),
     # ---- swing equity book (swing_engine.py / swing_signals.py) ----
     _d(key="swing_enabled", label="Swing book enabled", group=G_SWING, type="bool",
        description="Allow the swing paper book to queue new daily-bar entries. Open positions are always managed.", default=False),

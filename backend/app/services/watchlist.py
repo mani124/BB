@@ -156,7 +156,7 @@ class WatchlistService:
         data = self.store.load() or {}
         return {"enabled": bool(self.runtime.get("watchlist_enabled")), **data, "last_cycle": self.last_cycle}
 
-    async def build(self, today: date) -> dict:
+    async def build(self, today: date, target: Optional[date] = None) -> dict:
         symbols = self.provider.symbols()
         bars = await self.provider.bars(symbols, today)
         cands = screen(
@@ -168,7 +168,7 @@ class WatchlistService:
         )
         last_bar = max((str(df["date"].iloc[-1])[:10] for df in bars.values() if len(df)), default=None)
         data = {
-            "built_for": next_trading_day(today).isoformat(),
+            "built_for": (target or next_trading_day(today)).isoformat(),
             "built_on": today.isoformat(),
             "built_at": market_hours.now_ist().isoformat(timespec="seconds"),
             "last_bar_day": last_bar,
@@ -178,25 +178,40 @@ class WatchlistService:
         self.store.save(data)
         return data
 
-    async def run_cycle(self, now: Optional[datetime] = None) -> dict:
-        """After the build time on a trading day, build tomorrow's list once."""
-        now = now or market_hours.now_ist()
+    def target_day(self, now: datetime) -> Optional[date]:
+        """The trading day a list should exist for right now, or None to wait for the day's final daily bar.
+
+        Before the close of a trading day the list is for today (built from bars up to yesterday, so a late login or a
+        restart still gets one); after the build time it is for the next trading day; between the close and the build
+        time it waits. Nothing depends on logging in at one exact moment: whenever credentials exist and the list for
+        the target day is missing, the next poll builds it."""
         today = now.date()
+        minutes = now.hour * 60 + now.minute
+        if market_hours.is_trading_day(today):
+            if minutes < 15 * 60 + 30:
+                return today
+            if minutes < _hhmm_minutes(self.runtime.get("watchlist_build_time")):
+                return None
+        return next_trading_day(today)
+
+    async def run_cycle(self, now: Optional[datetime] = None) -> dict:
+        """Build the list for the target day once, as soon as a Dhan session is available."""
+        now = now or market_hours.now_ist()
         result: dict = {"at": now.isoformat(), "status": "ok"}
         try:
+            target = self.target_day(now)
             if not self.runtime.get("watchlist_enabled"):
                 result["status"] = "disabled"
+            elif target is None:
+                result["status"] = "before_build_time"
+            elif (self.store.load() or {}).get("built_for") == target.isoformat():
+                result["status"] = "up_to_date"
             elif self.provider is None or not self.provider.has_credentials():
                 result["status"] = "no_credentials"
-            elif not market_hours.is_trading_day(today):
-                result["status"] = "not_a_trading_day"
-            elif now.hour * 60 + now.minute < _hhmm_minutes(self.runtime.get("watchlist_build_time")):
-                result["status"] = "before_build_time"
-            elif (self.store.load() or {}).get("built_on") == today.isoformat():
-                result["status"] = "up_to_date"
             else:
-                data = await self.build(today)
+                data = await self.build(now.date(), target)
                 result["status"] = "built"
+                result["built_for"] = data["built_for"]
                 result["candidates"] = len(data["candidates"])
         except Exception as exc:
             logger.warning("watchlist cycle failed: %s", exc, exc_info=True)

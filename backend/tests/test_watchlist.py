@@ -85,15 +85,45 @@ def test_build_saves_list_for_next_trading_day_and_only_that_day(tmp_path):
     assert asyncio.run(svc.run_cycle(now))["status"] == "up_to_date"
 
 
-def test_cycle_waits_for_build_time_credentials_and_switch(tmp_path):
+def test_cycle_waits_for_final_bar_and_respects_switch(tmp_path):
     svc, rt = _service(tmp_path, {"AAA": _bars(squeeze=True)})
-    assert asyncio.run(svc.run_cycle(datetime(2026, 10, 19, 15, 0)))["status"] == "before_build_time"
-    assert asyncio.run(svc.run_cycle(datetime(2026, 10, 18, 17, 0)))["status"] == "not_a_trading_day"  # Sunday
+    assert asyncio.run(svc.run_cycle(datetime(2026, 10, 19, 15, 45)))["status"] == "before_build_time"  # closed, bar not final
     rt.set("watchlist_enabled", False)
     assert asyncio.run(svc.run_cycle(datetime(2026, 10, 19, 17, 0)))["status"] == "disabled"
     assert svc.symbols_for(date(2026, 10, 21)) == []
-    svc2, _ = _service(tmp_path, {"AAA": _bars(squeeze=True)}, creds=False)
-    assert asyncio.run(svc2.run_cycle(datetime(2026, 10, 19, 17, 0)))["status"] == "no_credentials"
+
+
+def test_late_login_still_gets_a_list_and_no_exact_time_is_needed(tmp_path):
+    data = {"AAA": _bars(squeeze=True)}
+    svc = wl.WatchlistService(wl.WatchlistStore(str(tmp_path / "w.json")), RuntimeSettings(None), _Provider(data, creds=False))
+    evening = datetime(2026, 10, 19, 16, 30)
+    assert asyncio.run(svc.run_cycle(evening))["status"] == "no_credentials"   # not logged in at the build time
+    svc.provider.creds = True
+    late = datetime(2026, 10, 19, 22, 40)                                       # logs in hours later
+    assert asyncio.run(svc.run_cycle(late))["status"] == "built"
+    assert svc.symbols_for(date(2026, 10, 21)) == ["AAA"]
+
+
+def test_morning_login_before_close_builds_for_today_and_is_not_rebuilt(tmp_path):
+    svc, _ = _service(tmp_path, {"AAA": _bars(squeeze=True)})
+    morning = datetime(2026, 10, 21, 8, 30)                                     # trading day, no list yet
+    assert svc.target_day(morning) == date(2026, 10, 21)
+    assert asyncio.run(svc.run_cycle(morning))["status"] == "built"
+    assert svc.symbols_for(date(2026, 10, 21)) == ["AAA"]
+    assert asyncio.run(svc.run_cycle(datetime(2026, 10, 21, 11, 0)))["status"] == "up_to_date"
+    assert svc.target_day(datetime(2026, 10, 21, 16, 20)) == date(2026, 10, 22)  # after the build time: next day
+
+
+def test_weekend_targets_next_trading_day(tmp_path):
+    svc, _ = _service(tmp_path, {"AAA": _bars(squeeze=True)})
+    assert svc.target_day(datetime(2026, 10, 17, 11, 0)) == date(2026, 10, 19)    # Saturday
+    assert asyncio.run(svc.run_cycle(datetime(2026, 10, 17, 11, 0)))["status"] == "built"
+    assert svc.symbols_for(date(2026, 10, 19)) == ["AAA"]
+
+
+def test_no_credentials_status(tmp_path):
+    svc, _ = _service(tmp_path, {"AAA": _bars(squeeze=True)}, creds=False)
+    assert asyncio.run(svc.run_cycle(datetime(2026, 10, 19, 17, 0)))["status"] == "no_credentials"
 
 
 def test_scanner_checks_watchlist_stocks_for_setup16_only():
