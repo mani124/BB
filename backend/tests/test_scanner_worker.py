@@ -217,3 +217,21 @@ async def test_session_boundary_clears_candle_history():
     await worker.stop()
 
 
+
+
+@pytest.mark.asyncio
+async def test_closed_market_marketfeed_polled_once_a_minute(monkeypatch):
+    """Outside the session the 3s scan loop must not hit /marketfeed/quote every cycle (429s starve the other books)."""
+    monkeypatch.setattr(market_hours, "is_market_open", lambda *a, **k: False)
+    mock_dhan = MagicMock()
+    mock_dhan.fetch_marketfeed_quotes = AsyncMock(return_value={})
+    mock_dhan.close = AsyncMock()
+    worker = ScannerWorker(universe_mgr=UniverseManager(), dhan_client=mock_dhan)
+    worker.set_session_credentials("TEST_CID", "TEST_TOKEN")
+    for _ in range(3):
+        await worker.run_single_scan_cycle()
+    assert mock_dhan.fetch_marketfeed_quotes.await_count == 1
+    worker._closed_quotes_at -= 61.0  # a minute later it refreshes once more
+    await worker.run_single_scan_cycle()
+    assert mock_dhan.fetch_marketfeed_quotes.await_count == 2
+    await worker.stop()
