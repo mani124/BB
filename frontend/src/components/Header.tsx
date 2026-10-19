@@ -117,24 +117,13 @@ export const Header: React.FC<HeaderProps> = ({
             label="Sections"
             className="flex items-center gap-1"
             tabClassName="desk-tab"
-            value={activeTab ?? 'scanner'}
+            value={activeTab ?? 'watch'}
             onChange={onTabChange}
             items={[
-              {
-                id: 'scanner',
-                name: openPositionsCount > 0 ? `Now, ${openPositionsCount} open` : 'Now',
-                label: (
-                  <>
-                    Now
-                    {openPositionsCount > 0 && <span className="desk-pill up desk-num" aria-hidden="true">{openPositionsCount}</span>}
-                  </>
-                ),
-              },
-              { id: 'paper', label: 'Review' },
-              { id: 'setup16', label: 'Setup 16' },
-              { id: 'cx', label: 'Commodities & FX' },
-              { id: 'earnings', label: 'Earnings' },
-              { id: 'settings', label: 'Settings' },
+              { id: 'watch', label: 'Watch' },
+              { id: 'trades', label: 'Trades' },
+              { id: 'session', label: 'Session' },
+              { id: 'control', label: 'Control' },
             ]}
           />
         )}
