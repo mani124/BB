@@ -26,7 +26,6 @@ from app.services.strategy_engine import evaluate_signals, Signal, SetupType
 from app.services.relative_strength import evaluate_relative_strength, NIFTY_SYMBOL
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size, option_exchange_segment
 from app.services.option_chart_strategy import evaluate_option_chart_signal
-from app.services.setup11 import evaluate_setup11
 from app.services.setup13 import evaluate_option_vwap_reclaim
 from app.services.setup12 import evaluate_adx_ema_cross
 from app.services.setup14 import WALL_REFRESH_S, compute_oi_walls, evaluate_oi_wall_bounce
@@ -1028,9 +1027,6 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 )
                 if sig:
                     results.append(sig)
-                    s11 = evaluate_setup11(ind_opt, sig)
-                    if s11:
-                        results.append(s11)
                 try:
                     s13 = evaluate_option_vwap_reclaim(
                         symbol=inst.symbol,

@@ -127,8 +127,8 @@ DEFINITIONS: tuple[SettingDef, ...] = (
     # ---- live broker routing (order_router.py). Mode and arming are NOT settings: see /api/live. ----
     _d(key="live_allowed_setups", label="Setups allowed to route", group=G_LIVE, type="str",
        description="Setup numbers whose entries may be sent to the broker, comma separated (for example 5 or 12). "
-                   "Empty routes nothing. Start with one. Setup 11 trades the same contracts as Setup 5, so with both "
-                   "listed the second entry on a contract is refused.", default=""),
+                   "Empty routes nothing. Start with one. Two routed setups never hold the same contract, so the "
+                   "second entry on a contract is refused.", default=""),
     _d(key="live_max_lots_per_order", label="Max lots per order", group=G_LIVE, type="int", unit="lots",
        description="An entry above this many lots is refused, not trimmed (the paper position keeps its size).",
        default=2, min=1, max=100),

@@ -20,7 +20,7 @@ market-data feed. Another broker is one more adapter class.
   buffer widened by `live_exit_limit_buffer_pct` again (capped at 20%). Exits are
   **never blocked** by the kill switch, a halt, the loss cap, the caps below, or the mode being switched off. A
   position bought for real is always exited for real.
-* **One routed position per contract.** Setup 11 shadows Setup 5 on the same contracts; with both allowed, the
+* **One routed position per contract.** Two routed setups never hold the same contract; the
   second entry on a contract that is already routed is refused (`SAME_CONTRACT`).
 * **Reset.** The paper portfolio cannot be reset while a live-feed paper position or a routed position is open.
 * **Reconcile.** Every `live_reconcile_seconds` the router refreshes unsettled orders from the broker and compares
@@ -118,8 +118,7 @@ This is not legal advice and nothing here is Definedge-specific: confirm each po
 
 ## Not covered
 
-* The earnings book and Setup 11 shadow book are not routed (Setup 11 can be allowed explicitly via
-  `live_allowed_setups`; the earnings book is a separate engine and is never routed).
+* The earnings book is a separate engine and is never routed.
 * Exchange freeze-quantity splitting: keep `live_max_lots_per_order` below the freeze limit for your index.
 * Charges, taxes and slippage differ from the paper model; compare the routed P&L (`/api/live/status`) with paper.
 

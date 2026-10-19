@@ -110,7 +110,7 @@ def _reversal_legs(df: pd.DataFrame, bullish: bool):
 
 
 def is_setup11(setup_type) -> bool:
-    """True for Setup 11 (enum, value, or a stored label). Setup 11 trades in its own book of caps."""
+    """True for Setup 11 (enum, value, or a stored label). Setup 11 was removed on 2026-10-19; kept so its past trades still load and report."""
     return setup_type == SetupType.SETUP_11_FILTERED_OPTION_BB or "Setup 11" in str(getattr(setup_type, "value", setup_type))
 
 
