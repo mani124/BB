@@ -2,9 +2,9 @@
 
 Run on a market day (MCX 09:00-23:30 IST, currency 09:00-17:00 IST), from the VM or any machine:
 
-    DHAN_CLIENT_ID=... DHAN_ACCESS_TOKEN=... python -m scripts.check_mcx_currency_data [--ws] [--json]
+    python3 check_mcx_currency_data.py --ws        (self-contained; needs httpx and websockets, e.g. the app venv)
 
-The token is read from the environment only and is never printed or written. The script places no
+The Dhan client id and access token come from DHAN_CLIENT_ID / DHAN_ACCESS_TOKEN or a hidden prompt; they are never printed or written. The script places no
 orders; it only downloads the public instrument master and calls Dhan's read endpoints (expiry list,
 option chain, quote, intraday candles, optionally one WebSocket tick). It prints PASS / FAIL / SKIP per
 capability per underlying and exits 1 if anything FAILed.
@@ -184,6 +184,11 @@ async def main(argv: Optional[list[str]] = None) -> int:
 
     client_id = os.getenv("DHAN_CLIENT_ID", "").strip()
     token = os.getenv("DHAN_ACCESS_TOKEN", "").strip()
+    if (not client_id or not token) and sys.stdin.isatty():
+        # The app never stores the Dhan token on the server (the browser sends it per request), so ask for it.
+        import getpass
+        client_id = client_id or input("Dhan client id: ").strip()
+        token = token or getpass.getpass("Dhan access token (hidden): ").strip()
     if not client_id or not token:
         print("Set DHAN_CLIENT_ID and DHAN_ACCESS_TOKEN in the environment (they are never printed).", file=sys.stderr)
         return 2
