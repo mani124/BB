@@ -902,6 +902,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         self._state.market_bias = "NEUTRAL" if mode == "closed" else market_bias
         self._state.paper_portfolio = paper_trader.get_portfolio_summary(mode=mode)
         self._state.last_scan_time = market_hours.now_ist_naive().strftime("%H:%M:%S")
+        self._state.last_scan_at = market_hours.now_ist().isoformat()
         self._state.scan_cycle_count += 1
         self._state.is_scanning = False
         self._state.scan_progress = 100.0
