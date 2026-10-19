@@ -110,6 +110,44 @@ def future_expiry_summary(rows: list[dict], symbol: str) -> str:
     return f"{len(exps)} {fut_type} expiries in master for {symbol}: {exps[:3]} ... {exps[-3:]}" if exps else f"no {fut_type} rows for {symbol}"
 
 
+def option_expiry_summary(rows: list[dict], symbol: str) -> str:
+    _f, opt_type, _s, exch = UNDERLYINGS[symbol]
+    opts = [r for r in rows if (r.get("INSTRUMENT") or "").strip().upper() == opt_type and (r.get("EXCH_ID") or "").strip().upper() == exch
+            and _matches(r, symbol, exch)]
+    exps = sorted({str(r.get("SM_EXPIRY_DATE"))[:10] for r in opts})
+    uids = sorted({str(r.get("UNDERLYING_SECURITY_ID")) for r in opts})[:5]
+    sample = {k: opts[-1].get(k) for k in ("EXCH_ID", "SEGMENT", "SECURITY_ID", "INSTRUMENT", "UNDERLYING_SECURITY_ID", "UNDERLYING_SYMBOL",
+                                           "DISPLAY_NAME", "SM_EXPIRY_DATE", "STRIKE_PRICE", "OPTION_TYPE", "LOT_SIZE")} if opts else None
+    return (f"{len(opts)} {opt_type} rows, {len(exps)} expiries {exps[:2]} ... {exps[-2:]}; UNDERLYING_SECURITY_ID values {uids}; "
+            f"last row {json.dumps(sample)}")
+
+
+def probe_contracts(rows: list[dict], symbol: str, limit: int = 3) -> list[dict]:
+    """Nothing live in the master (every row expired). Candidate ids to try against the API anyway, to see whether Dhan still
+    serves data even though the master is stale: the underlying ids of the latest-expiring options and the latest future."""
+    fut_type, opt_type, _s, exch = UNDERLYINGS[symbol]
+    cands: list[dict] = []
+    seen: set[str] = set()
+
+    def add(sec_id: str, exp: str, label: str) -> None:
+        sec_id = str(sec_id or "").strip().split(".")[0]
+        if sec_id and sec_id not in seen and len(cands) < limit:
+            seen.add(sec_id)
+            cands.append({"security_id": sec_id, "lot_size": 0, "expiry": exp, "display": label})
+
+    opts = sorted((r for r in rows if (r.get("INSTRUMENT") or "").strip().upper() == opt_type
+                   and (r.get("EXCH_ID") or "").strip().upper() == exch and _matches(r, symbol, exch)),
+                  key=lambda r: str(r.get("SM_EXPIRY_DATE")), reverse=True)
+    for r in opts:
+        add(r.get("UNDERLYING_SECURITY_ID"), str(r.get("SM_EXPIRY_DATE"))[:10], f"PROBE {symbol} option underlying (stale master)")
+    futs = sorted((r for r in rows if (r.get("INSTRUMENT") or "").strip().upper() == fut_type
+                   and (r.get("EXCH_ID") or "").strip().upper() == exch and _matches(r, symbol, exch)),
+                  key=lambda r: str(r.get("SM_EXPIRY_DATE")), reverse=True)
+    for r in futs:
+        add(r.get("SECURITY_ID"), str(r.get("SM_EXPIRY_DATE"))[:10], f"PROBE {symbol} latest future (stale master)")
+    return cands
+
+
 def diagnose_missing(rows: list[dict], symbol: str) -> list[str]:
     """Why no future was found: what the master holds for this symbol and instrument type."""
     fut_type, _o, _s, exch = UNDERLYINGS[symbol]
@@ -156,7 +194,10 @@ class Report:
 
 async def _post(client: httpx.AsyncClient, headers: dict, path: str, body: dict) -> tuple[int, Any]:
     await asyncio.sleep(1.1)  # stay well under Dhan's per-second limits
-    resp = await client.post(path, headers=headers, json=body)
+    try:
+        resp = await client.post(path, headers=headers, json=body)
+    except Exception as exc:  # noqa: BLE001 - a network error is a result, not a reason to stop the run
+        return 0, f"{type(exc).__name__}: {str(exc)[:120]}"
     try:
         return resp.status_code, resp.json()
     except ValueError:
@@ -180,7 +221,7 @@ async def check_symbol(client: httpx.AsyncClient, headers: dict, rep: Report, sy
     _fut_type, _opt_type, seg, _exch = UNDERLYINGS[symbol]
     sec_id = fut["security_id"]
     rep.add(symbol, "instrument" + tag, "PASS", f"{fut['display']} id={sec_id} lot={fut['lot_size']} expiry={fut['expiry']}")
-    if fut["lot_size"] <= 0:
+    if fut["lot_size"] <= 0 and not str(fut["display"]).startswith("PROBE"):
         rep.add(symbol, "lot size", "FAIL", "lot size missing in master")
 
     # quote
@@ -292,10 +333,16 @@ async def main(argv: Optional[list[str]] = None) -> int:
                 futs = option_underlyings(rows, sym)
                 if futs:
                     rep.add(sym, "instrument", "WARN", "no live future in master; using the underlying id of live options instead (checks below test it)")
-            if not futs:
-                rep.add(sym, "instrument", "FAIL", "no live future found in master")
+            if rows and not futs:
+                rep.add(sym, "instrument", "FAIL", "no live future AND no live option in the master (every row is expired)")
+                print("       " + option_expiry_summary(rows, sym))
                 for line in diagnose_missing(rows, sym):
                     print("       " + line)
+                futs = probe_contracts(rows, sym)
+                if futs:
+                    print("       probing the API with the latest ids in the stale master, to see whether Dhan still serves data for them")
+            elif not rows:
+                rep.add(sym, "instrument", "FAIL", "instrument master not loaded")
                 continue
             for i, fut in enumerate(futs):
                 await check_symbol(client, headers, rep, sym, fut, args.ws and i == 0, client_id, token, f" #{i + 1}")

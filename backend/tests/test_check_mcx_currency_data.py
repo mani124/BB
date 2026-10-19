@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from scripts.check_mcx_currency_data import diagnose_missing, future_expiry_summary, nearest_futures, option_underlyings, parity_atm, summarize_chain
+from scripts.check_mcx_currency_data import diagnose_missing, future_expiry_summary, nearest_futures, option_expiry_summary, option_underlyings, parity_atm, probe_contracts, summarize_chain
 
 
 def _row(sym, inst, exch, exp, sid, lot="100"):
@@ -46,3 +46,14 @@ def test_option_underlying_fallback_and_stale_future_summary():
     assert nearest_futures(rows, "USDINR", today=datetime(2026, 10, 19)) == []
     assert option_underlyings(rows, "USDINR", today=datetime(2026, 10, 19))[0]["security_id"] == "20001"
     assert "2024-08-28" in future_expiry_summary(rows, "USDINR")
+
+
+def test_stale_master_is_probed_instead_of_ending_the_run():
+    rows = [_row("USDINR", "FUTCUR", "NSE", "2026-06-26", "11"),
+            {**_row("USDINR", "OPTCUR", "NSE", "2026-06-26", "5"), "UNDERLYING_SECURITY_ID": "20001.0"},
+            {**_row("USDINR", "OPTCUR", "NSE", "2026-05-27", "6"), "UNDERLYING_SECURITY_ID": "20000"}]
+    today = datetime(2026, 10, 19)
+    assert nearest_futures(rows, "USDINR", today=today) == [] and option_underlyings(rows, "USDINR", today=today) == []
+    ids = [c["security_id"] for c in probe_contracts(rows, "USDINR")]
+    assert ids == ["20001", "20000", "11"]
+    assert "2 expiries" in option_expiry_summary(rows, "USDINR")
