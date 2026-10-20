@@ -11,7 +11,7 @@ interface Props {
   onSelect: (id: string) => void;
 }
 
-export const WatchCandidateList: React.FC<Props> = ({ candidates, selectedId, onSelect }) => (
+const WatchCandidateListImpl: React.FC<Props> = ({ candidates, selectedId, onSelect }) => (
   <div className="divide-y" style={{ borderColor: 'var(--line)' }}>
     {candidates.length === 0 && <p className="p-4 desk-muted">No candidates match this filter.</p>}
     {candidates.map((candidate) => (
@@ -31,3 +31,5 @@ export const WatchCandidateList: React.FC<Props> = ({ candidates, selectedId, on
     ))}
   </div>
 );
+
+export const WatchCandidateList = React.memo(WatchCandidateListImpl);

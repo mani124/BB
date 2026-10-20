@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { DhanAuthProvider, useDhanAuth } from './context/DhanAuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { Header, type StreamStatus } from './components/Header';
@@ -22,9 +22,14 @@ import { TradesScreen } from './components/TradesScreen';
 import { SessionScreen } from './components/SessionScreen';
 import { ControlScreen } from './components/ControlScreen';
 import { Sidebar } from './components/Sidebar';
+import { ConnectionBanner } from './components/ConnectionStatus';
 import type { DashboardTrade, DashboardWatch } from './types/dashboard';
 
 type DetailView = 'legacy-review' | 'setup16' | 'cx' | 'earnings' | 'settings' | null;
+
+const sameJson = (a: unknown, b: unknown): boolean => {
+  try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
+};
 
 const DashboardContent: React.FC = () => {
   const [state, setState] = useState<ScannerState>({
@@ -93,10 +98,10 @@ const DashboardContent: React.FC = () => {
   // fetched separately whenever the server's closed-trade count changes.
   const [closedTrades, setClosedTrades] = useState<PaperPosition[]>([]);
 
-  const applyPortfolio = (portData: PaperPortfolio) => {
+  const applyPortfolio = useCallback((portData: PaperPortfolio) => {
     setState((prev) => ({ ...prev, paper_portfolio: portData }));
     setClosedTrades(portData.closed_trades ?? []);
-  };
+  }, []);
 
   const closedCount = state.paper_portfolio?.closed_trades_count;
   useEffect(() => {
@@ -249,7 +254,8 @@ const DashboardContent: React.FC = () => {
           streamErrored.current = false;
           setStream((prev) => (prev.state === 'live' ? prev : { state: 'live', ageSec: 0 }));
           setLoaded(true);
-          setState(data);
+          // A snapshot with unchanged signals keeps the old array, so the signal table skips a pointless re-render.
+          setState((prev) => ({ ...data, signals: sameJson(prev.signals, data.signals) ? prev.signals : data.signals }));
           // Sync wsConnected with state snapshot to enable HTTP polling fallback
           setWsConnected(Boolean(data.feed_status === 'WS_LIVE' || data.ws_connected));
           if (data.active_mode === 'demo' && !reconnectingRef.current) {
@@ -314,7 +320,7 @@ const DashboardContent: React.FC = () => {
   };
 
   // Paper trading actions
-  const handlePaperBuy = async (signal: Signal) => {
+  const handlePaperBuy = useCallback(async (signal: Signal) => {
     try {
       setActionError(null);
       const res = await apiFetch('/api/paper/trade', {
@@ -343,9 +349,9 @@ const DashboardContent: React.FC = () => {
       console.error('Paper trade failed', e);
       setActionError(e?.message || 'Network error executing trade');
     }
-  };
+  }, [applyPortfolio, state.paper_portfolio?.default_lots]);
 
-  const handleClosePosition = async (id: string) => {
+  const handleClosePosition = useCallback(async (id: string) => {
     try {
       setActionError(null);
       const res = await apiFetch(`/api/paper/close/${encodeURIComponent(id)}`, { method: 'POST' });
@@ -369,9 +375,9 @@ const DashboardContent: React.FC = () => {
       console.error('Failed to close position', e);
       setActionError(e?.message || 'Network error closing position');
     }
-  };
+  }, [applyPortfolio]);
 
-  const handleToggleAutoTrade = async (enabled: boolean) => {
+  const handleToggleAutoTrade = useCallback(async (enabled: boolean) => {
     try {
       const res = await apiFetch('/api/paper/settings', {
         method: 'POST',
@@ -394,7 +400,7 @@ const DashboardContent: React.FC = () => {
       console.error('Toggle auto trade failed', e);
       setActionError(e instanceof Error ? e.message : 'Could not verify paper entry state.');
     }
-  };
+  }, [applyPortfolio]);
 
   const handleKillSwitch = async (engage: boolean) => {
     try {
@@ -428,7 +434,7 @@ const DashboardContent: React.FC = () => {
     }
   };
 
-  const handleChangeSetupMode = async (setup: string, mode: SetupMode) => {
+  const handleChangeSetupMode = useCallback(async (setup: string, mode: SetupMode) => {
     try {
       const res = await apiFetch('/api/paper/settings', {
         method: 'POST',
@@ -450,9 +456,9 @@ const DashboardContent: React.FC = () => {
       console.error('Change setup mode failed', e);
       setActionError('Network error changing the setup mode.');
     }
-  };
+  }, [applyPortfolio]);
 
-  const handleChangeLots = async (lots: number) => {
+  const handleChangeLots = useCallback(async (lots: number) => {
     try {
       const res = await apiFetch('/api/paper/settings', {
         method: 'POST',
@@ -474,7 +480,7 @@ const DashboardContent: React.FC = () => {
       console.error('Change lots failed', e);
       setActionError('Network error changing the lot size.');
     }
-  };
+  }, [applyPortfolio]);
 
   const handleResetPortfolio = async () => {
     if (!window.confirm('Reset the paper portfolio? Every trade is archived (hidden, not deleted) and today\'s loss cap stays as it is. It is refused while a live position is open.')) return;
@@ -508,7 +514,7 @@ const DashboardContent: React.FC = () => {
   };
 
   // Filter signals
-  const filteredSignals = state.signals.filter((sig) => {
+  const filteredSignals = useMemo(() => state.signals.filter((sig) => {
     if (selectedSetup !== 'ALL') {
       const match =
         sig.setup_type === selectedSetup ||
@@ -522,7 +528,15 @@ const DashboardContent: React.FC = () => {
     if (selectedInstrumentType === 'STOCK' && isIndex) return false;
     if (selectedTimeframe !== 'ALL' && sig.timeframe !== selectedTimeframe) return false;
     return true;
-  });
+  }), [state.signals, selectedSetup, selectedOptionType, selectedInstrumentType, selectedTimeframe]);
+  const liveClosedTrades = useMemo(() => liveTrades(closedTrades), [closedTrades]);
+  const onFilters = useCallback((f: Partial<{ setup: string; optionType: string; instrumentType: string; timeframe: string }>) => {
+    if (f.setup !== undefined) setSelectedSetup(f.setup);
+    if (f.optionType !== undefined) setSelectedOptionType(f.optionType);
+    if (f.instrumentType !== undefined) setSelectedInstrumentType(f.instrumentType);
+    if (f.timeframe !== undefined) setSelectedTimeframe(f.timeframe);
+  }, []);
+  const openTrade = useCallback((id: string) => { setSelectedTradeId(id); setActiveTab('trades'); }, []);
 
   const activePositionsCount = tradesLoaded && !tradesError
     ? countOpenTrades(dashboardTrades)
@@ -585,6 +599,7 @@ const DashboardContent: React.FC = () => {
         <DashboardStatus sources={dashboardWatch?.sources ?? []} openCount={activePositionsCount}
           risk={state.paper_portfolio?.risk} stream={stream} error={watchError}
           entriesAllowed={state.paper_portfolio?.auto_trade_enabled} />
+        <ConnectionBanner activeMode={state.active_mode} feedStatus={state.feed_status} wsConnected={state.ws_connected || wsConnected} stream={stream} />
         <div id="main-panel" role="tabpanel" aria-labelledby={`main-tab-${activeTab}`} className="contents">
         {actionError && (
           <div className="desk-alert flex items-center justify-between gap-3" role="alert">
@@ -625,21 +640,16 @@ const DashboardContent: React.FC = () => {
             wsConnected={wsConnected}
             stream={stream}
             filters={{ setup: selectedSetup, optionType: selectedOptionType, instrumentType: selectedInstrumentType, timeframe: selectedTimeframe }}
-            onFilters={(f) => {
-              if (f.setup !== undefined) setSelectedSetup(f.setup);
-              if (f.optionType !== undefined) setSelectedOptionType(f.optionType);
-              if (f.instrumentType !== undefined) setSelectedInstrumentType(f.instrumentType);
-              if (f.timeframe !== undefined) setSelectedTimeframe(f.timeframe);
-            }}
+            onFilters={onFilters}
             filteredSignals={filteredSignals}
-            closedTrades={liveTrades(closedTrades)}
+            closedTrades={liveClosedTrades}
             activeSignalIds={activeSignalIds}
             onPaperBuy={handlePaperBuy}
             onClosePosition={handleClosePosition}
             onToggleAutoTrade={handleToggleAutoTrade}
             onChangeLots={handleChangeLots}
             trades={dashboardTrades}
-            onOpenTrade={(id) => { setSelectedTradeId(id); setActiveTab('trades'); }}
+            onOpenTrade={openTrade}
           />
         ) : activeTab === 'trades' ? (
           <>

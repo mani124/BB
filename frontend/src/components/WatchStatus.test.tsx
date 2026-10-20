@@ -13,7 +13,7 @@ describe('WatchStatus', () => {
   it('shows entry permission and source freshness separately', () => {
     render(<WatchStatus state={state} stream={{ state: 'stale', ageSec: 27 }} confirmedCount={2} />);
     expect(screen.getByText('Risk permits entries')).toBeInTheDocument();
-    expect(screen.getByText(/screen updates stale for 27s/i)).toBeInTheDocument();
+    expect(screen.getByText('Stale 27s')).toBeInTheDocument();
     expect(screen.getByText('2 confirmed')).toBeInTheDocument();
   });
 

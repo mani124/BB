@@ -7,7 +7,7 @@ import { summarizeTrades } from './tradeUtils';
 const dayOf = (t: PaperPosition) => (t.exit_datetime ?? t.entry_datetime ?? '').slice(0, 10);
 
 /** Watch-screen filler: how the latest session is going, per setup, so the left pane is never blank. */
-export const TodaySummary: React.FC<{ trades: PaperPosition[] }> = ({ trades }) => {
+const TodaySummaryImpl: React.FC<{ trades: PaperPosition[] }> = ({ trades }) => {
   const latest = trades.reduce((d, t) => (dayOf(t) > d ? dayOf(t) : d), '');
   const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
   const day = trades.filter((t) => latest !== '' && dayOf(t) === latest);
@@ -57,3 +57,5 @@ export const TodaySummary: React.FC<{ trades: PaperPosition[] }> = ({ trades }) 
     </section>
   );
 };
+
+export const TodaySummary = React.memo(TodaySummaryImpl);

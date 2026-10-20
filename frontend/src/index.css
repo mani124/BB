@@ -283,6 +283,7 @@
     .trade-chart-canvas { height: 300px; }
     .desk-panel { scroll-margin-top: 1rem; }
   }
+  .desk-alert.warn { border-color: var(--warn); background: var(--warn-soft); color: var(--warn); }
   .desk-alert {
     border: 1px solid var(--down); background: var(--down-soft); color: var(--down);
     border-radius: 8px; padding: 10px 14px; font-size: var(--fs-sm);
