@@ -28,7 +28,7 @@ export const OpenPositionsPanel: React.FC<{
     </div>
     <div className={compact ? 'desk-scroll' : ''} tabIndex={compact ? 0 : undefined} aria-label={compact ? 'Open positions list' : undefined}>
     {positions.length === 0 ? (
-      <div className="p-6 text-center text-xs desk-muted">
+      <div className="p-6 text-center text-sm desk-muted">
         No open paper positions. New signals open trades automatically, or click "Paper buy" on a signal.
       </div>
     ) : (
@@ -42,15 +42,7 @@ export const OpenPositionsPanel: React.FC<{
           const cBooked = pos.booked_pnl_rupees ?? 0;
           return (
             <div key={pos.id} style={{ borderBottom: '1px solid var(--line)' }}>
-              <div
-                className="px-3.5 py-2 grid grid-cols-[1fr_auto_auto] items-center gap-x-3 cursor-pointer"
-                onClick={() => setExpandedId(open ? null : pos.id)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId(open ? null : pos.id); } }}
-                role="button"
-                tabIndex={0}
-                aria-expanded={open}
-                title="Click for details"
-              >
+              <div className="px-4 py-3 grid grid-cols-[1fr_auto] items-start gap-x-3 gap-y-2">
                 <div className="min-w-0">
                   <span className="desk-sym">{pos.strike_symbol}</span>{' '}
                   <span className={`desk-side ${pos.option_type === 'CE' ? 'ce' : 'pe'}`}>{pos.option_type}</span>{' '}
@@ -60,15 +52,24 @@ export const OpenPositionsPanel: React.FC<{
                     {isT1 ? ' · T1 hit' : ''}
                   </span>
                 </div>
-                <div className="relative h-1.5 w-20 rounded-sm" style={{ background: 'linear-gradient(90deg, var(--down-soft) 0 33%, var(--line) 33% 66%, var(--up-soft) 66%)' }} aria-hidden>
-                  <i className="absolute block rounded-sm" style={{ top: -3, width: 3, height: 12, background: 'var(--fg)', left: `calc(${cFrac * 100}% - 1px)` }} />
-                </div>
-                <div className={`desk-num text-base font-semibold text-right ${pnlClass(pos.pnl_rupees)}`}>
+                <div className={`desk-hero md text-right ${pnlClass(pos.pnl_rupees)}`}>
                   {formatCurrency(pos.pnl_rupees, true)}
+                </div>
+                <div className="flex items-center gap-2 min-w-0 col-span-2 sm:col-span-1" aria-hidden>
+                  <span className="desk-num text-xs desk-down shrink-0">{pos.option_sl.toFixed(1)}</span>
+                  <div className="relative h-2 flex-1 rounded-sm" style={{ background: 'linear-gradient(90deg, var(--down-soft) 0 33%, var(--line) 33% 66%, var(--up-soft) 66%)' }}>
+                    <i className="absolute block rounded-sm" style={{ top: -3, width: 4, height: 14, background: 'var(--fg)', left: `calc(${cFrac * 100}% - 2px)` }} />
+                  </div>
+                  <span className="desk-num text-xs desk-up shrink-0">{cTarget.toFixed(1)}</span>
+                </div>
+                <div className="flex items-center gap-2 justify-end col-span-2 sm:col-span-1">
+                  <button type="button" className="desk-btn sm" aria-expanded={open} aria-label={`Details for ${pos.strike_symbol}`} onClick={() => setExpandedId(open ? null : pos.id)}>{open ? 'Less' : 'Details'}</button>
+                  <button type="button" className="desk-btn sm accent" aria-label={`Chart ${pos.strike_symbol}`} onClick={() => setChartPosition(pos)}>Chart</button>
+                  <button type="button" className="desk-btn sm danger" aria-label={`Close ${pos.strike_symbol}`} onClick={() => onClosePosition(pos.id)}>Close</button>
                 </div>
               </div>
               {open && (
-                <div className="px-3.5 pb-3 flex flex-col gap-1 text-xs desk-num">
+                <div className="px-4 pb-3 flex flex-col gap-1 text-sm desk-num">
                   <div className="flex flex-wrap justify-between gap-x-3 desk-muted">
                     <span className={isT1 ? '' : 'desk-down'}>{isT1 ? 'Trailed SL' : 'SL'} {pos.option_sl.toFixed(1)}</span>
                     <span>Entry {pos.option_entry.toFixed(1)}</span>
@@ -79,10 +80,6 @@ export const OpenPositionsPanel: React.FC<{
                     {pos.est_net_pnl !== undefined && (
                       <span className={pnlClass(pos.est_net_pnl)}>Net if closed now {formatCurrency(pos.est_net_pnl, true)}</span>
                     )}
-                  </div>
-                  <div className="text-right mt-1">
-                    <button type="button" className="desk-btn accent mr-2" onClick={() => setChartPosition(pos)}>Chart</button>
-                    <button type="button" className="desk-btn danger" onClick={() => onClosePosition(pos.id)}>Close</button>
                   </div>
                 </div>
               )}

@@ -15,7 +15,7 @@ export const IndexHeroRadar: React.FC<IndexHeroRadarProps> = ({ radar }) => {
 
   return (
     <section
-      className="desk-ticker grid-cols-2 lg:grid-cols-6"
+      className="desk-ticker grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
       aria-label="Benchmark indices Bollinger radar (5m)"
     >
       {indexKeys.map((key) => {
@@ -23,9 +23,9 @@ export const IndexHeroRadar: React.FC<IndexHeroRadarProps> = ({ radar }) => {
         // No data for this index yet: show dashes, never invented %B / RSI / VWAP values.
         if (!item) {
           return (
-            <div key={key} className="flex items-center gap-x-1.5 overflow-hidden whitespace-nowrap" title={`${key} · no data yet`}>
-              <b className="font-semibold shrink-0">{SHORT_NAMES[key] ?? key}</b>
-              <span className="desk-num desk-muted">---</span>
+            <div key={key} title={`${key} · no data yet`}>
+              <b className="font-semibold">{SHORT_NAMES[key] ?? key}</b>
+              <div className="desk-num desk-muted">---</div>
             </div>
           );
         }
@@ -34,20 +34,23 @@ export const IndexHeroRadar: React.FC<IndexHeroRadarProps> = ({ radar }) => {
         return (
           <div
             key={key}
-            className="flex items-center gap-x-1.5 overflow-hidden whitespace-nowrap"
             title={`${item.symbol} · %B ${item.percent_b.toFixed(2)} · BW ${item.bandwidth.toFixed(2)}% · RSI ${item.rsi.toFixed(0)} · ${
               isAboveVwap ? 'above' : 'below'
             } VWAP${item.is_squeeze ? ' · squeeze' : ''}`}
           >
-            <b className="font-semibold shrink-0">{SHORT_NAMES[key] ?? item.symbol}</b>
-            <span className="desk-num">{item.close > 0 ? Math.round(item.close).toLocaleString('en-IN') : '---'}</span>
-            <span className={`desk-num ${isPositive ? 'desk-up' : 'desk-down'}`}>
-              {isPositive ? '+' : ''}{item.change_pct.toFixed(2)}%
-            </span>
-            <span className={`desk-num text-xs ${isAboveVwap ? 'desk-up' : 'desk-down'}`} aria-label={isAboveVwap ? 'above VWAP' : 'below VWAP'}>
-              <span className="hidden xl:inline">VW</span>{isAboveVwap ? '▲' : '▼'}
-            </span>
-            {item.is_squeeze && <span className="desk-pill shrink-0">SQ</span>}
+            <div className="flex items-center gap-x-2">
+              <b className="font-semibold">{SHORT_NAMES[key] ?? item.symbol}</b>
+              <span className={`desk-num text-xs ${isAboveVwap ? 'desk-up' : 'desk-down'}`} aria-label={isAboveVwap ? 'above VWAP' : 'below VWAP'}>
+                VW{isAboveVwap ? '▲' : '▼'}
+              </span>
+              {item.is_squeeze && <span className="desk-pill" title="Bollinger squeeze">SQ</span>}
+            </div>
+            <div className="flex items-baseline gap-x-2">
+              <span className="desk-num text-base font-semibold">{item.close > 0 ? Math.round(item.close).toLocaleString('en-IN') : '---'}</span>
+              <span className={`desk-num ${isPositive ? 'desk-up' : 'desk-down'}`}>
+                {isPositive ? '+' : ''}{item.change_pct.toFixed(2)}%
+              </span>
+            </div>
           </div>
         );
       })}

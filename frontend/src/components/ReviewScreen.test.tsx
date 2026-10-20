@@ -49,7 +49,7 @@ describe('compact watch components', () => {
   it('compact position row expands to show details', () => {
     render(<OpenPositionsPanel compact positions={[open]} onClosePosition={() => {}} />);
     expect(screen.queryByText(/Net if closed now/)).toBeNull();
-    fireEvent.click(screen.getByTitle('Click for details'));
+    fireEvent.click(screen.getByRole('button', { name: /Details for/ }));
     expect(screen.getByText(/Net if closed now/)).toBeInTheDocument();
   });
   it('compact strip shows net, unrealized and win rate', () => {

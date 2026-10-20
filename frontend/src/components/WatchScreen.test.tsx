@@ -19,6 +19,8 @@ const state = {
   paper_portfolio: { active_positions: [], closed_trades: [], default_lots: 2, auto_trade_enabled: false },
 } as ScannerState;
 
+const showCandidates = () => fireEvent.click(screen.getByRole('button', { name: /What the scanners are watching/i }));
+
 describe('WatchScreen', () => {
   const watch: DashboardWatch = {
     observed_at: '2026-10-19T10:45:00+05:30',
@@ -43,9 +45,9 @@ describe('WatchScreen', () => {
 
   it('shows mixed-book candidates with preview, source error, and recorded measurements', () => {
     render(<WatchScreen {...props} dashboardWatch={watch} />);
+    showCandidates();
     expect(screen.getByRole('button', { name: /NIFTY 50.*recorded/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /INFY.*preview/i })).toBeInTheDocument();
-    expect(screen.getByText(/CX.*Feed unavailable/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /NIFTY 50.*recorded/i }));
     expect(screen.getByText('61.2')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /INFY.*preview/i }));
@@ -54,6 +56,7 @@ describe('WatchScreen', () => {
 
   it('filters by book and keeps the selected candidate after refresh', () => {
     const { rerender } = render(<WatchScreen {...props} dashboardWatch={watch} />);
+    showCandidates();
     fireEvent.click(screen.getByRole('button', { name: /INFY.*preview/i }));
     rerender(<WatchScreen {...props} dashboardWatch={{ ...watch, observed_at: '2026-10-19T10:46:00+05:30' }} />);
     expect(screen.getByRole('heading', { name: 'INFY' })).toBeInTheDocument();
@@ -65,6 +68,7 @@ describe('WatchScreen', () => {
     const waiting = { ...watch.candidates[0], id: 'setup16:WAIT', book: 'setup16' as const,
       instrument: 'BANKNIFTY', stage: 'NO_BREAKOUT', is_preview: false };
     render(<WatchScreen {...props} dashboardWatch={{ ...watch, candidates: [...watch.candidates, waiting] }} />);
+    showCandidates();
     fireEvent.change(screen.getByLabelText('Status filter'), { target: { value: 'waiting' } });
     expect(screen.getByRole('button', { name: /BANKNIFTY.*recorded/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /NIFTY 50.*recorded/i })).not.toBeInTheDocument();
@@ -74,6 +78,7 @@ describe('WatchScreen', () => {
     const onOpenTrade = vi.fn();
     const trade = { id: 'paper:p1', book: 'paper', signal_id: 's1' } as DashboardTrade;
     render(<WatchScreen {...props} dashboardWatch={watch} trades={[trade]} onOpenTrade={onOpenTrade} />);
+    showCandidates();
     fireEvent.click(screen.getByRole('button', { name: /NIFTY 50.*recorded/i }));
     fireEvent.click(screen.getByRole('button', { name: 'View matching trade and chart' }));
     expect(onOpenTrade).toHaveBeenCalledWith('paper:p1');

@@ -44,7 +44,7 @@ export const RiskControls: React.FC<RiskControlsProps> = ({ risk, onKillSwitch }
       {onKillSwitch && (
         <button
           type="button"
-          className={`desk-btn ${risk.kill_switch_active ? 'accent' : 'danger'}`}
+          className={`desk-btn ${risk.kill_switch_active ? 'accent' : 'danger fill'}`}
           onClick={() => confirmAndRun(!risk.kill_switch_active)}
         >
           {risk.kill_switch_active ? 'Re-enable entries' : 'Kill switch'}

@@ -13,8 +13,7 @@ export const TradeQueue: React.FC<Props> = ({ trades, selectedId, onSelect }) =>
     {trades.map((trade) => (
       <button key={trade.id} type="button" onClick={() => onSelect(trade.id)} aria-pressed={selectedId === trade.id}
         aria-label={`${trade.instrument} ${trade.display_book} ${trade.status}`}
-        className="w-full text-left p-3 flex gap-3 justify-between hover:bg-[var(--alt)]"
-        style={{ background: selectedId === trade.id ? 'var(--accent-soft)' : undefined }}>
+        className="desk-row">
         <span className="min-w-0">
           <strong className="block truncate">{trade.instrument}</strong>
           <span className="desk-muted text-xs block">{trade.display_book} · {trade.setup}</span>
