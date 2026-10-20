@@ -161,3 +161,51 @@ def test_risk_status_reports_a_capped_pool(tmp_path):
     e.day_pnl = lambda book=None, pool="main": -5000.0 if pool == "f22" else 0.0
     st = e.risk_status("live")
     assert st.capped_pools == ["Setup 22"] and not st.loss_cap_tripped and not st.entries_blocked
+
+
+# ---- 2026-10-20 review: index-governed setups (20-23) exit on the index, not the option premium
+def _t315f_position(tmp_path, number=22):
+    from app.services.setup_t315f import VERSIONS
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    sig = make_test_signal("SG")
+    sig.setup_type = VERSIONS[number].setup_type
+    pos = e.open_position_from_signal(sig, lots=2)
+    return e, pos
+
+
+def test_index_governed_position_ignores_option_premium_when_spot_is_known(tmp_path):
+    e, pos = _t315f_position(tmp_path)
+    spot = (pos.underlying_sl + 15) if pos.option_type == "CE" else (pos.underlying_sl - 15)   # still on the safe side
+    e.update_market_prices({pos.symbol: spot}, option_price_map={pos.id: round(pos.option_sl - 3, 2)})
+    assert pos in e._portfolio.active_positions and pos.status == "OPEN"
+    # spot through the stop does exit it
+    breach = (pos.underlying_sl - 1) if pos.option_type == "CE" else (pos.underlying_sl + 1)
+    e.update_market_prices({pos.symbol: breach}, option_price_map={pos.id: round(pos.option_sl - 3, 2)})
+    assert e._portfolio.closed_trades[-1].id == pos.id and e._portfolio.closed_trades[-1].status == "STOPPED_OUT"
+
+
+def test_other_setups_still_stop_on_option_premium(tmp_path):
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    pos = e.open_position_from_signal(make_test_signal("PREM"))
+    spot = (pos.underlying_sl + 15) if pos.option_type == "CE" else (pos.underlying_sl - 15)
+    e.update_market_prices({pos.symbol: spot}, option_price_map={pos.id: round(pos.option_sl - 3, 2)})
+    assert e._portfolio.closed_trades[-1].id == pos.id
+
+
+# ---- 2026-10-20 review: an unquoted / bid-only cycle must not keep a recovered pending stop alive
+def test_pending_stop_clears_on_a_bid_only_update_above_the_stop(tmp_path):
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    pos = e.open_position_from_signal(make_test_signal("BIDONLY"))
+    pos.feed_mode = "live"
+    pos.pending_spot_exit = "Stop-Loss Hit"
+    pos.current_option_price = round(pos.option_sl - 5, 2)       # stale, below the stop
+    spot = (pos.underlying_sl + 20) if pos.option_type == "CE" else (pos.underlying_sl - 20)
+    e.update_market_prices({pos.symbol: spot}, option_bid_map={pos.id: round(pos.option_sl + 8, 2)}, feed_mode="live")
+    assert pos in e._portfolio.active_positions and pos.pending_spot_exit is None
+
+
+def test_zero_option_price_is_not_a_stop_breach():
+    from app.services.paper_exits import _level_hit
+    pos = SimpleNamespace(option_type="CE", current_option_price=0.0, option_sl=80.0, underlying_sl=100.0, setup_type="Setup 1")
+    assert _level_hit(pos, 120.0, "sl") is False
+    assert _level_hit(pos, 120.0, "sl", fresh_opt=70.0) is True

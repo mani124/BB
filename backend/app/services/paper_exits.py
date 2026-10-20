@@ -19,17 +19,34 @@ logger = logging.getLogger(__name__)
 
 
 
-def _level_hit(pos, curr_spot, level: str) -> bool:
-    """Whether spot or the option price currently sits beyond the stop ('sl'), Target 1 ('t1') or Target 2 ('t2')."""
+SPOT_GOVERNED = {"20", "21", "22", "23"}   # T315 and T315-F: exits follow the index, not the option premium
+
+
+def _spot_governed(pos) -> bool:
+    from app.services.setup_switches import setup_number
+    return setup_number(pos.setup_type) in SPOT_GOVERNED
+
+
+def _level_hit(pos, curr_spot, level: str, fresh_opt: Optional[float] = None) -> bool:
+    """Whether spot or the option price currently sits beyond the stop ('sl'), Target 1 ('t1') or Target 2 ('t2').
+    `fresh_opt` is this cycle's quote (LTP or bid) when one arrived; an unquoted (zero) price never counts as a breach."""
     ce = pos.option_type == "CE"
-    opt = pos.current_option_price
+    opt = fresh_opt if fresh_opt is not None and fresh_opt > 0 else pos.current_option_price
+    opt_ok = bool(opt and opt > 0) and not (_spot_governed(pos) and curr_spot is not None)
     if level == "sl":
         spot_hit = curr_spot is not None and (curr_spot <= pos.underlying_sl if ce else curr_spot >= pos.underlying_sl)
-        return spot_hit or opt <= pos.option_sl
+        return spot_hit or (opt_ok and opt <= pos.option_sl)
     target_spot = pos.underlying_target_1 if level == "t1" else pos.underlying_target_2
     target_opt = pos.option_target_1 if level == "t1" else pos.option_target_2
     spot_hit = curr_spot is not None and (curr_spot >= target_spot if ce else curr_spot <= target_spot)
-    return spot_hit or opt >= target_opt
+    return spot_hit or (opt_ok and opt >= target_opt)
+
+
+def _fresh_quote(bid, ltp) -> Optional[float]:
+    for v in (ltp, bid):
+        if v is not None and float(v) > 0:
+            return float(v)
+    return None
 
 
 def _pending_is_stop(pos) -> bool:
@@ -247,13 +264,23 @@ class PaperExitsMixin:
                 or (real_opt_price is not None and float(real_opt_price) > 0)
             )
 
+            # Index-governed setups (20-23) are analysed and exited on the index chart only: once spot is known, the
+            # option premium (spread, time decay) never triggers their stop or targets. Premium levels are only a
+            # fallback when no spot price arrived.
+            opt_levels = not (_spot_governed(pos) and curr_spot is not None)
+
             # A stop queued while no live quote existed: with a fresh quote, act on it only if the stop is still
             # breached. If price has recovered above it, drop the stale flag and evaluate normally. Targets stay
             # pending: they filled at the touch and are booked at the real quote (labelled a late fill if lower).
             if has_fresh_quote and getattr(pos, "pending_spot_exit", None) and _pending_is_stop(pos) \
-                    and not _level_hit(pos, curr_spot, "sl"):
+                    and not _level_hit(pos, curr_spot, "sl", _fresh_quote(real_bid_price, real_opt_price)):
                 logger.info("Pending stop for %s dropped: price recovered above the stop before a fresh quote arrived", pos.id)
                 pos.pending_spot_exit = None
+                # a bid-only update leaves the old (breached) last price in place; take the fresh quote so it cannot re-trigger
+                fresh = _fresh_quote(real_bid_price, real_opt_price)
+                if fresh is not None:
+                    pos.current_option_price = round(fresh, 2)
+                    pos.pnl_points = round(pos.current_option_price - pos.option_entry, 2)
 
             # Check if pending spot exit can now execute with fresh quote
             if getattr(pos, "pending_spot_exit", None) and has_fresh_quote:
@@ -344,7 +371,7 @@ class PaperExitsMixin:
             # --- SETUPS 1-4 & 6-8: EXITS BASED ON UNDERLYING SPOT OR OPTION LEVELS ---
             if pos.option_type == "CE":
                 # Check SL
-                if (curr_spot is not None and curr_spot <= pos.underlying_sl) or pos.current_option_price <= pos.option_sl:
+                if (curr_spot is not None and curr_spot <= pos.underlying_sl) or (opt_levels and pos.current_option_price <= pos.option_sl):
                     is_breakeven = (pos.status == "TARGET_1")
                     reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
                     if pos.feed_mode == "live" and not has_fresh_quote:
@@ -365,7 +392,7 @@ class PaperExitsMixin:
                     continue
 
                 # Check Target 2
-                elif (curr_spot is not None and curr_spot >= pos.underlying_target_2) or pos.current_option_price >= pos.option_target_2:
+                elif (curr_spot is not None and curr_spot >= pos.underlying_target_2) or (opt_levels and pos.current_option_price >= pos.option_target_2):
                     if pos.feed_mode == "live" and not has_fresh_quote:
                         pos.pending_spot_exit = "Target 2 (1:2.5) Hit"
                         still_active.append(pos)
@@ -385,7 +412,7 @@ class PaperExitsMixin:
 
                 # Check Target 1
                 hit_ce_tp1 = (
-                    ((curr_spot is not None and curr_spot >= pos.underlying_target_1) or pos.current_option_price >= pos.option_target_1)
+                    ((curr_spot is not None and curr_spot >= pos.underlying_target_1) or (opt_levels and pos.current_option_price >= pos.option_target_1))
                     and pos.status == "OPEN"
                 ) or getattr(pos, "pending_spot_tp1", False)
 
@@ -417,7 +444,7 @@ class PaperExitsMixin:
 
             else:  # PE
                 # Check SL
-                if (curr_spot is not None and curr_spot >= pos.underlying_sl) or pos.current_option_price <= pos.option_sl:
+                if (curr_spot is not None and curr_spot >= pos.underlying_sl) or (opt_levels and pos.current_option_price <= pos.option_sl):
                     is_breakeven = (pos.status == "TARGET_1")
                     reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
                     if pos.feed_mode == "live" and not has_fresh_quote:
@@ -438,7 +465,7 @@ class PaperExitsMixin:
                     continue
 
                 # Check Target 2
-                elif (curr_spot is not None and curr_spot <= pos.underlying_target_2) or pos.current_option_price >= pos.option_target_2:
+                elif (curr_spot is not None and curr_spot <= pos.underlying_target_2) or (opt_levels and pos.current_option_price >= pos.option_target_2):
                     if pos.feed_mode == "live" and not has_fresh_quote:
                         pos.pending_spot_exit = "Target 2 (1:2.5) Hit"
                         still_active.append(pos)
@@ -458,7 +485,7 @@ class PaperExitsMixin:
 
                 # Check Target 1
                 hit_pe_tp1 = (
-                    ((curr_spot is not None and curr_spot <= pos.underlying_target_1) or pos.current_option_price >= pos.option_target_1)
+                    ((curr_spot is not None and curr_spot <= pos.underlying_target_1) or (opt_levels and pos.current_option_price >= pos.option_target_1))
                     and pos.status == "OPEN"
                 ) or getattr(pos, "pending_spot_tp1", False)
 

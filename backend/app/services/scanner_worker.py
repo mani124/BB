@@ -100,6 +100,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         self._bar_completed_symbols: set[str] = set()
         self._bars3: dict[str, BarBuilder] = {}   # T315-F 3m versions: own bars for NIFTY 50 / NIFTY BANK
         self._bars3_seed_attempts: dict[str, float] = {}
+        self._bars3_checked: dict[str, object] = {}   # last 3m bar already given its runner-trail check, per index
         self._instrument_last_quote_time: dict[str, float] = {}
         self._option_last_quote_time: dict[str, float] = {}
         self._latest_option_quotes: dict[str, OptionQuote] = {}
@@ -764,16 +765,27 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 try:
                     if cid and tok:
                         await self.seed_three_minute_bars_if_needed(cid, tok, inst)
-                    done3 = self.update_three_minute_bars(inst.symbol, live_ltp)
+                        if self._session_generation != gen or (cid and not self._session_credentials and not client_id):
+                            logger.info("Scan cycle aborted after 3m seed: session disconnected")
+                            self._state.is_scanning = False
+                            self._state.active_mode = "demo"
+                            self._state.feed_status = "DEMO"
+                            return self._state
+                    self.update_three_minute_bars(inst.symbol, live_ltp)
                     builder = self._bars3.get(inst.symbol)
                     if builder is not None and builder.count > 50:
                         df3 = builder.completed_frame()
                         for s in evaluate_t315f(21, inst.symbol, df3):
                             if pd.to_datetime(s.timestamp).date() == market_hours.now_ist_naive().date():
                                 confirmed_signals.append(s)
-                        if done3:
+                        # A bar may have completed on a live tick between scan cycles, so key the runner check on the
+                        # last completed bar rather than on this cycle's update. The first sight of a symbol only records it.
+                        last_bar = builder.last_bar_time
+                        seen = self._bars3_checked.get(inst.symbol)
+                        if seen is not None and last_bar is not None and last_bar > seen:
                             ema15 = float(t315f_emas(df3)[1].iloc[-1])
                             runner_checks.append((inst.symbol, 3, float(df3["close"].iloc[-1]), ema15))
+                        self._bars3_checked[inst.symbol] = last_bar
                 except Exception as e:
                     logger.warning(f"Setup 21 (T315-F 3m) failed for {inst.symbol}: {e}")
 

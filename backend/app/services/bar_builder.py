@@ -72,9 +72,13 @@ class BarBuilder:
         slot = slot_start(now, self.minutes)
         completed = False
         if self.forming is not None and self.forming["timestamp"] < slot:
-            self.bars.append(self.forming)
+            gap = slot - self.forming["timestamp"]
+            if gap <= timedelta(minutes=self.minutes) and self.forming["timestamp"].date() == slot.date():
+                self.bars.append(self.forming)
+                completed = True
+            # else: the forming bar belongs to an earlier session or was left unfinished across a long gap (overnight,
+            # a feed outage); it was never closed by a price in its own slot, so discard it rather than call it complete.
             self.forming = None
-            completed = True
         if self.forming is None:
             self.forming = {"timestamp": slot, "open": price, "high": price, "low": price, "close": price, "volume": 0}
         else:
@@ -82,6 +86,10 @@ class BarBuilder:
             self.forming["low"] = min(self.forming["low"], price)
             self.forming["close"] = price
         return completed
+
+    @property
+    def last_bar_time(self) -> Optional[datetime]:
+        return self.bars[-1]["timestamp"] if self.bars else None
 
     def completed_frame(self) -> pd.DataFrame:
         return pd.DataFrame(self.bars)

@@ -58,3 +58,18 @@ def test_seed_leaves_a_gap_instead_of_building_a_bar_from_missing_minutes():
     n = b.seed(rows, now=datetime(2026, 10, 15, 9, 22))
     assert n == 1 and b.bars[0]["timestamp"] == datetime(2026, 10, 15, 9, 18)
     assert "_n" not in b.bars[0]
+
+
+def test_forming_bar_from_a_previous_session_is_not_completed_on_the_next_morning():
+    b = BarBuilder(3)
+    b.update(100.0, now=datetime(2026, 10, 15, 15, 27, 10))
+    assert b.update(101.0, now=datetime(2026, 10, 16, 9, 15, 5)) is False
+    assert b.count == 0 and b.forming["timestamp"] == datetime(2026, 10, 16, 9, 15)
+
+
+def test_last_bar_time_tracks_the_latest_completed_bar():
+    b = BarBuilder(3)
+    assert b.last_bar_time is None
+    b.update(100.0, now=datetime(2026, 10, 15, 10, 0, 5))
+    b.update(101.0, now=datetime(2026, 10, 15, 10, 3, 1))
+    assert b.last_bar_time == datetime(2026, 10, 15, 10, 0)

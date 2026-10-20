@@ -296,6 +296,12 @@ class ScannerStreamMixin:
         if inst:
             # Update live intraday candles
             self.get_or_update_live_candles(inst, {"last_price": ltp, "volume": vol})
+            # T315-F 3m bars take every index tick too, so wicks between scan cycles are not lost
+            if inst.symbol in ("NIFTY 50", "NIFTY BANK"):
+                try:
+                    self.update_three_minute_bars(inst.symbol, ltp)
+                except Exception as e:
+                    logger.debug(f"3m bar tick update failed for {inst.symbol}: {e}")
 
             # Update index radar if applicable
             if inst.symbol in self._state.radar:
