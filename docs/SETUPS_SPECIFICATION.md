@@ -792,3 +792,58 @@ ADX on the stretch bar <= `cx_adx_max_fade` (22). The stretch bar closes outside
 * All thresholds are starting values, **not replayed on real MCX or currency candles** (none were available when written); the book is validated by paper trading and by the Phase 0 data check (`backend/scripts/check_mcx_currency_data.py`), which confirms that the Dhan account returns the instrument master, quotes, option chains with greeks, 5m candles and WebSocket packets for these segments.
 * Slippage and spreads are tuned for NSE index options; MCX and currency option spreads differ, so paper results will flatter until `cx_slippage_pct` and `cx_max_spread_pct` are calibrated from paper fills.
 * Premium units: MCX premiums are INR per quoted unit (barrel, 10 g), currency premiums INR per USD. A CRUDEOIL lot is 100 barrels, so one lot moves much more per rupee than an NSE option lot.
+
+---
+
+## 17. Setup 20: T315 (EMA 3 / EMA 15 cross on the index)
+
+* **Setup Enum:** `SetupType.SETUP_20_T315`; code in `backend/app/services/setup_t315.py`, wired in `scanner_worker` after Setup 12 (completed bars only).
+* **Origin:** the "T315" intraday framework: a 3 EMA against a 15 EMA on a 5 minute chart. The analysis is done on the index (spot) chart only; the option is just what is bought afterwards. No indicator is applied to the option chart.
+* **Underlying Principle:** the 3 EMA is immediate momentum, the 15 EMA the anchor trend. A cross of the fast over the slow EMA in the direction of the bigger trend is the entry.
+
+### Qualification (CE shown; PE is the mirror), on completed 5m index bars
+1. **Cross:** previous 3 EMA <= previous 15 EMA and the 3 EMA is now above the 15 EMA (`ta.crossover`). Both are `close.ewm(span=n, adjust=False)`. Fires on the cross bar only, never on later bars.
+2. **Trend filter (always on):** close above the 50 EMA for a CE, below it for a PE. This is the optional filter from the framework, switched on here.
+3. **Instruments:** indices only (`INDEX_SYMBOLS`); the strategy returns nothing for stocks. Default per-setup switch: `index`.
+4. **Window:** bar start from 09:30 to 15:05 (a 15:05 bar confirms at 15:10). Needs at least 50 bars of history for the 50 EMA. Evaluated only on the 5m timeframe.
+
+### Risk
+* Stop (an index level): CE `min(15 EMA, bar low) - max(0.25 x bar range, 0.05% of close)`; PE mirrored with the high. The paper engine already exits when spot reaches `underlying_sl`, so the option is closed on the index level whatever its own premium is doing. Targets T1 1.5R / T2 2.5R on spot, strike 1 ITM, partial booking at T1, sizing and the risk cap as for Setups 1 to 4.
+* **3:15 PM rule:** no new entries after 15:15 (every setup), and open T315 positions are closed at 15:15 with exit reason `T315_CUTOFF`. Other setups keep the normal 15:20 square-off (`market_hours.is_t315_cutoff_due`, `PaperGuards.square_off_if_due`).
+* No exit on the opposite cross: only the index stop, the targets and the cutoff close a T315 trade.
+
+### Notes
+* The framework describes both a 5 minute and a 3 minute chart; the scanner only builds 5m and 15m bars, so this setup is 5m.
+* The framework suggests ATM or slightly ITM strikes and the current weekly expiry, switching to next week on expiry day. Strike and expiry selection are the existing `recommend_strike` / chain logic (1 ITM); this setup does not change them.
+* Thresholds (09:30 start, 50 EMA filter) are starting values chosen before any replay; tune them from paper trades. Option fills, slippage and costs cannot be tested from past data; the spot signal can be replayed on past 5m index candles.
+
+---
+
+## 18. Setups 21, 22, 23: T315 version F (3m, 5m, 5m wide) on NIFTY 50 and NIFTY BANK
+
+* **Code:** `backend/app/services/setup_t315f.py` (rules, shared with the replay `backend/scripts/replay_t315_f.py`), `bar_builder.py` (3 minute bars), wired in `scanner_worker`. Enums `SETUP_21_T315F_3M`, `SETUP_22_T315F_5M`, `SETUP_23_T315F_5M_WIDE`.
+* **Three independent versions**, each on both indices, each with its own risk and exposure pool (`strategy_engine.pool_of`: `f21`, `f22`, `f23`): their open positions, loss caps and loss streaks never count against each other or the main setups, and they can hold the same index and side at the same time.
+
+| Version | Chart | Distances |
+|---|---|---|
+| Setup 21 | 3 minute (built from Dhan 1m history plus live prices) | Nifty points |
+| Setup 22 | 5 minute | Nifty points |
+| Setup 23 | 5 minute | Nifty points x 1.29 |
+
+NIFTY BANK uses the same rules with every distance multiplied by 2.41 (its price ratio to Nifty, `BANKNIFTY_SCALE`).
+
+### Rules (index points; Nifty values)
+1. **Entry:** on a completed bar the 3 EMA crosses the 15 EMA and the close is on the trade side of the 50 EMA (CE above, PE below). Bar start 09:30 to the last bar that confirms before 15:15 (3m: 15:09, 5m: 15:05), same session as the previous bar, at least 50 bars of history. Entry price is that bar's close.
+2. **Stop:** the extreme of the last 5 bars (low for a CE, high for a PE), clamped to 25..30 points. The paper engine exits when spot reaches it.
+3. **Target 1:** 45 points. The engine books half the lots there (a single lot cannot be split) and moves the stop to the entry price.
+4. **Runner:** no fixed target (T2 is set 450 points away). It is closed when a completed bar of its own timeframe closes back across the 15 EMA (`T315F_RUNNER_TRAIL`, `PaperGuards.close_t315f_runners`), if the stop at cost is hit, or at the 15:15 cutoff (`T315_CUTOFF`, with Setup 20).
+5. **Switches:** per setup `off`, `nifty`, `banknifty` or `index` (both; the default). Live broker routing is separate and these setups are not in `live_allowed_setups`, so they are paper only.
+
+### Replay differences from the live engine
+The replay books 60% at Target 1, the engine books half the lots; the replay checks the trail on the bar after Target 1 was hit, the engine checks every completed bar once the position is in the Target 1 state; the replay fills exactly at levels and models no spread or time decay.
+
+### Evidence (NIFTY 50 and NIFTY BANK, 1 minute candles from Dhan, 6 Aug to 19 Oct 2026, 51 trading days)
+* **Nifty, 51 days:** 3m 298 trades, +26 points; 5m 168 trades, -309 points; 5m wide 168 trades, -195 points. On the 31 days F was never tuned on (6 Aug to 20 Sep) all three versions lost (3m -947, 5m -899, 5m wide -947 points). The profit came from 21 Sep to 19 Oct, when the daily range was about 1.35% against 0.56% in August.
+* **After costs** (about Rs 1 a share in charges plus spread and slippage, Rs 2 to 4 a share), every version lost money over the 51 days.
+* **Bank Nifty** with the points scaled by 2.41 lost in every period and version: 51 days -2,843 (3m), -2,353 (5m), -3,247 (5m wide) points.
+* No regime filter tested (ADX, trend efficiency, EMA gap, day range, drift, quiet-market gate, volatility-scaled distances) made any version profitable after costs on the unseen days. These setups are deployed for paper trading to gather real fills and costs, not because the replay supports them.

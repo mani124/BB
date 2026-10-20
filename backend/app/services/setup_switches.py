@@ -8,7 +8,9 @@ from typing import Optional
 
 from app.services.strategy_engine import INDEX_SYMBOLS
 
-MODES = ("off", "index", "stocks", "all")
+NIFTY_NAMES = {"NIFTY 50", "NIFTY"}
+BANKNIFTY_NAMES = {"NIFTY BANK", "BANKNIFTY"}
+MODES = ("off", "index", "stocks", "all", "nifty", "banknifty")
 
 # Defaults from the 2026-10-15 trade review: Setups 1 and 2 lost money on stock options.
 DEFAULT_MODES: dict[str, str] = {
@@ -26,6 +28,10 @@ DEFAULT_MODES: dict[str, str] = {
     "13": "index",
     "14": "index",
     "16": "off",
+    "20": "off",
+    "21": "index",
+    "22": "index",
+    "23": "index",
 }
 
 
@@ -53,6 +59,12 @@ def block_reason(modes: dict[str, str], setup_type, symbol: str) -> Optional[str
         return None
     mode = modes.get(num, DEFAULT_MODES.get(num, "all"))
     is_index = str(symbol).upper() in INDEX_SYMBOLS
+    if mode in ("nifty", "banknifty"):
+        # The T315-F setups can run on one index only: "nifty" is NIFTY 50, "banknifty" is NIFTY BANK.
+        names = NIFTY_NAMES if mode == "nifty" else BANKNIFTY_NAMES
+        if str(symbol).upper() not in names:
+            return f"Setup {num} is limited to {'Nifty' if mode == 'nifty' else 'Bank Nifty'}"
+        return None
     if mode == "off":
         return f"Setup {num} is switched off"
     if mode == "index" and not is_index:

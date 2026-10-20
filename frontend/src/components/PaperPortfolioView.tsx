@@ -57,6 +57,10 @@ const SETUP_FILTER_OPTIONS = [
   { id: 'SETUP_13', label: 'S13 Option VWAP' },
   { id: 'SETUP_14', label: 'S14 OI Wall Bounce' },
   { id: 'SETUP_16', label: 'S16 Squeeze Break' },
+  { id: 'SETUP_20', label: 'S20 T315 EMA Cross' },
+  { id: 'SETUP_21', label: 'S21 T315-F 3m' },
+  { id: 'SETUP_22', label: 'S22 T315-F 5m' },
+  { id: 'SETUP_23', label: 'S23 T315-F 5m wide' },
 ];
 
 const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
@@ -109,7 +113,7 @@ const dayLabel = (iso: string): string => {
 const DAYS_SHOWN = 5;
 const PAGE_SIZE = 25;
 
-const SETUP_SWITCH_ROWS: { key: string; label: string }[] = [
+const SETUP_SWITCH_ROWS: { key: string; label: string; perIndex?: boolean }[] = [
   { key: '1', label: 'Setup 1 · BB Squeeze' },
   { key: '2', label: 'Setup 2 · Walking the Bands' },
   { key: '3', label: 'Setup 3 · W/M Reversal' },
@@ -125,6 +129,18 @@ const SETUP_SWITCH_ROWS: { key: string; label: string }[] = [
   { key: '13', label: 'Setup 13 · Option VWAP Reclaim' },
   { key: '14', label: 'Setup 14 · OI Wall Bounce' },
   { key: '16', label: 'Setup 16 · Option Squeeze Breakout' },
+  { key: '20', label: 'Setup 20 · T315 EMA 3/15 Cross' },
+  { key: '21', label: 'Setup 21 · T315-F 3m', perIndex: true },
+  { key: '22', label: 'Setup 22 · T315-F 5m', perIndex: true },
+  { key: '23', label: 'Setup 23 · T315-F 5m wide', perIndex: true },
+];
+
+// The T315-F setups also run on one index only, so each can be switched on for Nifty or Bank Nifty independently.
+const INDEX_MODE_OPTIONS: { mode: SetupMode; label: string; title: string }[] = [
+  { mode: 'off', label: 'Off', title: 'Never auto-enter this setup' },
+  { mode: 'nifty', label: 'Nifty', title: 'Auto-enter on Nifty 50 only' },
+  { mode: 'banknifty', label: 'Bank Nifty', title: 'Auto-enter on Nifty Bank only' },
+  { mode: 'index', label: 'Both', title: 'Auto-enter on Nifty 50 and Nifty Bank' },
 ];
 
 const SETUP_MODE_OPTIONS: { mode: SetupMode; label: string; title: string }[] = [
@@ -259,7 +275,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
                 <div key={row.key} className="flex items-center justify-between gap-3 text-xs">
                   <span>{row.label}</span>
                   <div className="desk-seg" role="group" aria-label={`${row.label} mode`}>
-                    {SETUP_MODE_OPTIONS.map((opt) => (
+                    {(row.perIndex ? INDEX_MODE_OPTIONS : SETUP_MODE_OPTIONS).map((opt) => (
                       <button
                         key={opt.mode}
                         type="button"

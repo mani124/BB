@@ -16,6 +16,10 @@ export type SetupType =
   | 'Setup 13: Option VWAP Reclaim'
   | 'Setup 14: OI Wall Bounce'
   | 'Setup 16: Option Squeeze Breakout'
+  | 'Setup 20: T315 EMA 3/15 Cross'
+  | 'Setup 21: T315-F 3m'
+  | 'Setup 22: T315-F 5m'
+  | 'Setup 23: T315-F 5m wide'
   | 'SETUP_1_SQUEEZE_EXPANSION'
   | 'SETUP_2_WALKING_BANDS'
   | 'SETUP_3_WM_REVERSAL'
@@ -30,7 +34,11 @@ export type SetupType =
   | 'SETUP_12_ADX_EMA_CROSS'
   | 'SETUP_13_OPTION_VWAP_RECLAIM'
   | 'SETUP_14_OI_WALL_BOUNCE'
-  | 'SETUP_16_OPTION_SQUEEZE_BREAK';
+  | 'SETUP_16_OPTION_SQUEEZE_BREAK'
+  | 'SETUP_20_T315_EMA_CROSS'
+  | 'SETUP_21_T315F_3M'
+  | 'SETUP_22_T315F_5M'
+  | 'SETUP_23_T315F_5M_WIDE';
 
 export interface OptionStrikeRecommendation {
   symbol: string;
@@ -173,7 +181,7 @@ export interface PaperPosition {
   charges_breakdown?: TradeChargesBreakdown;
 }
 
-export type SetupMode = 'off' | 'index' | 'stocks' | 'all';
+export type SetupMode = 'off' | 'index' | 'stocks' | 'all' | 'nifty' | 'banknifty';
 
 export interface RiskStatus {
   daily_loss_limit: number; // 0 = cap disabled

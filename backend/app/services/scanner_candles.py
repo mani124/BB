@@ -164,6 +164,40 @@ class ScannerCandlesMixin:
             logger.debug(f"Could not seed historical candles for {sym}: {e}")
         return False
 
+    async def seed_three_minute_bars_if_needed(self, client_id: str, access_token: str, inst: Instrument) -> bool:
+        """Build the 3 minute history for T315-F from Dhan 1 minute candles (Dhan serves no 3 minute candles)."""
+        from app.services.bar_builder import BarBuilder
+        sym = inst.symbol
+        builder = self._bars3.setdefault(sym, BarBuilder(3))
+        if builder.count >= 60:
+            return True
+        now_t = time.time()
+        if now_t - self._bars3_seed_attempts.get(sym, 0.0) < 60.0:
+            return False
+        self._bars3_seed_attempts[sym] = now_t
+        try:
+            df = await self.dhan_client.fetch_intraday_candles(
+                client_id=client_id, access_token=access_token, security_id=str(inst.security_id),
+                exchange_segment=str(inst.exchange_segment), instrument_type=str(inst.instrument_type), interval=1,
+            )
+            if df is None or df.empty:
+                return False
+            rows = [{"timestamp": r["timestamp"], "open": float(r["open"]), "high": float(r["high"]), "low": float(r["low"]),
+                     "close": float(r["close"]), "volume": int(r.get("volume", 0) or 0)} for _, r in df.iterrows()]
+            n = builder.seed(rows)
+            logger.info(f"Seeded {n} three-minute bars for {sym}")
+            return n >= 60
+        except Exception as e:
+            logger.debug(f"Could not seed 3m bars for {sym}: {e}")
+            return False
+
+    def update_three_minute_bars(self, symbol: str, live_ltp: Optional[float]) -> bool:
+        """Fold the latest live price into the 3 minute bars. True when a 3 minute bar just completed."""
+        from app.services.bar_builder import BarBuilder
+        if not live_ltp or live_ltp <= 0:
+            return False
+        return self._bars3.setdefault(symbol, BarBuilder(3)).update(float(live_ltp))
+
     def get_or_update_live_candles(self, inst: Instrument, inst_quote: Optional[dict]) -> pd.DataFrame:
         """
         Build and maintain 100% real intraday OHLCV bars populated and updated continuously

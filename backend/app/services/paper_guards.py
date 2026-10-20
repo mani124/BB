@@ -6,8 +6,12 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Literal, Optional
 from pydantic import BaseModel
 from app.services.charges_calculator import calculate_option_trade_charges
-from app.services.strategy_engine import Signal, is_setup5, is_setup11
+from app.services.strategy_engine import Signal, is_setup5, is_setup11, pool_of
 from app.services.strike_selector import get_lot_size
+from app.services.setup_switches import setup_number
+from app.services.setup_t315f import is_t315f
+
+T315_FAMILY = {"20", "21", "22", "23"}   # setups whose open positions close at the 3:15 PM cutoff
 from app.services import market_hours
 from app.core.config import settings
 from app.services.paper_models import *  # noqa: F401,F403
@@ -64,11 +68,12 @@ class PaperGuardsMixin:
 
         # Setup 11 shadows Setup 5 on the same contracts, so it has its own book of caps: its positions
         # never count against the other setups' limits and theirs never count against it.
-        s11 = is_setup11(signal.setup_type)
+        # The same applies to each T315-F version (Setups 21 to 23): `pool_of` gives every one its own book.
+        pool = pool_of(signal.setup_type)
 
         def same_book(p) -> bool:
             return (feed_mode is None or getattr(p, "feed_mode", "demo") == feed_mode) \
-                and is_setup11(p.setup_type) == s11
+                and pool_of(p.setup_type) == pool
 
         active = [p for p in self._portfolio.active_positions if same_book(p)]
         closed = [p for p in self._portfolio.closed_trades if same_book(p)]
@@ -153,20 +158,41 @@ class PaperGuardsMixin:
             self._recalculate_metrics()
         return stale
 
+    def close_t315f_runners(self, symbol: str, minutes: int, bar_close: float, ema15: float) -> list[PaperPosition]:
+        """T315-F runners (positions that have booked Target 1) close when a completed bar of their timeframe closes back
+        across the 15 EMA: below it for a CE, above it for a PE. Call once per completed bar."""
+        from app.services.setup_t315f import runner_should_close
+        closed = []
+        for pos in list(self._portfolio.active_positions):
+            if not is_t315f(pos.setup_type) or pos.symbol != symbol or pos.timeframe != f"{minutes}m" or pos.status != "TARGET_1":
+                continue
+            if runner_should_close(pos.option_type, float(bar_close), float(ema15)):
+                res = self.close_position(pos.id, reason=T315F_RUNNER_TRAIL)
+                if res:
+                    closed.append(res)
+        return closed
+
     def square_off_if_due(self, feed_mode: Optional[str] = "live", option_bid_map: Optional[dict] = None) -> list[PaperPosition]:
         """P0-5: close open positions once the EOD square-off time is reached.
 
         Live positions fill at this cycle's bid when one is known (like every other live exit), else at the last price."""
-        if not market_hours.is_square_off_due():
+        general_due = market_hours.is_square_off_due()
+        t315_due = market_hours.is_t315_cutoff_due()
+        if not general_due and not t315_due:
             return []
         closed = []
         for pos in list(self._portfolio.active_positions):
             if feed_mode is not None and getattr(pos, "feed_mode", "demo") != feed_mode:
                 continue
+            # T315 closes at 3:15 PM; every other setup waits for the normal square-off time.
+            is_t315 = setup_number(pos.setup_type) in T315_FAMILY
+            if not general_due and not is_t315:
+                continue
+            reason = EOD_SQUARE_OFF if general_due else T315_CUTOFF
             bid = None
             if option_bid_map and getattr(pos, "feed_mode", "demo") == "live":
                 bid = option_bid_map.get(str(pos.option_security_id)) or option_bid_map.get(pos.id)
-            res = self.close_position(pos.id, reason=EOD_SQUARE_OFF, real_bid_price=bid if bid and bid > 0 else None)
+            res = self.close_position(pos.id, reason=reason, real_bid_price=bid if bid and bid > 0 else None)
             if res:
                 closed.append(res)
         return closed

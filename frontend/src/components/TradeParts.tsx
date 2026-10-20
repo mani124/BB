@@ -11,6 +11,8 @@ const REASON_LABELS: Record<string, string> = {
   EOD_SQUARE_OFF: 'EOD square-off',
   STALE_CARRYOVER: 'Stale carry-over',
   KILL_SWITCH: 'Kill switch',
+  T315_CUTOFF: '3:15 PM cutoff',
+  T315F_RUNNER_TRAIL: 'Runner: 15 EMA trail',
   MANUAL_OR_RULE_EXIT: 'Manual / rule exit',
   STOPPED_OUT: 'Stop loss',
   STOP_LOSS: 'Stop loss',
