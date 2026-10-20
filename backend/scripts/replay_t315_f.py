@@ -138,11 +138,18 @@ def main() -> None:
     ap.add_argument("--scale", type=float, default=1.0, help="multiply the point distances (e.g. 1.29 for 5m)")
     ap.add_argument("--cost", type=float, default=2.0, help="rupees per share, round trip (charges, spread, slippage)")
     ap.add_argument("--symbol", default="NIFTY 50")
+    ap.add_argument("--since", help="only count trades on or after this date (YYYY-MM-DD); earlier bars still warm up the EMAs")
+    ap.add_argument("--until", help="only count trades before this date (YYYY-MM-DD)")
     args = ap.parse_args()
     from app.services.strike_selector import get_lot_size
     lot = get_lot_size(args.symbol)
     trades = replay(load_bars(args.directory, args.symbol, args.minutes), args.minutes, Params().scaled(args.scale))
-    print(f"{args.symbol} {args.minutes}m, point scale {args.scale}, lot {lot}, cost {args.cost} per share")
+    if args.since:
+        trades = trades[trades.day >= pd.Timestamp(args.since).date()]
+    if args.until:
+        trades = trades[trades.day < pd.Timestamp(args.until).date()]
+    span = f", trades {args.since or 'start'} to {args.until or 'end'}" if (args.since or args.until) else ""
+    print(f"{args.symbol} {args.minutes}m, point scale {args.scale}, lot {lot}, cost {args.cost} per share{span}")
     for k, v in summarize(trades, lot, args.cost).items():
         print(f"  {k}: {v}")
 
