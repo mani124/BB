@@ -88,7 +88,7 @@ interface DrawnChart {
   fitted: boolean;
 }
 
-export const PositionChartModal: React.FC<{ position: PaperPosition; onClose: () => void }> = ({ position, onClose }) => {
+export const PositionChartModal: React.FC<{ position: PaperPosition; onClose: () => void; /** Fill the space it is placed in instead of opening as a modal. */ inline?: boolean }> = ({ position, onClose, inline = false }) => {
   const [which, setWhich] = useState<Which>(['S5', 'S10', 'S11', 'S13', 'S16'].includes(setupCode(position.setup_type)) ? 'option' : 'underlying');
   const [data, setData] = useState<ChartPayload | null>(null);
   // The server's status wins, so a position that closes while the popup is open stops polling.
@@ -118,10 +118,11 @@ export const PositionChartModal: React.FC<{ position: PaperPosition; onClose: ()
   }, [position.id, isOpen]);
 
   useEffect(() => {
+    if (inline) return undefined;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, inline]);
 
   // Redraw with fresh colours when the theme class on <html> flips.
   useEffect(() => {
@@ -213,14 +214,13 @@ export const PositionChartModal: React.FC<{ position: PaperPosition; onClose: ()
     bb: 'Bollinger Bands (20, 2σ)', bb25: '2.5σ bands', ema: '9 EMA', vwap: 'Session VWAP', orb: 'Opening range',
   };
 
-  return (
-    <Dialog label={`${position.strike_symbol} chart`} onClose={onClose} className="flex flex-col" style={{ maxWidth: '60rem', height: 'min(90vh, 640px)' }}>
+  const body = (
       <>
         <div className="flex items-start justify-between gap-2 p-3" style={{ borderBottom: '1px solid var(--line)' }}>
           <div className="min-w-0">
-            <h4 className="text-sm font-semibold">
+            <h3 className="text-sm font-semibold">
               {position.strike_symbol} <span className="desk-muted font-normal">· {setupCode(position.setup_type)} {position.setup_type.replace(/^Setup \d: /, '')}</span>
-            </h4>
+            </h3>
             <p className="text-xs desk-muted">
               {which === 'option' ? 'Option premium' : `${position.symbol} spot`} · {series?.interval ?? ''} candles ·{' '}
               {indicators.map((k) => legend[k]).join(', ')}
@@ -264,6 +264,11 @@ export const PositionChartModal: React.FC<{ position: PaperPosition; onClose: ()
           />
         )}
       </>
+  );
+  if (inline) return <section className="flex flex-col h-full min-h-[320px]" aria-label={`${position.strike_symbol} chart`}>{body}</section>;
+  return (
+    <Dialog label={`${position.strike_symbol} chart`} onClose={onClose} className="flex flex-col" style={{ maxWidth: '60rem', height: 'min(90vh, 640px)' }}>
+      {body}
     </Dialog>
   );
 };
