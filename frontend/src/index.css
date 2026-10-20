@@ -251,16 +251,18 @@
     padding: 6px 4px; background: none; border: 0; color: var(--muted); font-size: var(--fs-xs); font-weight: 500;
     border-top: 3px solid transparent; margin-top: -1px;
   }
-  .desk-navtab[aria-selected='true'] { color: var(--accent); font-weight: 600; border-top-color: var(--accent); background: var(--accent-soft); }
+  .desk-navtab[aria-selected='true'], .desk-navtab[aria-current='page'] { color: var(--accent); font-weight: 600; border-top-color: var(--accent); background: var(--accent-soft); }
+  /* Phone and tablet pane switcher: Signals, Detail, Positions, Tables. */
+  .desk-panebar { position: fixed; inset: auto 0 0 0; z-index: 40; display: flex; background: var(--panel); border-top: 1px solid var(--line-strong); }
   @media (min-width: 768px) {
     .desk-topnav { position: static; inset: auto; border-top: 0; background: transparent; align-self: stretch; gap: 4px; }
-    .desk-navtab {
+    .desk-topnav .desk-navtab {
       flex: none; flex-direction: row; gap: 8px; min-height: 52px; padding: 0 14px; font-size: var(--fs-base);
       border-top: 0; border-bottom: 3px solid transparent; margin: 0 0 -1px;
     }
-    .desk-navtab svg { display: none; }
-    .desk-navtab:hover { color: var(--fg); }
-    .desk-navtab[aria-selected='true'] { background: none; border-bottom-color: var(--accent); }
+    .desk-topnav .desk-navtab svg { display: none; }
+    .desk-topnav .desk-navtab:hover { color: var(--fg); }
+    .desk-topnav .desk-navtab[aria-selected='true'] { background: none; border-bottom-color: var(--accent); }
   }
   /* The market strip: every index on one line, under the header on every screen. */
   .desk-marketstrip {

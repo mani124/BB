@@ -20,7 +20,7 @@ export const SignalDetails: React.FC<{
   const unconfirmed = signal.is_confirmed === false;
   const quoteLabel = rec.is_live_quote ? 'Live quote available' : 'Entry price estimated';
 
-  const body = (
+  const content = (
     <>
       <div className="flex items-start justify-between gap-3 pb-3" style={{ borderBottom: '1px solid var(--line)' }}>
         <div>
@@ -41,7 +41,7 @@ export const SignalDetails: React.FC<{
         <p className="text-sm desk-muted">{signal.rationale || 'No reasoning was supplied for this signal.'}</p>
       </section>
 
-      <div className={`grid grid-cols-1 ${inline ? '' : 'sm:grid-cols-2'} gap-3 mt-4`}>
+      <div className={`grid ${inline ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'} gap-3 mt-4`}>
         <section className="desk-panel p-3" aria-label="Option levels">
           <h3 className="text-sm font-semibold mb-2">Option levels</h3>
           <dl className="grid grid-cols-2 gap-y-2 text-sm">
@@ -66,20 +66,28 @@ export const SignalDetails: React.FC<{
         </section>
       </div>
 
-      <div className="flex items-center justify-between gap-3 mt-5 pt-4" style={{ borderTop: '1px solid var(--line)' }}>
+    </>
+  );
+  const footer = (
+      <div className="flex items-center justify-between gap-3 pt-3" style={{ borderTop: '1px solid var(--line)' }}>
         <span className="text-xs desk-muted">Review the current quote and risk before entering.</span>
         {isBought ? <span className="desk-pill up">In portfolio</span> : (
           <button type="button" className="desk-btn solid" disabled={unconfirmed} onClick={() => onPaperBuy(signal)}>Paper buy</button>
         )}
       </div>
-    </>
   );
   if (inline) {
-    return <aside className="desk-panel p-4 overflow-y-auto min-h-0" aria-label="Signal details">{body}</aside>;
+    return (
+      <aside className="flex flex-col h-full min-h-0" aria-label="Signal details">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">{content}</div>
+        <div className="px-4 pb-3" style={{ borderTop: '1px solid var(--line)' }}>{footer}</div>
+      </aside>
+    );
   }
   return (
     <Dialog label="Signal details" onClose={onClose} className="p-5" style={{ maxWidth: '40rem' }}>
-      {body}
+      {content}
+      <div className="mt-5">{footer}</div>
     </Dialog>
   );
 };

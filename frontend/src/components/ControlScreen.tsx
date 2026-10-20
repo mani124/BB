@@ -12,7 +12,7 @@ interface Props {
   onOpenView: (view: ControlView) => void;
   onScanNow: () => void;
   onOpenAccessKey: () => void;
-  settings: React.ReactNode;
+  settings?: React.ReactNode;
 }
 
 const views: { id: ControlView; title: string; detail: string }[] = [
@@ -58,9 +58,11 @@ export const ControlScreen: React.FC<Props> = ({ portfolio, risk, onPause, onKil
       <button type="button" className="desk-btn" onClick={onScanNow}>Scan now</button>
       <button type="button" className="desk-btn" onClick={onOpenAccessKey}>Dashboard key</button>
     </section>
-    <section aria-label="Runtime settings" className="min-w-0">
-      <h2 className="font-semibold mb-1">Runtime settings</h2>
-      {settings}
-    </section>
+    {settings && (
+      <section aria-label="Runtime settings" className="min-w-0">
+        <h2 className="font-semibold mb-1">Runtime settings</h2>
+        {settings}
+      </section>
+    )}
   </div>
 );

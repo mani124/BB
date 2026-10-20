@@ -4,12 +4,14 @@ import type { RiskStatus } from '../types';
 export interface RiskControlsProps {
   risk?: RiskStatus;
   onKillSwitch?: (engage: boolean) => void;
+  /** Button only, for narrow headers where the cap chip does not fit. */
+  compact?: boolean;
 }
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
 /** Header chip showing the daily loss cap / kill switch state, plus the kill-switch button. */
-export const RiskControls: React.FC<RiskControlsProps> = ({ risk, onKillSwitch }) => {
+export const RiskControls: React.FC<RiskControlsProps> = ({ risk, onKillSwitch, compact = false }) => {
   if (!risk) return null;
 
   const confirmAndRun = (engage: boolean) => {
@@ -40,7 +42,7 @@ export const RiskControls: React.FC<RiskControlsProps> = ({ risk, onKillSwitch }
 
   return (
     <span className="flex items-center gap-2" data-testid="risk-controls">
-      <span role="status" aria-live="polite">{chip}</span>
+      {!compact && <span role="status" aria-live="polite">{chip}</span>}
       {onKillSwitch && (
         <button
           type="button"

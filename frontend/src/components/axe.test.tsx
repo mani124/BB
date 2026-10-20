@@ -5,7 +5,7 @@ import axe from 'axe-core';
 import { ThemeProvider } from '../context/ThemeContext';
 import { DhanAuthProvider } from '../context/DhanAuthContext';
 import { Header } from './Header';
-import { WatchScreen } from './WatchScreen';
+import { Terminal } from './Terminal';
 import { ReviewScreen } from './ReviewScreen';
 import { EarningsPanel } from './EarningsPanel';
 import { SettingsPanel } from './SettingsPanel';
@@ -63,12 +63,15 @@ describe('axe: no structural accessibility violations', () => {
     expect(await violations(container)).toEqual([]);
   });
 
-  it('watch screen', async () => {
+  it('terminal', async () => {
     const noop = vi.fn();
     const { container } = render(
-      <WatchScreen state={state} loaded wsConnected stream={{ state: 'live', ageSec: 0 }} filters={{ setup: 'ALL', optionType: 'ALL', instrumentType: 'ALL', timeframe: 'ALL' }}
-        onFilters={noop} filteredSignals={[signal]} closedTrades={[trade(1)]} activeSignalIds={new Set()}
-        onPaperBuy={noop} onClosePosition={noop} onToggleAutoTrade={noop} onChangeLots={noop} />,
+      <Terminal state={state} loaded wsConnected dashboardWatch={null} filters={{ setup: 'ALL', optionType: 'ALL', instrumentType: 'ALL', timeframe: 'ALL' }}
+        onFilters={noop} filteredSignals={[signal]} closedTrades={[trade(1)]} activeSignalIds={new Set()} portfolio={portfolio}
+        onPaperBuy={noop} onClosePosition={noop} onToggleAutoTrade={noop} onChangeLots={noop} onChangeSetupMode={noop} onResetPortfolio={noop}
+        onKillSwitch={noop} onScanNow={noop} onOpenAccessKey={noop} sources={[]} trades={[]} tradesError={null}
+        loadTradeDetail={vi.fn()} loadTradeChart={vi.fn()} onClosePaperTrade={vi.fn()} onRefreshTrades={noop}
+        loadSession={vi.fn()} sessionDay="2026-10-16" />,
     );
     expect(await violations(container)).toEqual([]);
   });

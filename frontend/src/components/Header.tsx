@@ -108,7 +108,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <>
       <header
-        className="shrink-0 z-40 px-4 sm:px-6 flex flex-wrap items-center gap-x-6 gap-y-1 min-h-[52px] py-1.5 md:py-0"
+        className="shrink-0 z-40 px-4 sm:px-6 flex flex-wrap items-center gap-x-6 gap-y-1 min-h-[44px] py-1"
         style={{ background: 'var(--panel)', borderBottom: '1px solid var(--line-strong)' }}
       >
         <h1 className="font-semibold text-base tracking-tight m-0">BB Options</h1>
@@ -191,6 +191,8 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
         <div className="sm:hidden ml-auto flex items-center gap-2">
+          <ConnectionStatus activeMode={activeMode} feedStatus={feedStatus} wsConnected={isWsLive} stream={stream} />
+          <RiskControls risk={risk ?? undefined} onKillSwitch={onKillSwitch} compact />
           <button type="button" onClick={toggleTheme} className="desk-btn" aria-label="Toggle theme">
             {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
           </button>

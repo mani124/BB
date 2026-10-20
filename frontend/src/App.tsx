@@ -2,31 +2,20 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { DhanAuthProvider, useDhanAuth } from './context/DhanAuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { Header, type StreamStatus } from './components/Header';
+import { Terminal } from './components/Terminal';
 import { liveTrades } from './components/format';
-import { WatchScreen } from './components/WatchScreen';
 import { CapabilityDialog } from './components/CapabilityDialog';
 import { LiveAnnouncer } from './components/LiveAnnouncer';
-import { ReviewScreen } from './components/ReviewScreen';
-import { AppTab, PaperPortfolio, PaperPosition, ScannerState, SetupMode, Signal } from './types';
-import { SettingsPanel } from './components/SettingsPanel';
-import { EarningsPanel } from './components/EarningsPanel';
-import { Setup16Screen } from './components/Setup16Screen';
-import { CxScreen } from './components/CxScreen';
+import { PaperPortfolio, PaperPosition, ScannerState, SetupMode, Signal } from './types';
 import { AlertCircle, X } from 'lucide-react';
 import { isIndexSymbol } from './components/instruments';
 import { apiFetch, bootstrapDashboardSession, getDashboardCapability, setDashboardCapability } from './api/client';
 import { closeTrade, fetchDashboardSession, fetchDashboardTradeChart, fetchDashboardTradeDetail, fetchDashboardTrades, fetchDashboardWatch } from './api/dashboard';
 import { DashboardStatus } from './components/DashboardStatus';
 import { countOpenTrades } from './lib/dashboardCounts';
-import { TradesScreen } from './components/TradesScreen';
-import { SessionScreen } from './components/SessionScreen';
-import { ControlScreen } from './components/ControlScreen';
-import { BooksScreen, type BookId } from './components/BooksScreen';
 import { IndexHeroRadar } from './components/IndexHeroRadar';
 import { ConnectionBanner } from './components/ConnectionStatus';
 import type { DashboardTrade, DashboardWatch } from './types/dashboard';
-
-type DetailView = 'legacy-review' | 'setup16' | 'cx' | 'earnings' | 'settings' | null;
 
 const sameJson = (a: unknown, b: unknown): boolean => {
   try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
@@ -44,14 +33,10 @@ const DashboardContent: React.FC = () => {
     active_mode: 'demo',
   });
 
-  const [activeTab, setActiveTab] = useState<AppTab>('watch');
-  const [detailView, setDetailView] = useState<DetailView>(null);
-  const [book, setBook] = useState<BookId>('setup16');
   const [dashboardWatch, setDashboardWatch] = useState<DashboardWatch | null>(null);
   const [watchError, setWatchError] = useState<string | null>(null);
   const [dashboardTrades, setDashboardTrades] = useState<DashboardTrade[]>([]);
   const [tradesLoaded, setTradesLoaded] = useState(false);
-  const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
   const [tradesError, setTradesError] = useState<string | null>(null);
   const [selectedSetup, setSelectedSetup] = useState<string>('ALL');
   const [selectedOptionType, setSelectedOptionType] = useState<string>('ALL');
@@ -538,7 +523,6 @@ const DashboardContent: React.FC = () => {
     if (f.instrumentType !== undefined) setSelectedInstrumentType(f.instrumentType);
     if (f.timeframe !== undefined) setSelectedTimeframe(f.timeframe);
   }, []);
-  const openTrade = useCallback((id: string) => { setSelectedTradeId(id); setActiveTab('trades'); }, []);
 
   const activePositionsCount = tradesLoaded && !tradesError
     ? countOpenTrades(dashboardTrades)
@@ -570,9 +554,14 @@ const DashboardContent: React.FC = () => {
     else if (risk?.loss_cap_tripped) setAnnouncement('Daily loss cap hit. New entries are off for today.');
   }, [risk?.kill_switch_active, risk?.loss_cap_tripped]);
 
+  const sources = dashboardWatch?.sources ?? [];
+  const needsAttention = Boolean(watchError)
+    || sources.some((source) => source.state === 'error' || source.state === 'stale' || source.state === 'unknown')
+    || Boolean(risk?.kill_switch_active || risk?.entries_blocked)
+    || stream.state !== 'live';
+
   return (
-    <div className="min-h-screen flex lg:h-screen lg:overflow-hidden">
-      <div className="flex-1 min-w-0 min-h-screen flex flex-col pb-14 md:pb-0 lg:min-h-0 lg:h-screen">
+    <div className="min-h-screen flex flex-col lg:h-screen lg:overflow-hidden">
       <Header
         activeMode={state.active_mode}
         scanCycleCount={state.scan_cycle_count}
@@ -582,8 +571,6 @@ const DashboardContent: React.FC = () => {
         onScanNow={handleScanNow}
         feedStatus={state.feed_status}
         wsConnected={state.ws_connected || wsConnected}
-        activeTab={activeTab}
-        onTabChange={(tab) => { setActiveTab(tab); setDetailView(null); }}
         openPositionsCount={activePositionsCount ?? undefined}
         onOpenAccessKey={openCapabilityModal}
         risk={state.paper_portfolio?.risk}
@@ -593,12 +580,13 @@ const DashboardContent: React.FC = () => {
       <LiveAnnouncer message={announcement} />
       <IndexHeroRadar compact radar={state.radar} />
 
-      <main className="flex-1 min-h-0 w-full px-4 sm:px-6 py-2 flex flex-col gap-2">
-        <DashboardStatus sources={dashboardWatch?.sources ?? []} openCount={activePositionsCount}
-          risk={state.paper_portfolio?.risk} stream={stream} error={watchError}
-          entriesAllowed={state.paper_portfolio?.auto_trade_enabled} />
+      <main className="flex-1 min-h-0 w-full px-2 sm:px-3 py-2 pb-16 lg:pb-2 flex flex-col gap-2">
+        {needsAttention && (
+          <DashboardStatus sources={sources} openCount={activePositionsCount}
+            risk={state.paper_portfolio?.risk} stream={stream} error={watchError}
+            entriesAllowed={state.paper_portfolio?.auto_trade_enabled} />
+        )}
         <ConnectionBanner activeMode={state.active_mode} feedStatus={state.feed_status} wsConnected={state.ws_connected || wsConnected} stream={stream} />
-        <div id="main-panel" role="tabpanel" aria-labelledby={`main-tab-${activeTab}`} className="contents">
         {actionError && (
           <div className="desk-alert flex items-center justify-between gap-3" role="alert">
             <div className="flex items-center gap-2">
@@ -610,77 +598,36 @@ const DashboardContent: React.FC = () => {
             </button>
           </div>
         )}
-
-        {detailView && (
-          <div className="flex items-center gap-3 py-1">
-            <button type="button" className="desk-btn" onClick={() => setDetailView(null)}>← Back to {activeTab}</button>
-            <span className="desk-muted text-xs">Book details</span>
-          </div>
-        )}
-        {(detailView === 'setup16') ? (
-          <div className="flex flex-col lg:flex-1 lg:min-h-0"><Setup16Screen /></div>
-        ) : detailView === 'cx' ? (
-          <div className="flex flex-col lg:flex-1 lg:min-h-0"><CxScreen /></div>
-        ) : detailView === 'earnings' ? (
-          <div className="flex flex-col lg:flex-1 lg:min-h-0"><EarningsPanel /></div>
-        ) : detailView === 'settings' ? (
-          <div className="flex flex-col lg:flex-1 lg:min-h-0"><SettingsPanel /></div>
-        ) : detailView === 'legacy-review' ? (
-          <ReviewScreen portfolio={state.paper_portfolio} closedTrades={liveTrades(closedTrades)}
-            onClosePosition={handleClosePosition} onToggleAutoTrade={handleToggleAutoTrade}
-            onChangeLots={handleChangeLots} onChangeSetupMode={handleChangeSetupMode}
-            onResetPortfolio={handleResetPortfolio} />
-        ) : activeTab === 'watch' ? (
-          <WatchScreen
-            dashboardWatch={dashboardWatch}
-            state={state}
-            loaded={loaded}
-            wsConnected={wsConnected}
-            stream={stream}
-            filters={{ setup: selectedSetup, optionType: selectedOptionType, instrumentType: selectedInstrumentType, timeframe: selectedTimeframe }}
-            onFilters={onFilters}
-            filteredSignals={filteredSignals}
-            closedTrades={liveClosedTrades}
-            activeSignalIds={activeSignalIds}
-            onPaperBuy={handlePaperBuy}
-            onClosePosition={handleClosePosition}
-            onToggleAutoTrade={handleToggleAutoTrade}
-            onChangeLots={handleChangeLots}
-            trades={dashboardTrades}
-            onOpenTrade={openTrade}
-          />
-        ) : activeTab === 'books' ? (
-          <BooksScreen key={book} initialBook={book} sources={dashboardWatch?.sources} />
-        ) : activeTab === 'trades' ? (
-          <>
-            {tradesError && <p role="alert" className="desk-alert p-3">{tradesError}</p>}
-            <TradesScreen trades={dashboardTrades} loadDetail={fetchDashboardTradeDetail} loadChart={fetchDashboardTradeChart}
-              onClosePaper={(sourceId) => closeTrade('paper', sourceId)} onRefresh={refreshTrades} initialTradeId={selectedTradeId} />
-          </>
-        ) : activeTab === 'session' ? (
-          <SessionScreen initialDay={new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })}
-            loadSession={fetchDashboardSession}
-            onOpenTrade={(id) => { setSelectedTradeId(id); setActiveTab('trades'); }}
-            onOpenReview={() => setDetailView('legacy-review')} />
-        ) : activeTab === 'control' ? (
-          <ControlScreen portfolio={state.paper_portfolio} risk={state.paper_portfolio?.risk}
-            onPause={handleToggleAutoTrade} onKillSwitch={handleKillSwitch}
-            onOpenView={(view) => {
-              if (view === 'setup16' || view === 'cx' || view === 'earnings') { setBook(view); setDetailView(null); setActiveTab('books'); } else setDetailView(view);
-            }}
-            onScanNow={handleScanNow} onOpenAccessKey={openCapabilityModal} settings={<SettingsPanel />} />
-        ) : (
-          <ReviewScreen
-            portfolio={state.paper_portfolio}
-            closedTrades={liveTrades(closedTrades)}
-            onClosePosition={handleClosePosition}
-            onToggleAutoTrade={handleToggleAutoTrade}
-            onChangeLots={handleChangeLots}
-            onChangeSetupMode={handleChangeSetupMode}
-            onResetPortfolio={handleResetPortfolio}
-          />
-        )}
-
+        <Terminal
+          state={state}
+          loaded={loaded}
+          wsConnected={wsConnected}
+          dashboardWatch={dashboardWatch}
+          filters={{ setup: selectedSetup, optionType: selectedOptionType, instrumentType: selectedInstrumentType, timeframe: selectedTimeframe }}
+          onFilters={onFilters}
+          filteredSignals={filteredSignals}
+          closedTrades={liveClosedTrades}
+          portfolio={state.paper_portfolio}
+          activeSignalIds={activeSignalIds}
+          onPaperBuy={handlePaperBuy}
+          onClosePosition={handleClosePosition}
+          onToggleAutoTrade={handleToggleAutoTrade}
+          onChangeLots={handleChangeLots}
+          onChangeSetupMode={handleChangeSetupMode}
+          onResetPortfolio={handleResetPortfolio}
+          onKillSwitch={handleKillSwitch}
+          onScanNow={handleScanNow}
+          onOpenAccessKey={openCapabilityModal}
+          sources={sources}
+          trades={dashboardTrades}
+          tradesError={tradesError}
+          loadTradeDetail={fetchDashboardTradeDetail}
+          loadTradeChart={fetchDashboardTradeChart}
+          onClosePaperTrade={(sourceId) => closeTrade('paper', sourceId)}
+          onRefreshTrades={refreshTrades}
+          loadSession={fetchDashboardSession}
+          sessionDay={new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })}
+        />
         {capabilityModalOpen && (
           <CapabilityDialog
             value={capabilityInput}
@@ -691,9 +638,7 @@ const DashboardContent: React.FC = () => {
             onClose={() => setCapabilityModalOpen(false)}
           />
         )}
-        </div>
       </main>
-      </div>
     </div>
   );
 };
