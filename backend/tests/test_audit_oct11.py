@@ -114,7 +114,7 @@ def test_server_owned_exit_pricing(no_reentry_cooldown):
     closed2 = res_fresh.json()
     assert "(Modeled" not in closed2["exit_reason"]
     assert closed2["current_option_price"] == 119.5
-    assert closed2["exit_slippage"] == 0.5  # 120.0 theoretical - 119.5 real_bid
+    assert closed2["exit_slippage"] == 0.0  # the intended exit is the bid (119.5), so LTP-to-bid is not booked as slippage
 
 
 def test_server_governed_feed_mode():

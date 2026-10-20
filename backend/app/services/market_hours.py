@@ -130,7 +130,9 @@ def is_trading_day(d: date) -> bool:
                 "DATA_QUALITY no NSE holiday list for %s; treating every day as closed until "
                 "market_hours.NSE_HOLIDAYS / NSE_HOLIDAY_YEARS are updated", d.year,
             )
-        return False
+        if not settings.ASSUME_WEEKDAYS_WITHOUT_HOLIDAY_LIST:
+            return False
+        return d.weekday() < 5
     return d.weekday() < 5 and d not in NSE_HOLIDAYS
 
 

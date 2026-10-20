@@ -42,6 +42,20 @@ def _level_hit(pos, curr_spot, level: str, fresh_opt: Optional[float] = None) ->
     return spot_hit or (opt_ok and opt >= target_opt)
 
 
+SINGLE_LOT_LOCK_FRACTION = 0.3   # a lot that cannot book at Target 1 locks this share of the move to T1, so charges are covered
+
+
+def _breakeven_stops(pos, single_lot: bool):
+    """Stops after Target 1: entry for both legs. When no partial could be booked (a single lot), lock a small slice of
+    the move to Target 1 instead so a pullback to the stop does not become a net loss after charges."""
+    u, o = pos.underlying_entry, pos.option_entry
+    if single_lot:
+        f = SINGLE_LOT_LOCK_FRACTION
+        u = round(u + f * (pos.underlying_target_1 - u), 2)
+        o = round(o + f * (pos.option_target_1 - o), 2)
+    return u, o
+
+
 def _fresh_quote(bid, ltp) -> Optional[float]:
     for v in (ltp, bid):
         if v is not None and float(v) > 0:
@@ -439,8 +453,7 @@ class PaperExitsMixin:
                         # Single lot cannot be split: no partial at Target 1, the whole lot
                         # runs with its stop moved to entry (breakeven) below.
                         logger.info("T1 %s: %d lot cannot book 50%%; no partial, stop to breakeven", pos.symbol, pos.lots)
-                    pos.underlying_sl = pos.underlying_entry
-                    pos.option_sl = pos.option_entry
+                    pos.underlying_sl, pos.option_sl = _breakeven_stops(pos, single_lot=pos.booked_lots == 0)
 
             else:  # PE
                 # Check SL
@@ -512,8 +525,7 @@ class PaperExitsMixin:
                         # Single lot cannot be split: no partial at Target 1, the whole lot
                         # runs with its stop moved to entry (breakeven) below.
                         logger.info("T1 %s: %d lot cannot book 50%%; no partial, stop to breakeven", pos.symbol, pos.lots)
-                    pos.underlying_sl = pos.underlying_entry
-                    pos.option_sl = pos.option_entry
+                    pos.underlying_sl, pos.option_sl = _breakeven_stops(pos, single_lot=pos.booked_lots == 0)
 
             runner_pnl = round(pos.pnl_points * pos.quantity, 2)
             pos.pnl_rupees = round(pos.booked_pnl_rupees + runner_pnl, 2)
@@ -550,10 +562,12 @@ class PaperExitsMixin:
             if pos.id == position_id:
                 # F8: In live mode, derive theoretical exit strictly from server-owned observations
                 if pos.feed_mode == "live":
-                    if real_opt_price is not None and float(real_opt_price) > 0:
-                        theo_exit = float(real_opt_price)
-                    elif real_bid_price is not None and float(real_bid_price) > 0:
+                    # same precedence as the fill in _finalize_closed_position (bid first), so the spread between last
+                    # price and bid is not booked as exit slippage
+                    if real_bid_price is not None and float(real_bid_price) > 0:
                         theo_exit = float(real_bid_price)
+                    elif real_opt_price is not None and float(real_opt_price) > 0:
+                        theo_exit = float(real_opt_price)
                     else:
                         theo_exit = pos.current_option_price
                 else:

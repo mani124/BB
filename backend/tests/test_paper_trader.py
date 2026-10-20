@@ -385,12 +385,12 @@ def test_two_lots_book_one_lot_at_target_1():
     assert (p.booked_lots, p.lots) == (1, 1)
 
 
-def test_single_lot_skips_partial_and_moves_stop_to_breakeven():
+def test_single_lot_skips_partial_and_locks_a_charge_buffer_above_entry():
     p = _t1_engine(1)
     assert p.status == "TARGET_1"
     assert (p.booked_lots, p.lots) == (0, 1)
     assert p.booked_pnl_rupees == 0
-    assert p.option_sl == p.option_entry
+    assert p.option_entry < p.option_sl < p.option_target_1
 
 
 def test_default_lots_floor_is_two():

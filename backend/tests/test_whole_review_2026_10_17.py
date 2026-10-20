@@ -229,3 +229,38 @@ def test_stale_carryover_notifies_the_order_router(tmp_path):
     e.on_position_update = seen.append
     assert [p.id for p in e.flag_stale_carryover()] == [pos.id]
     assert [p.id for p in seen] == [pos.id]
+
+
+def test_manual_live_close_with_ltp_and_bid_books_no_artificial_slippage(tmp_path):
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    pos = e.open_position_from_signal(make_test_signal("LTPBID"))
+    pos.feed_mode = "live"
+    closed = e.close_position(pos.id, real_opt_price=150.0, real_bid_price=145.0)
+    assert closed.theoretical_exit == 145.0
+
+
+def test_single_lot_stop_after_target_1_locks_a_fee_buffer(tmp_path):
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    pos = e.open_position_from_signal(make_test_signal("ONELOT"), lots=1)
+    entry = pos.option_entry
+    t1_spot = pos.underlying_target_1
+    e.update_market_prices({pos.symbol: t1_spot + (1 if pos.option_type == "CE" else -1)}, option_price_map={pos.id: pos.option_target_1 + 1})
+    assert pos.status == "TARGET_1" and pos.lots == 1
+    assert pos.option_sl > entry and pos.option_sl < pos.option_target_1
+
+
+def test_two_lot_stop_after_target_1_is_plain_breakeven(tmp_path):
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    pos = e.open_position_from_signal(make_test_signal("TWOLOT"), lots=2)
+    entry = pos.option_entry
+    e.update_market_prices({pos.symbol: pos.underlying_target_1 + (1 if pos.option_type == "CE" else -1)}, option_price_map={pos.id: pos.option_target_1 + 1})
+    assert pos.status == "TARGET_1" and pos.option_sl == entry
+
+
+def test_weekday_fallback_is_opt_in(monkeypatch):
+    from datetime import date
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "ASSUME_WEEKDAYS_WITHOUT_HOLIDAY_LIST", True)
+    assert market_hours.is_trading_day(date(2099, 1, 5)) and not market_hours.is_trading_day(date(2099, 1, 3))
+    monkeypatch.setattr(settings, "ASSUME_WEEKDAYS_WITHOUT_HOLIDAY_LIST", False)
+    assert not market_hours.is_trading_day(date(2099, 1, 5))

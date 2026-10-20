@@ -83,7 +83,7 @@ def _now(now: Optional[datetime]) -> datetime:
 
 def _year_known(d: date) -> bool:
     # Same fail-closed rule as the NSE list: no holiday data for the year means do not trade.
-    return d.year in market_hours.NSE_HOLIDAY_YEARS
+    return d.year in market_hours.NSE_HOLIDAY_YEARS or market_hours.settings.ASSUME_WEEKDAYS_WITHOUT_HOLIDAY_LIST
 
 
 def trading_windows(exchange: str, d: date, cfg: SessionConfig = SessionConfig()) -> list[tuple[time, time]]:

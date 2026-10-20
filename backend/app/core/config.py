@@ -29,6 +29,9 @@ class Settings(BaseModel):
     # Exchange-session guard (all times IST, HH:MM)
     ENTRY_CUTOFF_TIME: str = os.getenv("ENTRY_CUTOFF_TIME", "15:15")
     EOD_SQUARE_OFF_TIME: str = os.getenv("EOD_SQUARE_OFF_TIME", "15:20")
+    # Off (fail closed) by default: with no NSE holiday list for a year, every day counts as closed. Set to 1 to treat
+    # Mon-Fri as trading days instead (a loud error is still logged) if the list has not been updated in time.
+    ASSUME_WEEKDAYS_WITHOUT_HOLIDAY_LIST: bool = os.getenv("ASSUME_WEEKDAYS_WITHOUT_HOLIDAY_LIST", "").strip().lower() in ("1", "true", "yes")
     # Setup 1 absolute squeeze threshold (BandWidth %). 5.0 is the legacy value, which is nearly
     # always true on 5m bars; lower it (e.g. 1.5) only after comparing signal counts on recorded data.
     SQUEEZE_ABS_BW_PCT: float = float(os.getenv("SQUEEZE_ABS_BW_PCT", "5.0"))
