@@ -238,6 +238,9 @@
   .desk-ticker {
     display: grid; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
   }
+  /* Tiles share the row evenly, so a short last row stretches instead of leaving a blank cell. */
+  .desk-ticker.desk-flow { display: flex; flex-wrap: wrap; }
+  .desk-ticker.desk-flow > * { flex: 1 1 11rem; }
   .desk-ticker > * { background: var(--panel); box-shadow: 1px 1px 0 var(--line); padding: 6px 12px; min-width: 0; font-size: var(--fs-sm); white-space: nowrap; }
   /* ---- Left rail (bottom bar below lg) ---- */
   .desk-rail {

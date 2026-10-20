@@ -122,14 +122,18 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
   ), [autoTrade, lots, onToggleAutoTrade, onChangeLots]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const positionsRail = (
-    <div className="flex flex-col gap-3 lg:min-h-0">
+    <div className="contents lg:flex lg:flex-col lg:gap-3 lg:min-h-0">
+      <div className="order-1 lg:order-none flex flex-col lg:min-h-0">
       <OpenPositionsPanel
         compact
         positions={pf?.active_positions ?? []}
         onClosePosition={onClosePosition}
         headerActions={headerActions}
       />
-      <TodaySummary trades={closedTrades} />
+      </div>
+      <div className="order-3 lg:order-none flex flex-col lg:flex-1 lg:min-h-0">
+        <TodaySummary trades={closedTrades} />
+      </div>
     </div>
   );
 
@@ -241,7 +245,7 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(320px,0.62fr)_minmax(0,1.5fr)] gap-3 lg:flex-1 lg:min-h-0">
         {positionsRail}
-        <section className="desk-panel desk-pane min-h-0" aria-label="Scanner results">
+        <section className="desk-panel desk-pane min-h-0 order-2 lg:order-none" aria-label="Scanner results">
           {dashboardWatch && (
             <div className="desk-subtabs px-2" role="group" aria-label="Scanner view">
               <button type="button" className="desk-subtab" aria-pressed={view === 'signals'} onClick={() => setMainView('signals')}>
