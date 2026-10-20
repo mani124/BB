@@ -83,40 +83,37 @@ export const CompactStrip: React.FC<{ portfolio?: PaperPortfolio }> = ({ portfol
   const wins = portfolio?.winning_trades_count ?? 0;
   const losses = portfolio?.losing_trades_count ?? 0;
   const Item: React.FC<{ label: string; title?: string; children: React.ReactNode }> = ({ label, title, children }) => (
-    <div title={title} className="flex items-baseline gap-2">
-      <span className="desk-label">{label}</span>
-      {children}
+    <div title={title}>
+      <div className="desk-label">{label}</div>
+      <div className="flex flex-wrap items-baseline gap-x-2">{children}</div>
     </div>
   );
+  const cols = { gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' };
   if (!portfolio) {
     return (
-      <section className="desk-ticker" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }} aria-label="Portfolio summary" aria-busy="true">
-        {[0, 1, 2, 3, 4].map((i) => <div key={i}><div className="desk-skel h-4 w-24" /></div>)}
+      <section className="desk-ticker" style={cols} aria-label="Portfolio summary" aria-busy="true">
+        {[0, 1, 2, 3, 4].map((i) => <div key={i}><div className="desk-skel h-4 w-24 mb-2" /><div className="desk-skel h-6 w-32" /></div>)}
       </section>
     );
   }
   return (
-    <section
-      className="desk-ticker"
-      style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}
-      aria-label="Portfolio summary"
-    >
-      <Item label="Net realized">
-        <b className={`desk-num text-base ${pnlClass(net)}`}>{formatCurrency(net, true)}</b>
+    <section className="desk-ticker" style={cols} aria-label="Portfolio summary">
+      <Item label="Net realized" title="Closed trades only, after charges">
+        <b className={`desk-hero md ${pnlClass(net)}`}>{formatCurrency(net, true)}</b>
       </Item>
       <Item label="Unrealized" title="Open positions, net of estimated exit charges">
-        <b className={`desk-num ${pnlClass(floatingNet)}`}>{formatCurrency(floatingNet, true)}</b>
-        <span className="desk-muted desk-num">{openCount} open</span>
+        <b className={`desk-hero md ${pnlClass(floatingNet)}`}>{formatCurrency(floatingNet, true)}</b>
+        <span className="desk-muted desk-num text-xs">{openCount} open</span>
       </Item>
       <Item label="Win rate">
-        <b className="desk-num">{(portfolio?.win_rate_pct ?? 0).toFixed(1)}%</b>
-        <span className="desk-muted desk-num">{wins}W / {losses}L</span>
+        <b className="desk-hero md">{(portfolio?.win_rate_pct ?? 0).toFixed(1)}%</b>
+        <span className="desk-muted desk-num text-xs">{wins}W / {losses}L</span>
       </Item>
       <Item label="Slippage" title="Execution slippage cost on closed trades">
-        <b className="desk-num" style={{ color: 'var(--warn)' }}>-{formatCurrency(slippage).replace('-', '')}</b>
+        <b className="desk-num text-lg font-semibold" style={{ color: 'var(--warn)' }}>-{formatCurrency(slippage).replace('-', '')}</b>
       </Item>
       <Item label="Charges" title="Brokerage, STT, GST, exchange and SEBI fees">
-        <b className="desk-num">{formatCurrency(charges)}</b>
+        <b className="desk-num text-lg font-semibold">{formatCurrency(charges)}</b>
       </Item>
     </section>
   );

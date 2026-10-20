@@ -29,8 +29,8 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, o
   if (signals.length === 0) {
     return (
       <div className="p-10 text-center">
-        <p className="text-sm font-semibold mb-1">No Active Signals Matching Current Filter</p>
-        <p className="text-xs desk-muted">
+        <p className="text-base font-semibold mb-1">No active signals match these filters</p>
+        <p className="text-sm desk-muted">
           The background scanner cycles every ~8 seconds. Signals will appear here as soon as a candle trigger fires.
         </p>
       </div>
@@ -61,7 +61,7 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, o
             const unconfirmed = sig.is_confirmed === false;
 
             return (
-              <tr key={sig.id}>
+              <tr key={sig.id} className={onInspect ? 'cursor-pointer' : undefined} onClick={onInspect ? () => onInspect(sig) : undefined}>
                 <td className="desk-num">{signalTime(sig.timestamp)}</td>
                 <td>
                   <span className="desk-sym">{rec.strike_symbol}</span>{' '}
@@ -97,7 +97,7 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, o
                   <span className="desk-sub">{ind?.bandwidth != null ? `BW ${ind.bandwidth.toFixed(2)}%` : '-'}</span>
                 </td>
                 <td className="r">
-                  {onInspect && <button type="button" className="desk-btn ghost mr-1" onClick={() => onInspect(sig)} aria-label={`Inspect ${rec.strike_symbol} ${sig.option_type}`}>
+                  {onInspect && <button type="button" className="desk-btn sm ghost mr-1" onClick={(e) => { e.stopPropagation(); onInspect(sig); }} aria-label={`Inspect ${rec.strike_symbol} ${sig.option_type}`}>
                     Inspect
                   </button>}
                   {isBought ? (

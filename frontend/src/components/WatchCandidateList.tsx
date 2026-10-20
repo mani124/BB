@@ -18,10 +18,9 @@ export const WatchCandidateList: React.FC<Props> = ({ candidates, selectedId, on
       <button key={candidate.id} type="button" onClick={() => onSelect(candidate.id)}
         aria-pressed={candidate.id === selectedId}
         aria-label={`${candidate.instrument} ${bookName[candidate.book]} ${candidate.stage} ${candidate.is_preview ? 'preview' : 'recorded'}`}
-        className="w-full text-left p-3 flex items-start justify-between gap-3 hover:bg-[var(--alt)]"
-        style={{ background: candidate.id === selectedId ? 'var(--accent-soft)' : undefined }}>
+        className="desk-row">
         <span className="min-w-0">
-          <strong className="block text-sm truncate">{candidate.instrument}</strong>
+          <strong className="block text-base truncate">{candidate.instrument}</strong>
           <span className="text-xs desk-muted">{bookName[candidate.book]} · {candidate.setup || 'Scanner'}</span>
         </span>
         <span className="shrink-0 text-right">

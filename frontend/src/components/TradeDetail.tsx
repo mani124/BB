@@ -40,17 +40,17 @@ export const TradeDetail: React.FC<Props> = ({ trade, detail, chart, loading, on
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="desk-label">{trade.display_book} · {trade.mode}</p>
-            <h2 className="text-xl font-semibold mt-1">{trade.instrument}</h2>
+            <h2 className="text-xl font-semibold mt-0.5">{trade.instrument}</h2>
             <p className="text-sm desk-muted">{trade.setup} · {trade.status.replaceAll('_', ' ')}</p>
           </div>
           {(trade.status === 'OPEN' || trade.status === 'TARGET_1') && trade.book === 'paper' && (
-            <button type="button" className="desk-btn danger" disabled={closing} onClick={onClose}>{closing ? 'Closing…' : 'Close position'}</button>
+            <button type="button" className="desk-btn danger fill" disabled={closing} onClick={onClose}>{closing ? 'Closing…' : 'Close position'}</button>
           )}
         </div>
-        <dl className="grid sm:grid-cols-2 gap-3 mt-4 text-sm">
-          <div><dt className="desk-label">Opened</dt><dd className="desk-num">{fmt(trade.opened_at)}</dd></div>
+        <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-4 mt-5 text-base">
           <div><dt className="desk-label">{trade.net_kind === 'estimated' ? 'Estimated net' : 'Realized net'}</dt>
-            <dd className="desk-num">{trade.net_pnl == null ? 'Not recorded' : `₹${trade.net_pnl.toLocaleString('en-IN')}`}</dd></div>
+            <dd className={`desk-hero lg ${trade.net_pnl == null ? 'desk-muted' : trade.net_pnl < 0 ? 'desk-down' : 'desk-up'}`}>{trade.net_pnl == null ? 'Not recorded' : `${trade.net_pnl < 0 ? '-' : '+'}₹${Math.abs(trade.net_pnl).toLocaleString('en-IN')}`}</dd></div>
+          <div><dt className="desk-label">Opened</dt><dd className="desk-num">{fmt(trade.opened_at)}</dd></div>
           {trade.closed_at && <div><dt className="desk-label">Closed</dt><dd className="desk-num">{fmt(trade.closed_at)}</dd></div>}
           {trade.exit_reason && <div><dt className="desk-label">Exit reason</dt><dd>{trade.exit_reason}</dd></div>}
           {trade.quarantine_reason && <div><dt className="desk-label">Data quality</dt><dd>Excluded from financial totals: {trade.quarantine_reason}</dd></div>}
@@ -72,7 +72,7 @@ export const TradeDetail: React.FC<Props> = ({ trade, detail, chart, loading, on
         {loading ? <p className="desk-muted text-sm">Loading recorded decision…</p>
           : detail?.reason_state === 'recorded' && decision ? (
             <>
-              <p className="text-sm">{reasonText(decision)}</p>
+              <p className="text-base">{reasonText(decision)}</p>
               {decision.reason && decision.rationale && <p className="desk-muted text-xs mt-1">Decision code: {String(decision.reason)}</p>}
               {signal && <dl className="grid sm:grid-cols-3 gap-2 mt-3 text-sm">
                 {(['bar_time', 'price', 'invalidate_level'] as const).filter((key) => signal[key] != null).map((key) =>
@@ -80,8 +80,8 @@ export const TradeDetail: React.FC<Props> = ({ trade, detail, chart, loading, on
               </dl>}
               <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 text-sm">
                 {(['entry', 'stop', 'target_1', 'target_2', 'lots'] as const).filter((key) => decision[key] != null).map((key) => (
-                  <div key={key} className="p-2 rounded" style={{ background: 'var(--alt)' }}>
-                    <dt className="desk-label">{key.replaceAll('_', ' ')}</dt><dd className="desk-num">{String(decision[key])}</dd>
+                  <div key={key} className="p-3 rounded-lg" style={{ background: 'var(--alt)', border: '1px solid var(--line)' }}>
+                    <dt className="desk-label">{key.replaceAll('_', ' ')}</dt><dd className="desk-num text-base font-semibold">{String(decision[key])}</dd>
                   </div>
                 ))}
               </dl>
