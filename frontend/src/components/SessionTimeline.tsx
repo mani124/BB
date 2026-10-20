@@ -10,11 +10,10 @@ export const SessionTimeline: React.FC<Props> = ({ events, selectedId, onSelect 
     <div className="divide-y" style={{ borderColor: 'var(--line)' }}>
       {events.map((event) => <button key={event.id} type="button" onClick={() => onSelect(event.id)}
         aria-pressed={selectedId === event.id} aria-label={`${event.title} ${event.at}`}
-        className="w-full text-left p-3 flex items-start gap-3 hover:bg-[var(--alt)]"
-        style={{ background: selectedId === event.id ? 'var(--accent-soft)' : undefined }}>
-        <time className="desk-num text-xs desk-muted shrink-0 w-16" dateTime={event.at}>{new Date(event.at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}</time>
-        <span className="min-w-0"><strong className="block text-sm">{event.title}</strong>
-          <span className="desk-muted text-xs">{event.book || 'System'} · {event.reason || event.type}</span></span>
+        className="desk-row !justify-start">
+        <time className="desk-num text-sm desk-muted shrink-0 w-[4.5rem] whitespace-nowrap" dateTime={event.at}>{new Date(event.at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}</time>
+        <span className="min-w-0"><strong className="block text-base">{event.title}</strong>
+          <span className="desk-muted text-sm">{event.book || 'System'} · {event.reason || event.type}</span></span>
       </button>)}
     </div>
   </section>

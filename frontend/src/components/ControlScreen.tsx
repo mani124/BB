@@ -30,16 +30,16 @@ export const ControlScreen: React.FC<Props> = ({ portfolio, risk, onPause, onKil
     <div className="grid lg:grid-cols-2 gap-3">
       <section className="desk-panel p-4">
         <p className="desk-label">Paper scanner · automatic entries</p>
-        <h2 className="font-semibold text-lg mt-1">{portfolio ? (portfolio.auto_trade_enabled ? 'Entries allowed' : 'Entries paused') : 'Entry state unavailable'}</h2>
+        <h2 style={{ fontFamily: 'var(--sans)' }} className={`desk-hero md mt-1 ${portfolio ? (portfolio.auto_trade_enabled ? 'desk-up' : 'desk-down') : 'desk-muted'}`}>{portfolio ? (portfolio.auto_trade_enabled ? 'Entries allowed' : 'Entries paused') : 'Entry state unavailable'}</h2>
         <p className="desk-muted text-sm mt-2">Pausing stops new automatic entries in the paper scanner, including Setup 16. It does not close open positions. Commodities, FX and earnings have separate controls below.</p>
-        <button type="button" className="desk-btn accent mt-4" disabled={!portfolio}
+        <button type="button" className="desk-btn solid mt-4" disabled={!portfolio}
           onClick={() => onPause(!portfolio?.auto_trade_enabled)}>
           {portfolio?.auto_trade_enabled ? 'Pause paper entries' : 'Resume paper entries'}
         </button>
       </section>
       <section className="desk-panel p-4">
         <p className="desk-label">Emergency action</p>
-        <h2 className="font-semibold text-lg mt-1">Kill switch</h2>
+        <h2 style={{ fontFamily: 'var(--sans)' }} className="desk-hero md mt-1">Kill switch</h2>
         <p className="desk-muted text-sm mt-2">Engaging the kill switch closes all applicable open positions now and blocks new entries. Review the confirmation before using it.</p>
         <div className="mt-4"><RiskControls risk={risk ?? undefined} onKillSwitch={onKillSwitch} /></div>
       </section>
@@ -48,13 +48,13 @@ export const ControlScreen: React.FC<Props> = ({ portfolio, risk, onPause, onKil
       <h2 className="font-semibold">Detailed workspaces</h2>
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2 mt-3">{views.map((view) => <button key={view.id} type="button"
         onClick={() => onOpenView(view.id)} aria-label={view.title}
-        className="desk-control-link text-left rounded-lg p-3">
-        <strong className="block text-sm">{view.title} <span aria-hidden="true">↗</span></strong>
-        <span className="desk-muted text-xs block mt-1">{view.detail}</span>
+        className="desk-control-link text-left rounded-lg p-4">
+        <strong className="block text-base">{view.title} <span aria-hidden="true">↗</span></strong>
+        <span className="desk-muted text-sm block mt-1">{view.detail}</span>
       </button>)}</div>
     </section>
     <section className="desk-panel p-4 flex flex-wrap items-center gap-2">
-      <div className="mr-auto"><h2 className="font-semibold">Manual tools and access</h2><p className="desk-muted text-xs">A manual scan checks current candidates; the dashboard key controls access to protected actions.</p></div>
+      <div className="mr-auto"><h2 className="font-semibold">Manual tools and access</h2><p className="desk-muted text-sm">A manual scan checks current candidates; the dashboard key controls access to protected actions.</p></div>
       <button type="button" className="desk-btn" onClick={onScanNow}>Scan now</button>
       <button type="button" className="desk-btn" onClick={onOpenAccessKey}>Dashboard key</button>
     </section>
