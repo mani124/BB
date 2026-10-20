@@ -46,7 +46,7 @@ describe('Header Theme Toggle', () => {
     expect(document.documentElement.classList.contains('light')).toBe(false);
   });
 
-  it('renders WS LIVE badge when feedStatus is WS_LIVE', () => {
+  it('renders Live badge when feedStatus is WS_LIVE', () => {
     render(
       <ThemeProvider>
         <DhanAuthProvider>
@@ -63,10 +63,10 @@ describe('Header Theme Toggle', () => {
       </ThemeProvider>
     );
 
-    expect(screen.getByText(/^WS LIVE$/)).toBeInTheDocument();
+    expect(screen.getAllByText(/^Live$/).length).toBeGreaterThan(0);
   });
 
-  it('renders HTTP Polling badge when in live mode but feedStatus is not WS_LIVE', () => {
+  it('renders Delayed badge when in live mode but feedStatus is not WS_LIVE', () => {
     render(
       <ThemeProvider>
         <DhanAuthProvider>
@@ -83,7 +83,7 @@ describe('Header Theme Toggle', () => {
       </ThemeProvider>
     );
 
-    expect(screen.getByText(/HTTP Polling/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/^Delayed$/).length).toBeGreaterThan(0);
   });
 
   it('displays countdown tooltip with remaining session hours', () => {
@@ -134,7 +134,7 @@ describe('Header Theme Toggle', () => {
     expect(screen.getByRole('button', { name: /Connect with Dhan/i })).toBeInTheDocument();
   });
 
-  it('renders HTTP Polling badge when wsConnected is false in live mode', () => {
+  it('renders Delayed badge when wsConnected is false in live mode', () => {
     const { rerender } = render(
       <ThemeProvider>
         <DhanAuthProvider>
@@ -152,7 +152,7 @@ describe('Header Theme Toggle', () => {
       </ThemeProvider>
     );
 
-    expect(screen.getByText(/^WS LIVE$/)).toBeInTheDocument();
+    expect(screen.getAllByText(/^Live$/).length).toBeGreaterThan(0);
 
     // Re-render with WebSocket disconnected / HTTP fallback
     rerender(
@@ -172,8 +172,8 @@ describe('Header Theme Toggle', () => {
       </ThemeProvider>
     );
 
-    expect(screen.queryByText(/^WS LIVE$/)).not.toBeInTheDocument();
-    expect(screen.getByText(/HTTP Polling/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Live$/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/^Delayed$/).length).toBeGreaterThan(0);
   });
 });
 

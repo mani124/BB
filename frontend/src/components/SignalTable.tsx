@@ -18,7 +18,7 @@ const signalTime = (ts?: string): string => {
   return m ? m[1] : ts;
 };
 
-export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, onInspect, activeSignalIds, loading = false }) => {
+const SignalTableImpl: React.FC<SignalTableProps> = ({ signals, onPaperBuy, onInspect, activeSignalIds, loading = false }) => {
   if (loading) {
     return (
       <div className="p-3 flex flex-col gap-2" role="status" aria-label="Loading signals">
@@ -122,3 +122,6 @@ export const SignalTable: React.FC<SignalTableProps> = ({ signals, onPaperBuy, o
     </div>
   );
 };
+
+/** Memoised: live ticks elsewhere on the screen do not redraw the table. */
+export const SignalTable = React.memo(SignalTableImpl);

@@ -5,7 +5,7 @@ import { setupCode } from './setupCode';
 import { INR, formatCurrency, pnlClass } from './format';
 
 /* ---------- Open positions ---------- */
-export const OpenPositionsPanel: React.FC<{
+const OpenPositionsPanelImpl: React.FC<{
   positions: PaperPosition[];
   onClosePosition: (id: string) => void;
   /** One-line expandable rows that fill their parent's height (Watch screen). */
@@ -160,3 +160,5 @@ export const OpenPositionsPanel: React.FC<{
   </section>
   );
 };
+
+export const OpenPositionsPanel = React.memo(OpenPositionsPanelImpl);

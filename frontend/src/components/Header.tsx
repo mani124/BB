@@ -5,6 +5,8 @@ import { useTheme } from '../context/ThemeContext';
 import { RiskControls } from './RiskControls';
 import { Tabs } from './Tabs';
 import { Dialog } from './Dialog';
+import { ConnectionStatus } from './ConnectionStatus';
+import { connectionState } from '../lib/connectionState';
 import type { AppTab, RiskStatus } from '../types';
 
 export interface HeaderProps {
@@ -109,7 +111,7 @@ export const Header: React.FC<HeaderProps> = ({
         className="shrink-0 z-40 px-4 sm:px-6 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2"
         style={{ background: 'var(--bg)', borderBottom: '1px solid var(--line)' }}
       >
-        <h1 className="font-semibold text-base tracking-tight m-0">BB Options</h1>
+        <h1 className="font-semibold text-base tracking-tight m-0 lg:hidden">BB Options</h1>
 
         {onTabChange && (
           <Tabs<AppTab>
@@ -130,31 +132,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <div className="ml-auto hidden sm:flex flex-wrap items-center gap-x-3 gap-y-2 text-xs desk-muted">
           <RiskControls risk={risk ?? undefined} onKillSwitch={onKillSwitch} />
-          {/* Feed status */}
-          {isWsLive ? (
-            <span className="desk-pill up"><span className="desk-dot" />WS LIVE</span>
-          ) : activeMode === 'live' || feedStatus === 'HTTP_POLLING' || feedStatus === 'LIVE' ? (
-            <span className="desk-pill warn"><span className="desk-dot" />HTTP Polling</span>
-          ) : activeMode === 'stale' ? (
-            <span className="desk-pill warn"><span className="desk-dot" />Feed stale</span>
-          ) : activeMode === 'error' ? (
-            <span className="desk-pill down"><span className="desk-dot" />Feed error</span>
-          ) : (
-            <span className="desk-pill warn"><span className="desk-dot" />Demo feed</span>
-          )}
-
-          {/* Quiet while healthy; the pill only appears when the browser link to the server is not live. */}
-          <span role="status" aria-live="polite">
-            {stream && stream.state !== 'connecting' && stream.state !== 'live' && (
-              <span
-                className={`desk-pill ${stream.state === 'stale' ? 'warn' : 'down'}`}
-                title="Connection between this page and the dashboard server"
-              >
-                <span className="desk-dot" />
-                {stream.state === 'reconnecting' ? 'Reconnecting…' : `Stream stale ${stream.ageSec}s`}
-              </span>
-            )}
-          </span>
+          <ConnectionStatus activeMode={activeMode} feedStatus={feedStatus} wsConnected={isWsLive} stream={stream} />
 
           <span className="desk-num hidden 2xl:inline" title="Scan cycle and last scan time">
             Cycle {scanCycleCount} · {lastScanTime || 'Ready'}
@@ -220,7 +198,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="absolute right-0 top-11 z-50 w-72 max-w-[calc(100vw-2rem)] desk-panel p-3 shadow-lg flex flex-col items-start gap-3">
               <p className="desk-label">Risk and connection</p>
               <RiskControls risk={risk ?? undefined} onKillSwitch={onKillSwitch} />
-              <p className="desk-muted text-xs">{isWsLive ? 'WS live feed' : activeMode === 'demo' ? 'Demo feed' : `Feed: ${feedStatus || activeMode}`}</p>
+              <ConnectionStatus activeMode={activeMode} feedStatus={feedStatus} wsConnected={isWsLive} stream={stream} />
               <button type="button" className="desk-btn" onClick={onScanNow} disabled={isScanning}>Scan now</button>
               {onOpenAccessKey && <button type="button" className="desk-btn" onClick={onOpenAccessKey}>Dashboard key</button>}
               {showAuthenticated ? <button type="button" className="desk-btn" onClick={disconnect}>Disconnect Dhan</button>

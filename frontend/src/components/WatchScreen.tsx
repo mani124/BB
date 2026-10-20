@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { PaperPosition, ScannerState, Signal } from '../types';
 import { CompactStrip } from './PortfolioStrips';
 import { IndexHeroRadar } from './IndexHeroRadar';
@@ -54,14 +54,14 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [mainView, setMainView] = useState<'candidates' | 'signals'>('signals');
   // Confirmed signals first (stable), short list by default.
-  const sorted = [...filteredSignals].sort((x, y) => {
+  const sorted = useMemo(() => [...filteredSignals].sort((x, y) => {
     const confirmation = Number(y.is_confirmed !== false) - Number(x.is_confirmed !== false);
     if (confirmation) return confirmation;
     if (sortBy === 'symbol') return x.symbol.localeCompare(y.symbol);
     if (sortBy === 'setup') return x.setup_type.localeCompare(y.setup_type);
     return y.timestamp.localeCompare(x.timestamp);
-  });
-  const shown = showAll ? sorted : sorted.slice(0, SIGNALS_SHOWN);
+  }), [filteredSignals, sortBy]);
+  const shown = useMemo(() => (showAll ? sorted : sorted.slice(0, SIGNALS_SHOWN)), [showAll, sorted]);
   const pf = state.paper_portfolio;
   const currentSelection = selectedSignal && state.signals.find((sig) => sig.id === selectedSignal.id);
   const confirmedCount = state.signals.filter((sig) => sig.is_confirmed !== false).length;
@@ -82,13 +82,10 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
   const matchedTrade = signalId ? trades.find((trade) => trade.book === 'paper' && trade.signal_id === signalId) : null;
   const view = dashboardWatch ? mainView : 'signals';
 
-  const positionsRail = (
-    <div className="flex flex-col gap-3 lg:min-h-0">
-      <OpenPositionsPanel
-        compact
-        positions={pf?.active_positions ?? []}
-        onClosePosition={onClosePosition}
-        headerActions={pf && (
+  const autoTrade = pf?.auto_trade_enabled;
+  const lots = pf?.default_lots;
+  // Stable between ticks so the memoised positions panel is not redrawn by an unrelated price update.
+  const headerActions = useMemo(() => pf && (
           <>
             <button
               type="button"
@@ -106,7 +103,15 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
               ))}
             </div>
           </>
-        )}
+  ), [autoTrade, lots, onToggleAutoTrade, onChangeLots]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const positionsRail = (
+    <div className="flex flex-col gap-3 lg:min-h-0">
+      <OpenPositionsPanel
+        compact
+        positions={pf?.active_positions ?? []}
+        onClosePosition={onClosePosition}
+        headerActions={headerActions}
       />
       <TodaySummary trades={closedTrades} />
     </div>
@@ -212,7 +217,7 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
         <IndexHeroRadar radar={state.radar} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(380px,0.95fr)_minmax(0,1.5fr)] gap-3 lg:flex-1 lg:min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(340px,0.8fr)_minmax(0,1.5fr)] gap-3 lg:flex-1 lg:min-h-0">
         {positionsRail}
         <section className="desk-panel desk-pane min-h-0" aria-label="Scanner results">
           {dashboardWatch && (
