@@ -156,6 +156,9 @@ class PaperGuardsMixin:
         if stale:
             logger.warning("Flagged %d stale carried-over position(s) as %s", len(stale), STALE_CARRYOVER)
             self._recalculate_metrics()
+            # a routed live position closed here must be squared off at the broker too, not left orphaned
+            for pos in stale:
+                self._emit_position_update(pos)
         return stale
 
     def close_t315f_runners(self, symbol: str, minutes: int, bar_close: float, ema15: float, option_bid_map: Optional[dict] = None) -> list[PaperPosition]:

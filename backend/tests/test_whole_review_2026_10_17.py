@@ -209,3 +209,23 @@ def test_zero_option_price_is_not_a_stop_breach():
     pos = SimpleNamespace(option_type="CE", current_option_price=0.0, option_sl=80.0, underlying_sl=100.0, setup_type="Setup 1")
     assert _level_hit(pos, 120.0, "sl") is False
     assert _level_hit(pos, 120.0, "sl", fresh_opt=70.0) is True
+
+
+# ---- 2026-10-20 whole-codebase review
+def test_unquoted_option_price_does_not_stop_out_a_new_position(tmp_path):
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    pos = e.open_position_from_signal(make_test_signal("ZERO"))
+    pos.current_option_price = 0.0
+    spot = (pos.underlying_sl + 15) if pos.option_type == "CE" else (pos.underlying_sl - 15)
+    e.update_market_prices({pos.symbol: spot})
+    assert pos in e._portfolio.active_positions
+
+
+def test_stale_carryover_notifies_the_order_router(tmp_path):
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    pos = e.open_position_from_signal(make_test_signal("STALE"))
+    pos.entry_datetime = "2026-10-01T10:00:00+05:30"
+    seen = []
+    e.on_position_update = seen.append
+    assert [p.id for p in e.flag_stale_carryover()] == [pos.id]
+    assert [p.id for p in seen] == [pos.id]

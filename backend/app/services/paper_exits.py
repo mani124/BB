@@ -371,7 +371,7 @@ class PaperExitsMixin:
             # --- SETUPS 1-4 & 6-8: EXITS BASED ON UNDERLYING SPOT OR OPTION LEVELS ---
             if pos.option_type == "CE":
                 # Check SL
-                if (curr_spot is not None and curr_spot <= pos.underlying_sl) or (opt_levels and pos.current_option_price <= pos.option_sl):
+                if (curr_spot is not None and curr_spot <= pos.underlying_sl) or (opt_levels and pos.current_option_price > 0 and pos.current_option_price <= pos.option_sl):
                     is_breakeven = (pos.status == "TARGET_1")
                     reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
                     if pos.feed_mode == "live" and not has_fresh_quote:
@@ -444,7 +444,7 @@ class PaperExitsMixin:
 
             else:  # PE
                 # Check SL
-                if (curr_spot is not None and curr_spot >= pos.underlying_sl) or (opt_levels and pos.current_option_price <= pos.option_sl):
+                if (curr_spot is not None and curr_spot >= pos.underlying_sl) or (opt_levels and pos.current_option_price > 0 and pos.current_option_price <= pos.option_sl):
                     is_breakeven = (pos.status == "TARGET_1")
                     reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
                     if pos.feed_mode == "live" and not has_fresh_quote:

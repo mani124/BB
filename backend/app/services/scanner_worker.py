@@ -176,6 +176,9 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
             self._option_last_cum_volume.clear()
             self._last_cumulative_volume.clear()
             self._instrument_last_quote_time.clear()
+            self._bars3.clear()
+            self._bars3_seed_attempts.clear()
+            self._bars3_checked.clear()
             self._last_session_date = today
 
     CHAIN_FAIL_TTL_S = 20.0

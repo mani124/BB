@@ -209,10 +209,15 @@ async def test_session_boundary_clears_candle_history():
     today = market_hours.now_ist().date()  # the suite pins the exchange clock (conftest)
     worker._candle_history["NIFTY 50"] = [{"timestamp": market_hours.now_ist_naive(), "close": 25000.0}]
     worker._last_session_date = today - timedelta(days=1)
+    from app.services.bar_builder import BarBuilder
+    worker._bars3["NIFTY 50"] = BarBuilder(3)
+    worker._bars3_seed_attempts["NIFTY 50"] = 1.0
+    worker._bars3_checked["NIFTY 50"] = object()
 
-    # When date changes, reset session candles
+    # When date changes, reset session candles (3m bars too, so the new day is seeded afresh)
     worker.check_session_reset()
     assert "NIFTY 50" not in worker._candle_history
+    assert not worker._bars3 and not worker._bars3_seed_attempts and not worker._bars3_checked
     assert worker._last_session_date == today
     await worker.stop()
 

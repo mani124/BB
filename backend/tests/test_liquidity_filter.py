@@ -1,5 +1,6 @@
 """Liquidity filter: shadow mode by default, blocks only when enabled."""
 import sqlite3
+from pathlib import Path
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -71,7 +72,7 @@ def test_analysis_script_runs(tmp_path):
                      [(20, 10, 100, -500, 3), (2, 900, 9000, 300, 40), (None, None, None, 100, 10)])
     conn.commit()
     conn.close()
-    out = subprocess.run([sys.executable, "scripts/liquidity_analysis.py", str(db)], capture_output=True, text=True, check=True).stdout
+    out = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1] / "scripts" / "liquidity_analysis.py"), str(db)], capture_output=True, text=True, check=True).stdout
     assert "3 closed trades" in out and "Skip if spread" in out
 
 
