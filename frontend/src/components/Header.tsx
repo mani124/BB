@@ -64,10 +64,10 @@ export const Header: React.FC<HeaderProps> = ({
   const [inputClientId, setInputClientId] = useState('');
   const [inputToken, setInputToken] = useState('');
   const [oauthClientId, setOauthClientId] = useState(
-    typeof window !== 'undefined' ? sessionStorage.getItem('dhan_client_id') || '' : ''
+    typeof window !== 'undefined' ? localStorage.getItem('dhan_client_id') || '' : ''
   );
   const [oauthAppId, setOauthAppId] = useState(
-    typeof window !== 'undefined' ? sessionStorage.getItem('dhan_oauth_app_id') || '' : ''
+    typeof window !== 'undefined' ? localStorage.getItem('dhan_oauth_app_id') || '' : ''
   );
   const [oauthAppSecret, setOauthAppSecret] = useState(
     typeof window !== 'undefined' ? sessionStorage.getItem('dhan_oauth_app_secret') || '' : ''
