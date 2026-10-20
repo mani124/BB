@@ -1,5 +1,6 @@
 import sqlite3
 import pytest
+from app.services import market_hours
 from app.services.paper_trader import PaperTradingEngine, PaperPosition
 from app.services.strategy_engine import Signal, SetupType
 from app.services.strike_selector import OptionStrikeRecommendation
@@ -274,13 +275,13 @@ def test_legacy_database_migration_with_existing_rows(tmp_path):
     # Insert one open position and one closed position from legacy schema
     conn.execute("""
         INSERT INTO positions VALUES (
-            'POS_LEGACY_OPEN', 'SIG_01', 'NIFTY 50', 'CE', 'NIFTY 22450 CE',
+            'POS_NIFTY 50_CE_%d_legacy', 'SIG_01', 'NIFTY 50', 'CE', 'NIFTY 22450 CE',
             '5m', 'Setup 1: BB Squeeze Breakout', '09:15:00', 22500.0, 22450.0,
             22550.0, 22600.0, 150.0, 130.0, 175.0, 190.0,
             65, 2, 130, 22500.0, 150.0, 0.0, 0.0,
             'OPEN', NULL, NULL, 2, 130, 0, 0.0, 'SEC_123'
         );
-    """)
+    """ % int(market_hours.now_ist().timestamp()))   # legacy rows carry no entry date: the id's epoch dates it as today
     conn.execute("""
         INSERT INTO positions VALUES (
             'POS_LEGACY_CLOSED', 'SIG_02', 'BANKNIFTY', 'CE', 'BANKNIFTY 50000 CE',
@@ -296,7 +297,7 @@ def test_legacy_database_migration_with_existing_rows(tmp_path):
     engine = PaperTradingEngine(db_path=db_file)
     port = engine.get_portfolio()
     assert len(port.active_positions) == 1
-    assert port.active_positions[0].id == "POS_LEGACY_OPEN"
+    assert port.active_positions[0].id.startswith("POS_NIFTY 50_CE_")
     assert port.active_positions[0].theoretical_entry == 0.0
     assert len(port.closed_trades) == 1
     assert port.closed_trades[0].id == "POS_LEGACY_CLOSED"

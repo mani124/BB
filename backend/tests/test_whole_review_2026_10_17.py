@@ -264,3 +264,43 @@ def test_weekday_fallback_is_opt_in(monkeypatch):
     assert market_hours.is_trading_day(date(2099, 1, 5)) and not market_hours.is_trading_day(date(2099, 1, 3))
     monkeypatch.setattr(settings, "ASSUME_WEEKDAYS_WITHOUT_HOLIDAY_LIST", False)
     assert not market_hours.is_trading_day(date(2099, 1, 5))
+
+
+# ---- 2026-10-20 project review
+def test_option_chart_position_is_not_stopped_on_a_zero_quote(tmp_path):
+    from app.services.strategy_engine import SetupType
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    sig = make_test_signal("OPTCHART")
+    sig.setup_type = SetupType.SETUP_5_OPTION_BB
+    pos = e.open_position_from_signal(sig, lots=2)
+    pos.current_option_price = 0.0
+    e.update_market_prices({pos.symbol: pos.underlying_entry})
+    assert pos in e._portfolio.active_positions
+
+
+def test_option_chart_single_lot_target_1_locks_a_fee_buffer(tmp_path):
+    from app.services.strategy_engine import SetupType
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    sig = make_test_signal("OPTCHART1")
+    sig.setup_type = SetupType.SETUP_5_OPTION_BB
+    pos = e.open_position_from_signal(sig, lots=1)
+    e.update_market_prices({pos.symbol: pos.underlying_entry}, option_price_map={pos.id: pos.option_target_1 + 1})
+    assert pos.status == "TARGET_1" and pos.option_entry < pos.option_sl < pos.option_target_1
+
+
+def test_stale_carryover_recovers_the_entry_day_from_the_position_id(tmp_path):
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    pos = e.open_position_from_signal(make_test_signal("NOTIME"))
+    pos.entry_datetime = ""
+    pos.id = "POS_NIFTY 50_CE_1790000000_abc123"          # epoch is in the past, so it is a stale carry-over
+    stale = e.flag_stale_carryover()
+    assert [p.id for p in stale] == [pos.id] and stale[0].exit_reason == "STALE_CARRYOVER"
+
+
+def test_unreadable_entry_time_without_a_usable_id_is_quarantined(tmp_path):
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    pos = e.open_position_from_signal(make_test_signal("BADTIME"))
+    pos.entry_datetime = "garbage"
+    pos.id = "weird"
+    stale = e.flag_stale_carryover()
+    assert stale and stale[0].quarantine_reason == "CORRUPT_METADATA"

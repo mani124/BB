@@ -102,8 +102,8 @@ The dashboard continuously evaluates four high-probability option buying setups 
 - **Technical Conditions**:
   - **Coil**: Bollinger BandWidth ($\frac{\text{Upper} - \text{Lower}}{\text{Middle}} \times 100$) reaches its 20-period minimum or an absolute squeeze threshold ($\le 5\%$).
   - **Breakout**: Candle closes decisively outside the Upper Band (CE) or Lower Band (PE).
-  - **Volume & VWAP**: Volume surge $> 1.2\times$ 20-period average volume, with price closing above Session VWAP (CE) or below Session VWAP (PE).
-  - **Momentum Filter**: Wilder's RSI(14) $> 60$ for Call options, or $< 40$ for Put options.
+  - **VWAP**: Price closes above Session VWAP (CE) or below Session VWAP (PE). No volume-surge test is applied: index spot feeds carry no traded volume, and the rule is the same for every symbol.
+  - **Momentum Filter**: Wilder's RSI(14) $\ge 58$ for Call options, or $\le 42$ for Put options.
 - **Stop-Loss**: Placed at the 20-period Bollinger Middle Band (20 SMA).
 
 ### 2. Setup 2: "Walking the Bands" with 9 EMA *(CE & PE)*

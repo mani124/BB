@@ -32,8 +32,8 @@ def calculate_option_trade_charges(
 
     Fee Schedule:
     - Brokerage: Flat ₹20 per executed order leg (configurable via brokerage_per_order).
-    - STT (Securities Transaction Tax): 0.1% (0.0010) on Sell Turnover only.
-    - NSE Exchange Fee: 0.05% (0.0005) on Total Turnover.
+    - STT (Securities Transaction Tax): 0.15% (0.0015) on Sell Turnover only (from 1 April 2026).
+    - NSE Exchange Fee: 0.03553% (0.0003553) on Total Turnover.
     - SEBI Turnover Fee: ₹10 per crore (0.000001) on Total Turnover.
     - Stamp Duty: 0.003% (0.00003) on Buy Turnover only.
     - GST: 18% on (Brokerage + Exchange Fee + SEBI Fee).

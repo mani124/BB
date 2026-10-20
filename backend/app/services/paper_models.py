@@ -95,6 +95,7 @@ class DailyPnl(BaseModel):
     quarantined_excluded: int = 0
 
 STALE_CARRYOVER = "STALE_CARRYOVER"
+CORRUPT_METADATA = "CORRUPT_METADATA"   # open position whose entry time could not be read or recovered
 EOD_SQUARE_OFF = "EOD_SQUARE_OFF"
 T315_CUTOFF = "T315_CUTOFF"
 T315F_RUNNER_TRAIL = "T315F_RUNNER_TRAIL"

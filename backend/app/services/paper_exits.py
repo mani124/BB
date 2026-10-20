@@ -323,7 +323,7 @@ class PaperExitsMixin:
 
             # --- SETUP 5: EXITS BASED EXCLUSIVELY ON OPTION CHARTS ---
             if is_opt_chart_setup:
-                if pos.current_option_price <= pos.option_sl:
+                if pos.current_option_price > 0 and pos.current_option_price <= pos.option_sl:
                     is_breakeven = (pos.status == "TARGET_1")
                     reason = "Breakeven Trailed SL Hit" if is_breakeven else "Stop-Loss Hit"
                     self._finalize_closed_position(
@@ -371,7 +371,7 @@ class PaperExitsMixin:
                         # Single lot cannot be split: no partial at Target 1, the whole lot
                         # runs with its stop moved to entry (breakeven) below.
                         logger.info("T1 %s: %d lot cannot book 50%%; no partial, stop to breakeven", pos.symbol, pos.lots)
-                    pos.option_sl = pos.option_entry
+                    pos.option_sl = _breakeven_stops(pos, single_lot=pos.booked_lots == 0)[1]
                     self._enqueue_write("upsert", pos)
 
                 # Keep the headline P&L live. This branch used to skip the update below, so a

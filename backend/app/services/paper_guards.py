@@ -141,14 +141,21 @@ class PaperGuardsMixin:
         stale = []
         for pos in list(self._portfolio.active_positions):
             entered = _parse_iso(pos.entry_datetime)
-            if entered is None or entered.date() >= today:
+            if entered is None:
+                # entry time missing or unreadable: the id embeds the entry epoch (POS_<symbol>_<side>_<epoch>_<hash>)
+                try:
+                    entered = datetime.fromtimestamp(int(str(pos.id).split("_")[-2]), market_hours.IST)
+                except (IndexError, ValueError, OverflowError, OSError):
+                    entered = None
+                    pos.quarantine_reason = CORRUPT_METADATA
+            if entered is not None and entered.date() >= today:
                 continue
             _, now_iso = _now_stamp()
             pos.status = "CLOSED"
-            pos.exit_reason = STALE_CARRYOVER
+            pos.exit_reason = CORRUPT_METADATA if entered is None else STALE_CARRYOVER
             pos.exit_time = _now_stamp()[0]
             pos.exit_datetime = now_iso
-            pos.quarantine_reason = STALE_CARRYOVER
+            pos.quarantine_reason = CORRUPT_METADATA if entered is None else STALE_CARRYOVER
             self._portfolio.active_positions.remove(pos)
             self._portfolio.closed_trades.append(pos)
             self._enqueue_write("upsert", pos)

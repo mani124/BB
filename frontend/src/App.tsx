@@ -174,7 +174,7 @@ const DashboardContent: React.FC = () => {
             if (data.active_mode === 'demo' && !reconnectingRef.current) {
               const savedId = localStorage.getItem('dhan_client_id');
               const savedToken = localStorage.getItem('dhan_access_token');
-              if (savedId && savedToken && !savedToken.includes('*')) {
+              if (savedId && savedToken && !savedToken.includes('*') && savedToken !== 'server_active' && savedToken !== 'oauth_connected') {
                 reconnectingRef.current = true;
                 connect(savedId, savedToken).finally(() => {
                   setTimeout(() => { reconnectingRef.current = false; }, 15000);
@@ -248,7 +248,7 @@ const DashboardContent: React.FC = () => {
           if (data.active_mode === 'demo' && !reconnectingRef.current) {
             const savedId = localStorage.getItem('dhan_client_id');
             const savedToken = localStorage.getItem('dhan_access_token');
-            if (savedId && savedToken && !savedToken.includes('*')) {
+            if (savedId && savedToken && !savedToken.includes('*') && savedToken !== 'server_active' && savedToken !== 'oauth_connected') {
               reconnectingRef.current = true;
               connect(savedId, savedToken).finally(() => {
                 setTimeout(() => { reconnectingRef.current = false; }, 15000);
