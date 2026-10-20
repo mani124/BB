@@ -23,6 +23,9 @@ class SetupType(str, enum.Enum):
     SETUP_14_OI_WALL_BOUNCE = "Setup 14: OI Wall Bounce"
     SETUP_16_OPTION_SQUEEZE_BREAK = "Setup 16: Option Squeeze Breakout"
     SETUP_20_T315 = "Setup 20: T315 EMA 3/15 Cross"
+    SETUP_21_T315F_3M = "Setup 21: T315-F 3m"
+    SETUP_22_T315F_5M = "Setup 22: T315-F 5m"
+    SETUP_23_T315F_5M_WIDE = "Setup 23: T315-F 5m wide"
 
 class Signal(BaseModel):
     id: str
@@ -114,6 +117,21 @@ def _reversal_legs(df: pd.DataFrame, bullish: bool):
 def is_setup11(setup_type) -> bool:
     """True for Setup 11 (enum, value, or a stored label). Setup 11 was removed on 2026-10-19; kept so its past trades still load and report."""
     return setup_type == SetupType.SETUP_11_FILTERED_OPTION_BB or "Setup 11" in str(getattr(setup_type, "value", setup_type))
+
+
+POOL_LABELS = {"s11": "Setup 11", "f21": "Setup 21", "f22": "Setup 22", "f23": "Setup 23"}
+
+
+def pool_of(setup_type) -> str:
+    """Which risk and exposure pool a setup belongs to: "main" for most setups, and a pool of its own for Setup 11 and each
+    T315-F version (21, 22, 23), so their caps, loss limits and open positions never count against each other or the rest."""
+    if is_setup11(setup_type):
+        return "s11"
+    text = str(getattr(setup_type, "value", setup_type) or "")
+    for n in (21, 22, 23):
+        if text.startswith(f"Setup {n}:"):
+            return f"f{n}"
+    return "main"
 
 
 def is_setup5(setup_type) -> bool:

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.services import market_hours
-from app.services.strategy_engine import is_setup11
+from app.services.strategy_engine import POOL_LABELS, is_setup11, pool_of
 from app.services.paper_models import _now_stamp, _parse_iso
 
 logger = logging.getLogger(__name__)
@@ -83,13 +83,13 @@ class PaperRiskMixin:
         """Net P&L for today's IST date: closed trades exited today, partial profit already booked on
         open runners, and open positions marked to market after estimated exit charges.
 
-        `pool` is "main" (every setup except Setup 11), "s11" (Setup 11 only) or None (everything).
+        `pool` is "main" (every setup except Setup 11 and the T315-F versions), "s11", "f21", "f22", "f23" or None (everything).
         Setup 11 shadows Setup 5, so its P&L has its own loss cap and never counts toward the main one."""
         from app.services.paper_trader import _outcome_pnl
         today = market_hours.now_ist().date()
         total = 0.0
         def in_pool(p) -> bool:
-            return pool is None or (is_setup11(p.setup_type) == (pool == "s11"))
+            return pool is None or pool_of(p.setup_type) == pool
 
         for p in self._portfolio.closed_trades:
             if p.quarantine_reason or (book and getattr(p, "feed_mode", "demo") != book) or not in_pool(p):
@@ -134,7 +134,7 @@ class PaperRiskMixin:
         for p in self._portfolio.closed_trades:
             if p.quarantine_reason or getattr(p, "feed_mode", "demo") != book:
                 continue
-            if pool is not None and is_setup11(p.setup_type) != (pool == "s11"):
+            if pool is not None and pool_of(p.setup_type) != pool:
                 continue
             ed = _parse_iso(p.exit_datetime)
             if ed is not None and ed.date() == today:
@@ -152,7 +152,7 @@ class PaperRiskMixin:
         if self._kill_switch:
             return "kill switch is engaged"
         if self._check_loss_cap(feed_mode, pool):
-            return f"daily loss cap reached{' for Setup 11' if pool == 's11' else ''} (limit {self._daily_loss_limit:,.0f})"
+            return f"daily loss cap reached{' for ' + POOL_LABELS[pool] if pool in POOL_LABELS else ''} (limit {self._daily_loss_limit:,.0f})"
         streak_limit = int(self.runtime.get("max_consecutive_losses"))
         if streak_limit > 0:
             run = self.consecutive_losses_today(feed_mode, pool)

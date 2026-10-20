@@ -30,6 +30,8 @@ from app.services.setup13 import evaluate_option_vwap_reclaim
 from app.services.setup16 import evaluate_option_squeeze_breakout
 from app.services.setup12 import evaluate_adx_ema_cross
 from app.services.setup_t315 import evaluate_t315
+from app.services.setup_t315f import INDEX_SCALE, emas as t315f_emas, evaluate_t315f
+from app.services.bar_builder import BarBuilder
 from app.services.setup14 import WALL_REFRESH_S, compute_oi_walls, evaluate_oi_wall_bounce
 from app.services.straddle_squeeze import StraddleLeg, evaluate_straddle_squeeze
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
@@ -96,6 +98,8 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         self._scan_lock = asyncio.Lock()
         self._ws_connect_task: Optional[asyncio.Task] = None
         self._bar_completed_symbols: set[str] = set()
+        self._bars3: dict[str, BarBuilder] = {}   # T315-F 3m versions: own bars for NIFTY 50 / NIFTY BANK
+        self._bars3_seed_attempts: dict[str, float] = {}
         self._instrument_last_quote_time: dict[str, float] = {}
         self._option_last_quote_time: dict[str, float] = {}
         self._latest_option_quotes: dict[str, OptionQuote] = {}
@@ -712,6 +716,28 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                     except Exception:
                         pass
 
+                # Setups 22 and 23 (T315-F 5m): same completed 5m index bars; isolated like Setup 12
+                if inst.symbol in INDEX_SCALE:
+                    for number in (22, 23):
+                        try:
+                            f_signals = evaluate_t315f(number, inst.symbol, completed_df)
+                        except Exception as e:
+                            logger.warning(f"Setup {number} (T315-F) evaluation failed for {inst.symbol}: {e}")
+                            f_signals = []
+                        for s in f_signals:
+                            try:
+                                if pd.to_datetime(s.timestamp).date() == today_date:
+                                    confirmed_signals.append(s)
+                            except Exception:
+                                pass
+                    # A newly completed 5m bar: close T315-F runners whose bar closed back across the 15 EMA
+                    if inst.symbol in self._bar_completed_symbols and len(completed_df) > 15:
+                        try:
+                            ema15 = float(t315f_emas(completed_df)[1].iloc[-1])
+                            paper_trader.close_t315f_runners(inst.symbol, 5, float(completed_df["close"].iloc[-1]), ema15)
+                        except Exception as e:
+                            logger.warning(f"T315-F 5m runner check failed for {inst.symbol}: {e}")
+
                 # Setup 9 (relative strength vs NIFTY) only fires on completed bars
                 nifty_bars = self._candle_history.get(NIFTY_SYMBOL, [])
                 if stock_bias and inst.instrument_type == "EQUITY" and nifty_bars:
@@ -730,6 +756,24 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                     for s in rs_signals:
                         if pd.to_datetime(s.timestamp).date() == today_date:
                             confirmed_signals.append(s)
+
+            # 1b. Setup 21 (T315-F 3m): 3 minute bars built from Dhan 1m history plus live prices, NIFTY 50 / NIFTY BANK only
+            if mode == "live" and inst.symbol in INDEX_SCALE:
+                try:
+                    if cid and tok:
+                        await self.seed_three_minute_bars_if_needed(cid, tok, inst)
+                    done3 = self.update_three_minute_bars(inst.symbol, live_ltp)
+                    builder = self._bars3.get(inst.symbol)
+                    if builder is not None and builder.count > 50:
+                        df3 = builder.completed_frame()
+                        for s in evaluate_t315f(21, inst.symbol, df3):
+                            if pd.to_datetime(s.timestamp).date() == market_hours.now_ist_naive().date():
+                                confirmed_signals.append(s)
+                        if done3:
+                            ema15 = float(t315f_emas(df3)[1].iloc[-1])
+                            paper_trader.close_t315f_runners(inst.symbol, 3, float(df3["close"].iloc[-1]), ema15)
+                except Exception as e:
+                    logger.warning(f"Setup 21 (T315-F 3m) failed for {inst.symbol}: {e}")
 
             # 2. Forming bar: evaluate on ind_df (which includes active forming candle)
             provisional_signals = evaluate_signals(

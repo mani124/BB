@@ -18,29 +18,15 @@ from __future__ import annotations
 
 import argparse
 import os
-from dataclasses import dataclass
 from datetime import time as dtime
 from typing import Optional
 
 import pandas as pd
 
-FAST, SLOW, TREND = 3, 15, 50
-START, CUTOFF = dtime(9, 30), dtime(15, 15)
-LAST_START = {3: dtime(15, 9), 5: dtime(15, 5)}  # the last bar start that still confirms before the cutoff
-MIN_HISTORY = 50
+from app.services.setup_t315f import Params, cross_side_at, emas, stop_distance  # noqa: F401
+
+CUTOFF = dtime(15, 15)
 DELTA = 0.5
-
-
-@dataclass(frozen=True)
-class Params:
-    stop_min: float = 25.0
-    stop_max: float = 30.0
-    t1: float = 45.0
-    book: float = 0.6
-    swing_bars: int = 5
-
-    def scaled(self, k: float) -> "Params":
-        return Params(self.stop_min * k, self.stop_max * k, self.t1 * k, self.book, self.swing_bars)
 
 
 def load_bars(directory: str, symbol: str, minutes: int) -> pd.DataFrame:
@@ -51,32 +37,15 @@ def load_bars(directory: str, symbol: str, minutes: int) -> pd.DataFrame:
     return agg.dropna(subset=["open"]).reset_index()
 
 
-def emas(df: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series]:
-    close = df["close"].astype(float)
-    return tuple(close.ewm(span=n, adjust=False).mean() for n in (FAST, SLOW, TREND))  # type: ignore[return-value]
-
-
 def signals(df: pd.DataFrame, minutes: int) -> list[tuple[int, str]]:
-    """Bar indexes and sides where the 3 EMA crosses the 15 EMA with the 50 EMA on the trade side."""
-    fast, slow, trend = emas(df)
-    close = df["close"].astype(float)
+    """Bar indexes and sides where the app's T315-F rule fires (the same function the scanner uses)."""
+    ema = emas(df)
     out = []
-    for i in range(MIN_HISTORY, len(df)):
-        ts, prev = df.timestamp.iloc[i], df.timestamp.iloc[i - 1]
-        if not (START <= ts.time() <= LAST_START[minutes]) or ts.date() != prev.date():
-            continue
-        if fast[i - 1] <= slow[i - 1] and fast[i] > slow[i] and close[i] > trend[i]:
-            out.append((i, "CE"))
-        elif fast[i - 1] >= slow[i - 1] and fast[i] < slow[i] and close[i] < trend[i]:
-            out.append((i, "PE"))
+    for i in range(len(df)):
+        side = cross_side_at(df, i, minutes, ema)
+        if side:
+            out.append((i, side))
     return out
-
-
-def stop_distance(df: pd.DataFrame, i: int, side: str, p: Params) -> float:
-    entry = float(df.close.iloc[i])
-    window = df.iloc[max(0, i - p.swing_bars + 1): i + 1]
-    extreme = float(window.low.min()) if side == "CE" else float(window.high.max())
-    return min(max(abs(entry - extreme), p.stop_min), p.stop_max)
 
 
 def simulate(df: pd.DataFrame, slow: pd.Series, i: int, side: str, p: Params) -> Optional[tuple[float, str]]:

@@ -117,10 +117,11 @@ def test_entry_window_uses_the_bar_start_time(hh, mm, expected):
     assert len(evaluate_t315("NIFTY 50", df)) == expected
 
 
-def test_default_switch_is_indices_only():
-    assert DEFAULT_MODES["20"] == "index"
-    assert block_reason(DEFAULT_MODES, SetupType.SETUP_20_T315, "RELIANCE")
-    assert block_reason(DEFAULT_MODES, SetupType.SETUP_20_T315, "NIFTY 50") is None
+def test_default_switch_is_off_and_indices_only_when_on():
+    assert DEFAULT_MODES["20"] == "off"           # switched off by default: it lost money on the 51-day replay
+    on = {**DEFAULT_MODES, "20": "index"}
+    assert block_reason(on, SetupType.SETUP_20_T315, "RELIANCE")
+    assert block_reason(on, SetupType.SETUP_20_T315, "NIFTY 50") is None
 
 
 # ---------------------------------------------------------------- the 3:15 PM cutoff
