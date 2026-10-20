@@ -196,6 +196,7 @@ def get_dashboard_session(day: str) -> dict:
 def _source(book: str, mode: str, as_of: str | None, observed_at: str, *, disabled: bool = False,
             error: str | None = None) -> dict:
     state = "unknown"
+    message = error or ""
     if error or mode in ("error", "no_credentials"):
         state = "error"
     elif disabled:
@@ -208,7 +209,11 @@ def _source(book: str, mode: str, as_of: str | None, observed_at: str, *, disabl
             state = "stale" if age > timedelta(minutes=15) else "ready"
         except (TypeError, ValueError):
             state = "unknown"
-    return {"book": book, "mode": mode, "as_of": as_of, "state": state, "message": error or ""}
+    else:
+        # Enabled, no error, and nothing evaluated yet: say so rather than "unknown".
+        state = "idle"
+        message = "Market closed; nothing evaluated yet" if mode == "closed" else "No evaluation recorded yet"
+    return {"book": book, "mode": mode, "as_of": as_of, "state": state, "message": message}
 
 
 def _checks(metrics: Any) -> list[dict]:

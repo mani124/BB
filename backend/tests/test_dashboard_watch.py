@@ -33,7 +33,8 @@ def test_watch_isolates_failed_source_and_never_calls_missing_time_fresh():
         observed_at="2026-10-19T09:38:00+05:30",
     )
     sources = {s["book"]: s for s in watch["sources"]}
-    assert sources["paper"]["state"] == "unknown"
+    assert sources["paper"]["state"] == "idle"
+    assert sources["paper"]["message"] == "No evaluation recorded yet"
     assert sources["paper"]["as_of"] is None
     assert sources["setup16"]["state"] == "disabled"
     assert sources["cx"]["state"] == "error"
