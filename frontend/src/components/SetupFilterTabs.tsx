@@ -33,6 +33,7 @@ export const SETUP_FILTERS: { key: string; label: string; title: string }[] = [
   { key: 'Setup 13: Option VWAP Reclaim', label: 'S13 Option VWAP', title: 'Setup 13: Option VWAP Reclaim' },
   { key: 'Setup 14: OI Wall Bounce', label: 'S14 OI Wall', title: 'Setup 14: OI Wall Bounce' },
   { key: 'Setup 16: Option Squeeze Breakout', label: 'S16 Squeeze Break', title: 'Setup 16: Option Squeeze Breakout' },
+  { key: 'Setup 20: T315 EMA 3/15 Cross', label: 'S20 T315 EMA Cross', title: 'Setup 20: T315 EMA 3/15 Cross (index)' },
 ];
 
 const Seg: React.FC<{

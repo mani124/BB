@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.services.charges_calculator import calculate_option_trade_charges
 from app.services.strategy_engine import Signal, is_setup5, is_setup11
 from app.services.strike_selector import get_lot_size
+from app.services.setup_switches import setup_number
 from app.services import market_hours
 from app.core.config import settings
 from app.services.paper_models import *  # noqa: F401,F403
@@ -157,16 +158,23 @@ class PaperGuardsMixin:
         """P0-5: close open positions once the EOD square-off time is reached.
 
         Live positions fill at this cycle's bid when one is known (like every other live exit), else at the last price."""
-        if not market_hours.is_square_off_due():
+        general_due = market_hours.is_square_off_due()
+        t315_due = market_hours.is_t315_cutoff_due()
+        if not general_due and not t315_due:
             return []
         closed = []
         for pos in list(self._portfolio.active_positions):
             if feed_mode is not None and getattr(pos, "feed_mode", "demo") != feed_mode:
                 continue
+            # T315 closes at 3:15 PM; every other setup waits for the normal square-off time.
+            is_t315 = setup_number(pos.setup_type) == "20"
+            if not general_due and not is_t315:
+                continue
+            reason = EOD_SQUARE_OFF if general_due else T315_CUTOFF
             bid = None
             if option_bid_map and getattr(pos, "feed_mode", "demo") == "live":
                 bid = option_bid_map.get(str(pos.option_security_id)) or option_bid_map.get(pos.id)
-            res = self.close_position(pos.id, reason=EOD_SQUARE_OFF, real_bid_price=bid if bid and bid > 0 else None)
+            res = self.close_position(pos.id, reason=reason, real_bid_price=bid if bid and bid > 0 else None)
             if res:
                 closed.append(res)
         return closed

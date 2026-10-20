@@ -96,6 +96,7 @@ class DailyPnl(BaseModel):
 
 STALE_CARRYOVER = "STALE_CARRYOVER"
 EOD_SQUARE_OFF = "EOD_SQUARE_OFF"
+T315_CUTOFF = "T315_CUTOFF"
 
 def _now_stamp() -> tuple[str, str]:
     """(HH:MM:SS display, ISO datetime with date) for the current IST instant."""

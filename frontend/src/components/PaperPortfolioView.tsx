@@ -57,6 +57,7 @@ const SETUP_FILTER_OPTIONS = [
   { id: 'SETUP_13', label: 'S13 Option VWAP' },
   { id: 'SETUP_14', label: 'S14 OI Wall Bounce' },
   { id: 'SETUP_16', label: 'S16 Squeeze Break' },
+  { id: 'SETUP_20', label: 'S20 T315 EMA Cross' },
 ];
 
 const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
@@ -125,6 +126,7 @@ const SETUP_SWITCH_ROWS: { key: string; label: string }[] = [
   { key: '13', label: 'Setup 13 · Option VWAP Reclaim' },
   { key: '14', label: 'Setup 14 · OI Wall Bounce' },
   { key: '16', label: 'Setup 16 · Option Squeeze Breakout' },
+  { key: '20', label: 'Setup 20 · T315 EMA 3/15 Cross' },
 ];
 
 const SETUP_MODE_OPTIONS: { mode: SetupMode; label: string; title: string }[] = [

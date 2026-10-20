@@ -792,3 +792,27 @@ ADX on the stretch bar <= `cx_adx_max_fade` (22). The stretch bar closes outside
 * All thresholds are starting values, **not replayed on real MCX or currency candles** (none were available when written); the book is validated by paper trading and by the Phase 0 data check (`backend/scripts/check_mcx_currency_data.py`), which confirms that the Dhan account returns the instrument master, quotes, option chains with greeks, 5m candles and WebSocket packets for these segments.
 * Slippage and spreads are tuned for NSE index options; MCX and currency option spreads differ, so paper results will flatter until `cx_slippage_pct` and `cx_max_spread_pct` are calibrated from paper fills.
 * Premium units: MCX premiums are INR per quoted unit (barrel, 10 g), currency premiums INR per USD. A CRUDEOIL lot is 100 barrels, so one lot moves much more per rupee than an NSE option lot.
+
+---
+
+## 17. Setup 20: T315 (EMA 3 / EMA 15 cross on the index)
+
+* **Setup Enum:** `SetupType.SETUP_20_T315`; code in `backend/app/services/setup_t315.py`, wired in `scanner_worker` after Setup 12 (completed bars only).
+* **Origin:** the "T315" intraday framework: a 3 EMA against a 15 EMA on a 5 minute chart. The analysis is done on the index (spot) chart only; the option is just what is bought afterwards. No indicator is applied to the option chart.
+* **Underlying Principle:** the 3 EMA is immediate momentum, the 15 EMA the anchor trend. A cross of the fast over the slow EMA in the direction of the bigger trend is the entry.
+
+### Qualification (CE shown; PE is the mirror), on completed 5m index bars
+1. **Cross:** previous 3 EMA <= previous 15 EMA and the 3 EMA is now above the 15 EMA (`ta.crossover`). Both are `close.ewm(span=n, adjust=False)`. Fires on the cross bar only, never on later bars.
+2. **Trend filter (always on):** close above the 50 EMA for a CE, below it for a PE. This is the optional filter from the framework, switched on here.
+3. **Instruments:** indices only (`INDEX_SYMBOLS`); the strategy returns nothing for stocks. Default per-setup switch: `index`.
+4. **Window:** bar start from 09:30 to 15:05 (a 15:05 bar confirms at 15:10). Needs at least 50 bars of history for the 50 EMA. Evaluated only on the 5m timeframe.
+
+### Risk
+* Stop (an index level): CE `min(15 EMA, bar low) - max(0.25 x bar range, 0.05% of close)`; PE mirrored with the high. The paper engine already exits when spot reaches `underlying_sl`, so the option is closed on the index level whatever its own premium is doing. Targets T1 1.5R / T2 2.5R on spot, strike 1 ITM, partial booking at T1, sizing and the risk cap as for Setups 1 to 4.
+* **3:15 PM rule:** no new entries after 15:15 (every setup), and open T315 positions are closed at 15:15 with exit reason `T315_CUTOFF`. Other setups keep the normal 15:20 square-off (`market_hours.is_t315_cutoff_due`, `PaperGuards.square_off_if_due`).
+* No exit on the opposite cross: only the index stop, the targets and the cutoff close a T315 trade.
+
+### Notes
+* The framework describes both a 5 minute and a 3 minute chart; the scanner only builds 5m and 15m bars, so this setup is 5m.
+* The framework suggests ATM or slightly ITM strikes and the current weekly expiry, switching to next week on expiry day. Strike and expiry selection are the existing `recommend_strike` / chain logic (1 ITM); this setup does not change them.
+* Thresholds (09:30 start, 50 EMA filter) are starting values chosen before any replay; tune them from paper trades. Option fills, slippage and costs cannot be tested from past data; the spot signal can be replayed on past 5m index candles.

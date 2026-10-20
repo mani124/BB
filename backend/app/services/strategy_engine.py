@@ -22,6 +22,7 @@ class SetupType(str, enum.Enum):
     SETUP_13_OPTION_VWAP_RECLAIM = "Setup 13: Option VWAP Reclaim"
     SETUP_14_OI_WALL_BOUNCE = "Setup 14: OI Wall Bounce"
     SETUP_16_OPTION_SQUEEZE_BREAK = "Setup 16: Option Squeeze Breakout"
+    SETUP_20_T315 = "Setup 20: T315 EMA 3/15 Cross"
 
 class Signal(BaseModel):
     id: str

@@ -71,6 +71,15 @@ def square_off_time() -> time:
     return _parse_hhmm(settings.EOD_SQUARE_OFF_TIME, time(15, 20))
 
 
+T315_CUTOFF_TIME = time(15, 15)
+
+
+def is_t315_cutoff_due(now: Optional[datetime] = None) -> bool:
+    """True from 3:15 PM on a trading day: the T315 setup holds nothing past this time (other setups use square_off_time)."""
+    n = _resolve(now)
+    return is_trading_day(n.date()) and n.time() >= T315_CUTOFF_TIME
+
+
 def set_clock(clock: Union[_Clock, datetime, None]) -> None:
     """Inject a clock (callable or fixed datetime). ``None`` restores the real clock."""
     global _clock

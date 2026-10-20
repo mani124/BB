@@ -26,6 +26,7 @@ DEFAULT_MODES: dict[str, str] = {
     "13": "index",
     "14": "index",
     "16": "off",
+    "20": "index",
 }
 
 

@@ -29,6 +29,7 @@ from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.setup13 import evaluate_option_vwap_reclaim
 from app.services.setup16 import evaluate_option_squeeze_breakout
 from app.services.setup12 import evaluate_adx_ema_cross
+from app.services.setup_t315 import evaluate_t315
 from app.services.setup14 import WALL_REFRESH_S, compute_oi_walls, evaluate_oi_wall_bounce
 from app.services.straddle_squeeze import StraddleLeg, evaluate_straddle_squeeze
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
@@ -692,6 +693,19 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                     logger.warning(f"Setup 12 evaluation failed for {inst.symbol}: {e}")
                     s12_signals = []
                 for s in s12_signals:
+                    try:
+                        if pd.to_datetime(s.timestamp).date() == today_date:
+                            confirmed_signals.append(s)
+                    except Exception:
+                        pass
+
+                # Setup 20 (T315: EMA 3/15 cross on the index chart) only fires on completed index bars; isolated like Setup 12
+                try:
+                    t315_signals = evaluate_t315(inst.symbol, completed_df, timeframe=inst.default_timeframe)
+                except Exception as e:
+                    logger.warning(f"Setup 20 (T315) evaluation failed for {inst.symbol}: {e}")
+                    t315_signals = []
+                for s in t315_signals:
                     try:
                         if pd.to_datetime(s.timestamp).date() == today_date:
                             confirmed_signals.append(s)
