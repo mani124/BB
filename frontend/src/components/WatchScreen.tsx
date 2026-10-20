@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { PaperPosition, ScannerState, Signal } from '../types';
 import { CompactStrip } from './PortfolioStrips';
 import { IndexHeroRadar } from './IndexHeroRadar';
@@ -14,6 +14,21 @@ import { WatchCandidateList } from './WatchCandidateList';
 import { WatchCandidateDetail } from './WatchCandidateDetail';
 
 const SIGNALS_SHOWN = 12;
+
+/** True when the viewport is at least `px` wide; false where matchMedia is unavailable (tests). */
+const useMinWidth = (px: number): boolean => {
+  const query = `(min-width: ${px}px)`;
+  const [matches, setMatches] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(query);
+    const update = () => setMatches(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, [query]);
+  return matches;
+};
 
 export interface WatchFilters {
   setup: string;
@@ -48,6 +63,7 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
 }) => {
   const [showAll, setShowAll] = useState(false);
   const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null);
+  const widePane = useMinWidth(1280);
   const [sortBy, setSortBy] = useState<'newest' | 'symbol' | 'setup'>('newest');
   const [bookFilter, setBookFilter] = useState<'all' | WatchBook>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'actionable' | 'waiting'>('all');
@@ -152,7 +168,7 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
       <div className="px-4 py-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm" style={{ borderBottom: '1px solid var(--line)' }}>
         <span className="desk-label">Bias</span>
         <span
-          className={`desk-pill ${state.market_bias === 'BULLISH' ? 'up' : state.market_bias === 'BEARISH' ? 'down' : ''}`}
+          className={`desk-pill nomark ${state.market_bias === 'BULLISH' ? 'up' : state.market_bias === 'BEARISH' ? 'down' : ''}`}
           title={
             state.market_bias === 'BULLISH' ? 'PE stock options blocked'
               : state.market_bias === 'BEARISH' ? 'CE stock options blocked' : undefined
@@ -162,11 +178,11 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
         </span>
         {Boolean(state.top_bullish?.length) && <span className="desk-label ml-2">Top CE</span>}
         {state.top_bullish?.map((sym) => (
-          <span key={sym} className="desk-pill up desk-num" title="Top bullish (CE)">▲ {sym}</span>
+          <span key={sym} className="desk-pill up nomark desk-num" title="Top bullish (CE)">▲ {sym}</span>
         ))}
         {Boolean(state.top_bearish?.length) && <span className="desk-label ml-2">Top PE</span>}
         {state.top_bearish?.map((sym) => (
-          <span key={sym} className="desk-pill down desk-num" title="Top bearish (PE)">▼ {sym}</span>
+          <span key={sym} className="desk-pill down nomark desk-num" title="Top bearish (PE)">▼ {sym}</span>
         ))}
       </div>
       <SetupFilterTabs
@@ -192,8 +208,9 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
           </select>
         </label>
       </div>
+      <div className={widePane && currentSelection ? 'grid grid-cols-[minmax(0,1fr)_20rem] min-h-0 flex-1' : 'contents'}>
       <div className="desk-scroll" tabIndex={0} aria-label="Signals list">
-        <SignalTable signals={shown} onInspect={setSelectedSignal} activeSignalIds={activeSignalIds} loading={!loaded} />
+        <SignalTable signals={shown} onInspect={setSelectedSignal} activeSignalIds={activeSignalIds} loading={!loaded} selectedId={currentSelection?.id ?? null} />
         {sorted.length > SIGNALS_SHOWN && (
           <button
             type="button"
@@ -204,6 +221,11 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
             {showAll ? 'Show fewer signals' : `Show all ${sorted.length} signals`}
           </button>
         )}
+      </div>
+      {widePane && currentSelection && (
+        <SignalDetails inline signal={currentSelection} onClose={() => setSelectedSignal(null)} onPaperBuy={onPaperBuy}
+          isBought={activeSignalIds.has(currentSelection.id)} />
+      )}
       </div>
     </div>
   );
@@ -217,7 +239,7 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
         <IndexHeroRadar radar={state.radar} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(340px,0.8fr)_minmax(0,1.5fr)] gap-3 lg:flex-1 lg:min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(320px,0.62fr)_minmax(0,1.5fr)] gap-3 lg:flex-1 lg:min-h-0">
         {positionsRail}
         <section className="desk-panel desk-pane min-h-0" aria-label="Scanner results">
           {dashboardWatch && (
@@ -233,7 +255,7 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
           {view === 'candidates' ? candidatesView : signalsView}
         </section>
       </div>
-      {currentSelection && (
+      {currentSelection && !widePane && (
         <SignalDetails
           signal={currentSelection}
           onClose={() => setSelectedSignal(null)}

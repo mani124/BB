@@ -9,6 +9,8 @@ interface SignalTableProps {
   activeSignalIds?: Set<string>;
   /** First snapshot has not arrived yet: show placeholder rows instead of the empty state. */
   loading?: boolean;
+  /** Signal currently open in the detail pane. */
+  selectedId?: string | null;
 }
 
 // "2026-10-14T10:40:00+05:30" or "10:40:00" -> "10:40"
@@ -18,7 +20,7 @@ const signalTime = (ts?: string): string => {
   return m ? m[1] : ts;
 };
 
-const SignalTableImpl: React.FC<SignalTableProps> = ({ signals, onPaperBuy, onInspect, activeSignalIds, loading = false }) => {
+const SignalTableImpl: React.FC<SignalTableProps> = ({ signals, onPaperBuy, onInspect, activeSignalIds, loading = false, selectedId = null }) => {
   if (loading) {
     return (
       <div className="p-3 flex flex-col gap-2" role="status" aria-label="Loading signals">
@@ -39,16 +41,16 @@ const SignalTableImpl: React.FC<SignalTableProps> = ({ signals, onPaperBuy, onIn
 
   return (
     <div>
-      <table className="desk-table">
+      <table className="desk-table" data-compact={selectedId ? true : undefined}>
         <thead>
           <tr>
             <th scope="col">Time</th>
             <th scope="col">Instrument</th>
-            <th scope="col">Setup</th>
+            <th scope="col" className="col-wide">Setup</th>
             <th scope="col" className="r">Entry</th>
-            <th scope="col" className="r">SL</th>
-            <th scope="col" className="r">T1</th>
-            <th scope="col" className="r">RSI / BW</th>
+            <th scope="col" className="r col-wide">SL</th>
+            <th scope="col" className="r col-wide">T1</th>
+            <th scope="col" className="r col-extra">RSI / BW</th>
             <th scope="col"><span className="sr-only">Action</span></th>
           </tr>
         </thead>
@@ -61,7 +63,7 @@ const SignalTableImpl: React.FC<SignalTableProps> = ({ signals, onPaperBuy, onIn
             const unconfirmed = sig.is_confirmed === false;
 
             return (
-              <tr key={sig.id} className={onInspect ? 'cursor-pointer' : undefined} onClick={onInspect ? () => onInspect(sig) : undefined}>
+              <tr key={sig.id} aria-selected={selectedId === sig.id || undefined} className={`${onInspect ? 'cursor-pointer' : ''} ${selectedId === sig.id ? 'desk-selected' : ''}`} onClick={onInspect ? () => onInspect(sig) : undefined}>
                 <td className="desk-num">{signalTime(sig.timestamp)}</td>
                 <td>
                   <span className="desk-sym">{rec.strike_symbol}</span>{' '}
@@ -72,22 +74,22 @@ const SignalTableImpl: React.FC<SignalTableProps> = ({ signals, onPaperBuy, onIn
                     {unconfirmed ? ' · awaiting candle close' : ''}
                   </span>
                 </td>
-                <td>
+                <td className="col-wide">
                   <span className="desk-code" title={sig.setup_type}>{setupCode(sig.setup_type)}</span>
                 </td>
                 <td className="r desk-num">
                   {rec.estimated_option_entry}
                   <span className="desk-sub">lot {rec.lot_size}</span>
                 </td>
-                <td className="r desk-num desk-down">
+                <td className="r desk-num desk-down col-wide">
                   {rec.option_sl_price}
                   <span className="desk-sub">-{rec.option_sl_pts}p</span>
                 </td>
-                <td className="r desk-num desk-up">
+                <td className="r desk-num desk-up col-wide">
                   {rec.option_target_1_price}
                   <span className="desk-sub">+{rec.option_target_1_pts}p</span>
                 </td>
-                <td className="r desk-num">
+                <td className="r desk-num col-extra">
                   {ind?.rsi != null ? ind.rsi.toFixed(1) : '-'}
                   {ind?.rsi != null && (
                     <span className="desk-mini" role="img" aria-label={`RSI ${ind.rsi.toFixed(0)} of 100`}>

@@ -5,15 +5,15 @@ interface Props { events: DashboardSessionEvent[]; selectedId: string | null; on
 
 export const SessionTimeline: React.FC<Props> = ({ events, selectedId, onSelect }) => (
   <section className="desk-panel overflow-hidden" aria-label="Session timeline">
-    <h2 className="font-semibold p-4 border-b" style={{ borderColor: 'var(--line)' }}>Timeline</h2>
+    <h2 className="font-semibold px-3 py-2 border-b" style={{ borderColor: 'var(--line)' }}>Timeline</h2>
     {events.length === 0 && <p className="p-5 text-sm desk-muted">No recorded session events for this day. Older activity may lack telemetry.</p>}
     <div className="divide-y" style={{ borderColor: 'var(--line)' }}>
       {events.map((event) => <button key={event.id} type="button" onClick={() => onSelect(event.id)}
         aria-pressed={selectedId === event.id} aria-label={`${event.title} ${event.at}`}
         className="desk-row !justify-start">
         <time className="desk-num text-sm desk-muted shrink-0 w-[4.5rem] whitespace-nowrap" dateTime={event.at}>{new Date(event.at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}</time>
-        <span className="min-w-0"><strong className="block text-base">{event.title}</strong>
-          <span className="desk-muted text-sm">{event.book || 'System'} · {event.reason || event.type}</span></span>
+        <span className="min-w-0"><strong className="block">{event.title}</strong>
+          <span className="desk-muted text-xs">{event.book || 'System'} · {event.reason || event.type}</span></span>
       </button>)}
     </div>
   </section>
