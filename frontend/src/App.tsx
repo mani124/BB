@@ -15,6 +15,15 @@ import { CxScreen } from './components/CxScreen';
 import { AlertCircle, X } from 'lucide-react';
 import { isIndexSymbol } from './components/instruments';
 import { apiFetch, bootstrapDashboardSession, getDashboardCapability, setDashboardCapability } from './api/client';
+import { closeTrade, fetchDashboardSession, fetchDashboardTradeChart, fetchDashboardTradeDetail, fetchDashboardTrades, fetchDashboardWatch } from './api/dashboard';
+import { DashboardStatus } from './components/DashboardStatus';
+import { countOpenTrades } from './lib/dashboardCounts';
+import { TradesScreen } from './components/TradesScreen';
+import { SessionScreen } from './components/SessionScreen';
+import { ControlScreen } from './components/ControlScreen';
+import type { DashboardTrade, DashboardWatch } from './types/dashboard';
+
+type DetailView = 'legacy-review' | 'setup16' | 'cx' | 'earnings' | 'settings' | null;
 
 const DashboardContent: React.FC = () => {
   const [state, setState] = useState<ScannerState>({
@@ -28,7 +37,14 @@ const DashboardContent: React.FC = () => {
     active_mode: 'demo',
   });
 
-  const [activeTab, setActiveTab] = useState<AppTab>('scanner');
+  const [activeTab, setActiveTab] = useState<AppTab>('watch');
+  const [detailView, setDetailView] = useState<DetailView>(null);
+  const [dashboardWatch, setDashboardWatch] = useState<DashboardWatch | null>(null);
+  const [watchError, setWatchError] = useState<string | null>(null);
+  const [dashboardTrades, setDashboardTrades] = useState<DashboardTrade[]>([]);
+  const [tradesLoaded, setTradesLoaded] = useState(false);
+  const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
+  const [tradesError, setTradesError] = useState<string | null>(null);
   const [selectedSetup, setSelectedSetup] = useState<string>('ALL');
   const [selectedOptionType, setSelectedOptionType] = useState<string>('ALL');
   const [selectedInstrumentType, setSelectedInstrumentType] = useState<string>('ALL');
@@ -48,6 +64,30 @@ const DashboardContent: React.FC = () => {
   const [capabilityError, setCapabilityError] = useState<string | null>(null);
   const [capabilitySuccess, setCapabilitySuccess] = useState(false);
   const [sessionNonce, setSessionNonce] = useState(0);
+  const refreshTrades = async () => {
+    try {
+      const rows = await fetchDashboardTrades();
+      setDashboardTrades(rows);
+      setTradesLoaded(true);
+      setTradesError(null);
+    } catch (error) {
+      setTradesError(error instanceof Error ? error.message : 'Trades unavailable');
+    }
+  };
+  useEffect(() => {
+    refreshTrades();
+    const timer = window.setInterval(refreshTrades, 30000);
+    return () => window.clearInterval(timer);
+  }, [sessionNonce]);
+  useEffect(() => {
+    let alive = true;
+    const load = () => fetchDashboardWatch()
+      .then((data) => { if (alive) { setDashboardWatch(data); setWatchError(null); } })
+      .catch((error: unknown) => { if (alive) setWatchError(error instanceof Error ? error.message : 'request failed'); });
+    load();
+    const timer = window.setInterval(load, 30000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [sessionNonce]);
   // The live stream carries totals and open positions only; the closed-trade journal is
   // fetched separately whenever the server's closed-trade count changes.
   const [closedTrades, setClosedTrades] = useState<PaperPosition[]>([]);
@@ -343,14 +383,15 @@ const DashboardContent: React.FC = () => {
         return;
       }
       if (res.ok) {
-        const portData = await res.json();
-        applyPortfolio(portData);
+        const portRes = await apiFetch('/api/paper/portfolio');
+        if (!portRes.ok) throw new Error(`Could not verify entry state (${portRes.status})`);
+        applyPortfolio(await portRes.json());
       } else {
         setActionError(await settingsError(res, 'auto-trade'));
       }
     } catch (e) {
       console.error('Toggle auto trade failed', e);
-      setActionError('Network error changing auto-trade.');
+      setActionError(e instanceof Error ? e.message : 'Could not verify paper entry state.');
     }
   };
 
@@ -379,6 +420,7 @@ const DashboardContent: React.FC = () => {
       }
       const portRes = await apiFetch('/api/paper/portfolio');
       if (portRes.ok) applyPortfolio(await portRes.json());
+      else setActionError(`Kill switch changed, but current position state could not be verified (${portRes.status}). Refresh the page.`);
     } catch (e) {
       console.error('Kill switch failed', e);
       setActionError('Network error changing the kill switch.');
@@ -481,7 +523,9 @@ const DashboardContent: React.FC = () => {
     return true;
   });
 
-  const activePositionsCount = state.paper_portfolio?.active_positions?.length || 0;
+  const activePositionsCount = tradesLoaded && !tradesError
+    ? countOpenTrades(dashboardTrades)
+    : null;
 
   const activeSignalIds = React.useMemo(() => {
     return new Set(state.paper_portfolio?.active_positions?.map((p) => p.signal_id) || []);
@@ -521,8 +565,8 @@ const DashboardContent: React.FC = () => {
         feedStatus={state.feed_status}
         wsConnected={state.ws_connected || wsConnected}
         activeTab={activeTab}
-        onTabChange={setActiveTab}
-        openPositionsCount={activePositionsCount}
+        onTabChange={(tab) => { setActiveTab(tab); setDetailView(null); }}
+        openPositionsCount={activePositionsCount ?? undefined}
         onOpenAccessKey={openCapabilityModal}
         risk={state.paper_portfolio?.risk}
         onKillSwitch={handleKillSwitch}
@@ -531,6 +575,9 @@ const DashboardContent: React.FC = () => {
       <LiveAnnouncer message={announcement} />
 
       <main className="flex-1 min-h-0 w-full px-4 sm:px-6 py-2 flex flex-col gap-2">
+        <DashboardStatus sources={dashboardWatch?.sources ?? []} openCount={activePositionsCount}
+          risk={state.paper_portfolio?.risk} stream={stream} error={watchError}
+          entriesAllowed={state.paper_portfolio?.auto_trade_enabled} />
         <div id="main-panel" role="tabpanel" aria-labelledby={`main-tab-${activeTab}`} className="contents">
         {actionError && (
           <div className="desk-alert flex items-center justify-between gap-3" role="alert">
@@ -544,11 +591,32 @@ const DashboardContent: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'scanner' ? (
+        {detailView && (
+          <div className="flex items-center gap-3 py-1">
+            <button type="button" className="desk-btn" onClick={() => setDetailView(null)}>← Back to {activeTab}</button>
+            <span className="desk-muted text-xs">Book details</span>
+          </div>
+        )}
+        {(detailView === 'setup16') ? (
+          <div className="flex flex-col lg:flex-1 lg:min-h-0"><Setup16Screen /></div>
+        ) : detailView === 'cx' ? (
+          <div className="flex flex-col lg:flex-1 lg:min-h-0"><CxScreen /></div>
+        ) : detailView === 'earnings' ? (
+          <div className="flex flex-col lg:flex-1 lg:min-h-0"><EarningsPanel /></div>
+        ) : detailView === 'settings' ? (
+          <div className="flex flex-col lg:flex-1 lg:min-h-0"><SettingsPanel /></div>
+        ) : detailView === 'legacy-review' ? (
+          <ReviewScreen portfolio={state.paper_portfolio} closedTrades={liveTrades(closedTrades)}
+            onClosePosition={handleClosePosition} onToggleAutoTrade={handleToggleAutoTrade}
+            onChangeLots={handleChangeLots} onChangeSetupMode={handleChangeSetupMode}
+            onResetPortfolio={handleResetPortfolio} />
+        ) : activeTab === 'watch' ? (
           <WatchScreen
+            dashboardWatch={dashboardWatch}
             state={state}
             loaded={loaded}
             wsConnected={wsConnected}
+            stream={stream}
             filters={{ setup: selectedSetup, optionType: selectedOptionType, instrumentType: selectedInstrumentType, timeframe: selectedTimeframe }}
             onFilters={(f) => {
               if (f.setup !== undefined) setSelectedSetup(f.setup);
@@ -563,15 +631,24 @@ const DashboardContent: React.FC = () => {
             onClosePosition={handleClosePosition}
             onToggleAutoTrade={handleToggleAutoTrade}
             onChangeLots={handleChangeLots}
+            trades={dashboardTrades}
+            onOpenTrade={(id) => { setSelectedTradeId(id); setActiveTab('trades'); }}
           />
-        ) : activeTab === 'setup16' ? (
-          <div className="flex flex-col lg:flex-1 lg:min-h-0"><Setup16Screen /></div>
-        ) : activeTab === 'cx' ? (
-          <div className="flex flex-col lg:flex-1 lg:min-h-0"><CxScreen /></div>
-        ) : activeTab === 'earnings' ? (
-          <div className="flex flex-col lg:flex-1 lg:min-h-0"><EarningsPanel /></div>
-        ) : activeTab === 'settings' ? (
-          <div className="flex flex-col lg:flex-1 lg:min-h-0"><SettingsPanel /></div>
+        ) : activeTab === 'trades' ? (
+          <>
+            {tradesError && <p role="alert" className="desk-alert p-3">{tradesError}</p>}
+            <TradesScreen trades={dashboardTrades} loadDetail={fetchDashboardTradeDetail} loadChart={fetchDashboardTradeChart}
+              onClosePaper={(sourceId) => closeTrade('paper', sourceId)} onRefresh={refreshTrades} initialTradeId={selectedTradeId} />
+          </>
+        ) : activeTab === 'session' ? (
+          <SessionScreen initialDay={new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })}
+            loadSession={fetchDashboardSession}
+            onOpenTrade={(id) => { setSelectedTradeId(id); setActiveTab('trades'); }}
+            onOpenReview={() => setDetailView('legacy-review')} />
+        ) : activeTab === 'control' ? (
+          <ControlScreen portfolio={state.paper_portfolio} risk={state.paper_portfolio?.risk}
+            onPause={handleToggleAutoTrade} onKillSwitch={handleKillSwitch} onOpenView={setDetailView}
+            onScanNow={handleScanNow} onOpenAccessKey={openCapabilityModal} settings={<SettingsPanel />} />
         ) : (
           <ReviewScreen
             portfolio={state.paper_portfolio}

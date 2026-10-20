@@ -221,6 +221,7 @@ export interface ScannerState {
   market_bias?: string;
   paper_portfolio?: PaperPortfolio;
   last_scan_time: string;
+  last_scan_at?: string;
   scan_cycle_count: number;
   last_scan_seconds?: number;
   is_scanning: boolean;
@@ -235,7 +236,7 @@ export interface ScannerState {
 
 
 // ---- runtime settings, telemetry and earnings ----
-export type AppTab = 'scanner' | 'paper' | 'setup16' | 'cx' | 'earnings' | 'settings';
+export type AppTab = 'watch' | 'trades' | 'session' | 'control';
 
 export interface RuntimeSetting {
   key: string;

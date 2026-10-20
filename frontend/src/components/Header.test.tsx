@@ -6,6 +6,15 @@ import { ThemeProvider } from '../context/ThemeContext';
 import { DhanAuthProvider } from '../context/DhanAuthContext';
 
 describe('Header Theme Toggle', () => {
+  it('offers four primary jobs with Watch first', () => {
+    render(
+      <ThemeProvider><DhanAuthProvider><Header activeMode="demo" scanCycleCount={0} lastScanTime="" isScanning={false}
+        scanProgress={0} onScanNow={vi.fn()} activeTab="watch" onTabChange={vi.fn()} /></DhanAuthProvider></ThemeProvider>
+    );
+    const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent?.trim());
+    expect(tabs).toEqual(['Watch', 'Trades', 'Session', 'Control']);
+  });
+
   it('renders theme toggle button and switches theme on click', () => {
     render(
       <ThemeProvider>
@@ -22,7 +31,7 @@ describe('Header Theme Toggle', () => {
       </ThemeProvider>
     );
 
-    const themeToggleBtn = screen.getByRole('button', { name: /toggle theme/i });
+    const themeToggleBtn = screen.getAllByRole('button', { name: /toggle theme/i })[0];
     expect(themeToggleBtn).toBeInTheDocument();
 
     // Default theme is light
@@ -54,7 +63,7 @@ describe('Header Theme Toggle', () => {
       </ThemeProvider>
     );
 
-    expect(screen.getByText(/WS LIVE/i)).toBeInTheDocument();
+    expect(screen.getByText(/^WS LIVE$/)).toBeInTheDocument();
   });
 
   it('renders HTTP Polling badge when in live mode but feedStatus is not WS_LIVE', () => {
@@ -117,7 +126,7 @@ describe('Header Theme Toggle', () => {
     );
 
     // Open connect modal
-    const connectBtn = screen.getByRole('button', { name: /dhan/i });
+    const connectBtn = screen.getAllByRole('button', { name: /connect dhan/i })[0];
     fireEvent.click(connectBtn);
 
     // Modal should show 1-Click Dhan OAuth tab and Connect with Dhan button
@@ -143,7 +152,7 @@ describe('Header Theme Toggle', () => {
       </ThemeProvider>
     );
 
-    expect(screen.getByText(/WS LIVE/i)).toBeInTheDocument();
+    expect(screen.getByText(/^WS LIVE$/)).toBeInTheDocument();
 
     // Re-render with WebSocket disconnected / HTTP fallback
     rerender(
@@ -163,7 +172,7 @@ describe('Header Theme Toggle', () => {
       </ThemeProvider>
     );
 
-    expect(screen.queryByText(/WS LIVE/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^WS LIVE$/)).not.toBeInTheDocument();
     expect(screen.getByText(/HTTP Polling/i)).toBeInTheDocument();
   });
 });

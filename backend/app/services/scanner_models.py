@@ -52,6 +52,7 @@ class ScannerState(BaseModel):
     market_bias: str = "NEUTRAL"
     paper_portfolio: PaperPortfolio = Field(default_factory=PaperPortfolio)
     last_scan_time: str = ""
+    last_scan_at: str = ""
     scan_cycle_count: int = 0
     last_scan_seconds: float = 0.0  # wall time of the latest full scan cycle
     is_scanning: bool = False

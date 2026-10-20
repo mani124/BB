@@ -66,7 +66,7 @@ describe('axe: no structural accessibility violations', () => {
   it('watch screen', async () => {
     const noop = vi.fn();
     const { container } = render(
-      <WatchScreen state={state} loaded wsConnected filters={{ setup: 'ALL', optionType: 'ALL', instrumentType: 'ALL', timeframe: 'ALL' }}
+      <WatchScreen state={state} loaded wsConnected stream={{ state: 'live', ageSec: 0 }} filters={{ setup: 'ALL', optionType: 'ALL', instrumentType: 'ALL', timeframe: 'ALL' }}
         onFilters={noop} filteredSignals={[signal]} closedTrades={[trade(1)]} activeSignalIds={new Set()}
         onPaperBuy={noop} onClosePosition={noop} onToggleAutoTrade={noop} onChangeLots={noop} />,
     );

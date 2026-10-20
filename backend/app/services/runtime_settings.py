@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import threading
+from datetime import date, timedelta
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
@@ -615,3 +616,14 @@ class RuntimeSettings:
         args.append(int(limit))
         with self._conn() as conn:
             return [dict(r) for r in conn.execute(q, args).fetchall()]
+
+    def audit_day(self, day: str) -> list[dict]:
+        """Settings changed during one IST calendar day; returns stored audit rows only."""
+        start = date.fromisoformat(day)
+        if not self.db_path:
+            return []
+        with self._conn() as conn:
+            return [dict(row) for row in conn.execute(
+                "SELECT id, changed_at, key, old_value, new_value, actor FROM settings_audit "
+                "WHERE changed_at >= ? AND changed_at < ? ORDER BY changed_at, id",
+                (start.isoformat(), (start + timedelta(days=1)).isoformat()))]

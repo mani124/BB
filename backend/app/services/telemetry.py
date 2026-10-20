@@ -235,6 +235,33 @@ class Telemetry:
         return {"decisions": d, "errors": e, "excursions": x}
 
     # ------------------------------------------------------------------ readers
+    def day_events(self, day: str) -> dict[str, list[dict]]:
+        """Recorded decisions and errors for one IST calendar day, including historical days."""
+        from datetime import date, timedelta
+        start = date.fromisoformat(day)
+        lower = start.isoformat()
+        upper = (start + timedelta(days=1)).isoformat()
+        if not self.db_path:
+            return {"decisions": [], "errors": []}
+        with self._conn() as conn:
+            decisions = [dict(row) for row in conn.execute(
+                "SELECT * FROM strategy_decisions WHERE ts >= ? AND ts < ? ORDER BY ts, id",
+                (lower, upper))]
+            errors = [dict(row) for row in conn.execute(
+                "SELECT * FROM error_events WHERE ts >= ? AND ts < ? ORDER BY ts, id",
+                (lower, upper))]
+        for row in decisions:
+            try:
+                row["metrics"] = json.loads(row["metrics"] or "{}")
+            except ValueError:
+                row["metrics"] = {}
+        for row in errors:
+            try:
+                row["payload"] = json.loads(row["payload"] or "{}")
+            except ValueError:
+                row["payload"] = {}
+        return {"decisions": decisions, "errors": errors}
+
     def decisions(self, *, hours: float = 24, strategy: Optional[str] = None, decision: Optional[str] = None,
                   symbol: Optional[str] = None, book: Optional[str] = None, limit: int = 200) -> list[dict]:
         if not self.db_path:

@@ -66,14 +66,23 @@ class CxStore:
         c.row_factory = sqlite3.Row
         return c
 
-    def save_position(self, pos: dict) -> None:
+    def save_position(self, pos: dict, *, entry_evidence: tuple[dict, dict[str, list[dict]]] | None = None,
+                      signal_marker: tuple[str, str] | None = None) -> None:
         with self._lock:
             if not self.db_path:
                 self._mem_pos[pos["id"]] = json.loads(json.dumps(pos))
+                if signal_marker is not None:
+                    self._mem_meta[signal_marker[0]] = signal_marker[1]
                 return
             with self._conn() as c:
                 c.execute("INSERT OR REPLACE INTO cx_positions (id, symbol, pool, setup, status, opened_at, body) VALUES (?,?,?,?,?,?,?)",
                           (pos["id"], pos["symbol"], pos["pool"], pos.get("setup", ""), pos["status"], pos.get("opened_at", ""), json.dumps(pos)))
+                if entry_evidence is not None:
+                    from app.services.dashboard_evidence import save_trade_evidence
+                    decision, bars = entry_evidence
+                    save_trade_evidence("cx", pos["id"], decision, bars, connection=c)
+                if signal_marker is not None:
+                    c.execute("INSERT OR REPLACE INTO cx_meta (key, value) VALUES (?, ?)", signal_marker)
 
     def positions(self) -> list[dict]:
         with self._lock:
@@ -428,7 +437,8 @@ class CxEngine:
         self.store.save_position(pos)
         return False
 
-    def _enter(self, u: ci.CxUnderlying, contract: dict, expiry: str, sig: sg.CxSignal, leg: dict, now: datetime) -> Optional[dict]:
+    def _enter(self, u: ci.CxUnderlying, contract: dict, expiry: str, sig: sg.CxSignal, leg: dict, now: datetime,
+               bars: Optional[pd.DataFrame] = None, signal_marker: tuple[str, str] | None = None) -> Optional[dict]:
         g = self.runtime.get
         bid, ask = _f(leg.get("top_bid_price")), _f(leg.get("top_ask_price"))
         metrics = {**sig.as_dict(), "strike": leg["strike"], "bid": bid, "ask": ask, "expiry": expiry, "oi": leg.get("oi")}
@@ -461,7 +471,12 @@ class CxEngine:
                "lots": lots, "lot_size": lot_size, "units": u.pnl_multiplier() * lots, "entry_price": entry,
                "entry_bid": bid, "entry_ask": ask, "underlying_entry": sig.price, "invalidate_level": sig.invalidate_level,
                "last_bid": bid, "max_bid": bid, "unrealized_net": 0.0, "signal": sig.as_dict()}
-        self.store.save_position(pos)
+        actual_bars = bars[["timestamp", "open", "high", "low", "close"]].to_dict("records") if bars is not None and len(bars) else []
+        self.store.save_position(pos, entry_evidence=(
+            {"reason": "SIGNAL", "rationale": sig.as_dict(), "checks": sig.metrics,
+             "entry": entry, "invalidate_level": sig.invalidate_level,
+             "lots": lots, "opened_at": pos["opened_at"]},
+            {"underlying": actual_bars}), signal_marker=signal_marker)
         self._log("ENTERED", u.symbol, "SIGNAL", {**metrics, "entry": entry, "lots": lots}, pos["id"], sig.setup, sig.side)
         return pos
 
@@ -553,20 +568,23 @@ class CxEngine:
                 key = f"last_bar:{sym}:{sig.setup}"
                 if self.store.get_meta(key) == sig.bar_time:
                     continue
-                self.store.set_meta(key, sig.bar_time)
                 st["last_signal"] = sig.as_dict()
                 live = self._open()
                 block = self.entry_block(u, now, live)
                 if block:
+                    self.store.set_meta(key, sig.bar_time)
                     self._log("SKIPPED", sym, block[0], {**sig.as_dict(), "detail": block[1]}, strategy=sig.setup, side=sig.side)
                     continue
                 leg = pick_leg(oc, sig.side, sig.price)
                 if leg is None:
+                    self.store.set_meta(key, sig.bar_time)
                     self._log("SKIPPED", sym, "NO_STRIKE", sig.as_dict(), strategy=sig.setup, side=sig.side)
                     continue
-                pos = self._enter(u, contract, expiry, sig, leg, now)
+                pos = self._enter(u, contract, expiry, sig, leg, now, bars, signal_marker=(key, sig.bar_time))
                 if pos:
                     result["entered"].append(pos["id"])
+                else:
+                    self.store.set_meta(key, sig.bar_time)
 
     async def candidates(self) -> list[dict]:
         """Signals on the last completed bar of each underlying, whether or not the book would take them. Nothing is opened."""

@@ -187,7 +187,7 @@ class EarningsStore:
                     (symbol, lo, before.isoformat()))]
 
     # ---- positions ----
-    def save_position(self, pos: dict) -> None:
+    def save_position(self, pos: dict, *, entry_evidence: tuple[dict, dict[str, list[dict]]] | None = None) -> None:
         with self._lock:
             # A cycle holding a stale copy must never turn a closed position back into an open one.
             if pos.get("status") != "CLOSED" and self.position_status(pos["id"]) == "CLOSED":
@@ -199,6 +199,10 @@ class EarningsStore:
                 c.execute("INSERT OR REPLACE INTO earnings_positions (id, symbol, mode, status, earnings_date, opened_at, body) VALUES (?,?,?,?,?,?,?)",
                           (pos["id"], pos["symbol"], pos["mode"], pos["status"], pos["earnings_date"], pos["opened_at"],
                            json.dumps(pos, default=str)))
+                if entry_evidence is not None:
+                    from app.services.dashboard_evidence import save_trade_evidence
+                    decision, bars = entry_evidence
+                    save_trade_evidence("earnings", pos["id"], decision, bars, connection=c)
 
     def position_status(self, pos_id: str) -> Optional[str]:
         with self._lock:
@@ -616,7 +620,12 @@ class EarningsEngine:
             "entry_metrics": c.metrics,
         }
         self._reprice(pos)
-        self.store.save_position(pos)
+        self.store.save_position(pos, entry_evidence=(
+            {"reason": "SIGNAL_CONFIRMED", "checks": c.metrics,
+             "mode": c.mode, "legs": legs, "lots": c.lots,
+             "max_risk": c.max_risk, "opened_at": pos["opened_at"],
+             "earnings_date": pos["earnings_date"], "exit_date": pos["exit_date"]},
+            {}))
         self._log("ENTERED", c.mode, c.symbol, "SIGNAL_CONFIRMED",
                   {**c.metrics, "lots": c.lots, "qty": qty, "max_risk": c.max_risk, "exit_date": pos["exit_date"]}, pos["id"])
         return pos
