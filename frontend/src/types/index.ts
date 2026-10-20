@@ -236,7 +236,7 @@ export interface ScannerState {
 
 
 // ---- runtime settings, telemetry and earnings ----
-export type AppTab = 'watch' | 'trades' | 'session' | 'control';
+export type AppTab = 'watch' | 'books' | 'trades' | 'session' | 'control';
 
 export interface RuntimeSetting {
   key: string;

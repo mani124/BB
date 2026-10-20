@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
 import { WatchlistPanel } from './WatchlistPanel';
+import { BookFrame, BookSection } from './BookFrame';
 import type { Setup16Contract, Setup16Overview, Setup16Trade } from '../types';
 
 const money = (v: number | null | undefined, plus = false) => {
@@ -93,56 +94,51 @@ export const Setup16Screen: React.FC<{ initial?: Setup16Overview }> = ({ initial
   const st = o.stats_all_time;
 
   return (
-    <div className="flex flex-col gap-2 lg:flex-1 lg:min-h-0 lg:overflow-y-auto pb-3" data-testid="setup16-screen">
-      <section className="desk-panel shrink-0" aria-labelledby="s16-title">
-        <div className="desk-ph">
-          <h2 id="s16-title">Setup 16 · Option squeeze breakout</h2>
-          <span className={`desk-pill ${off ? 'warn' : 'up'}`}>{MODE_TEXT[o.mode] ?? o.mode}</span>
-          <span className="desk-pill">Paper only</span>
-          <span className="text-xs desk-muted ml-auto">Updated {o.as_of}</span>
-        </div>
-        <div className="px-3.5 py-2.5 text-sm flex flex-wrap gap-x-6 gap-y-1">
-          <span>Entry window <b className="desk-num">{o.settings.window_start}–{o.settings.window_end}</b></span>
-          <span>Max stop distance <b className="desk-num">{o.settings.stop_pct}%</b></span>
-          <span>Today <b className={`desk-num ${tone(o.today_net_pnl)}`}>{money(o.today_net_pnl, true)}</b></span>
-          <span>Open <b className="desk-num">{o.open_positions.length}</b></span>
-          {st && <span>All time <b className="desk-num">{st.trades}</b> trades · win rate <b className="desk-num">{st.win_rate}%</b> · net <b className={`desk-num ${tone(st.net_pnl)}`}>{money(st.net_pnl, true)}</b></span>}
-        </div>
-        {off && <div className="px-3.5 pb-2.5 text-xs desk-muted">The switch is off, so nothing is entered. Turn it on (index, stocks or all) under Review → Setups. Contracts below are still evaluated.</div>}
-      </section>
-
-      <section className="desk-panel shrink-0" aria-label="Where each option chart stands">
-        <div className="desk-ph"><h3>Where the option charts stand</h3><span className="desk-pill desk-num">{o.contracts_checked} checked</span></div>
-        <FunnelBar funnel={o.funnel} total={o.contracts_checked} />
-        {near.length > 0 && (
-          <div className="overflow-x-auto"><table className="desk-table" aria-label="Closest to a breakout">
-            <thead><tr><th scope="col">Contract</th><th scope="col">Stage</th><th scope="col" className="r">Close</th><th scope="col" className="r">Upper band</th><th scope="col" className="r">Distance</th><th scope="col">Bands</th><th scope="col">Checked</th></tr></thead>
-            <tbody>{near.map((c) => <ContractRow key={c.strike_symbol} c={c} />)}</tbody></table></div>
-        )}
-      </section>
-
-      <section className="desk-panel shrink-0" aria-label="Open positions">
-        <div className="desk-ph"><h3>Open positions</h3></div>
-        <TradeTable rows={o.open_positions} empty="No open Setup 16 positions." label="Open Setup 16 positions" />
-      </section>
-
-      <section className="desk-panel shrink-0" aria-label="Closed today">
-        <div className="desk-ph"><h3>Closed today</h3></div>
-        <TradeTable rows={o.today_closed} empty="No Setup 16 trades closed today." label="Setup 16 trades closed today" />
-      </section>
-
-      <WatchlistPanel initial={o.watchlist} />
-
-      <section className="desk-panel shrink-0" aria-label="Decisions">
-        <div className="desk-ph"><h3>Entries and skips (24h)</h3></div>
-        {o.decisions.length === 0 ? <div className="p-4 text-xs desk-muted">Nothing recorded for Setup 16 in the last 24 hours.</div> : (
-          <div className="overflow-x-auto"><table className="desk-table" aria-label="Setup 16 decisions">
-            <thead><tr><th scope="col">Time</th><th scope="col">Stock</th><th scope="col">Side</th><th scope="col">Decision</th><th scope="col">Reason</th></tr></thead>
-            <tbody>{o.decisions.map((d, i) => (
-              <tr key={`${d.ts}-${i}`}><td>{d.ts.slice(11, 19)}</td><td className="desk-sym">{d.symbol}</td><td>{d.side}</td><td>{d.decision}</td><td>{d.reason}</td></tr>
-            ))}</tbody></table></div>
-        )}
-      </section>
-    </div>
+    <BookFrame
+      idPrefix="s16"
+      testId="setup16-screen"
+      kpiTestId="s16-figures"
+      title="Setup 16 · Option squeeze breakout"
+      titleId="s16-title"
+      pills={[{ text: MODE_TEXT[o.mode] ?? o.mode, tone: off ? 'warn' : 'up' }, { text: 'Paper only', tone: 'mute' }]}
+      updated={o.as_of}
+      notice={off ? { tone: 'warn', text: 'The switch is off, so nothing is entered. Turn it on (index, stocks or all) under Review → Setups. Contracts are still evaluated.' } : null}
+      kpis={[
+        { label: 'Today', value: money(o.today_net_pnl, true), tone: o.today_net_pnl > 0 ? 'up' : o.today_net_pnl < 0 ? 'down' : undefined },
+        { label: 'Open', value: o.open_positions.length },
+        { label: 'All-time net', value: st ? money(st.net_pnl, true) : 'n/a', tone: st ? (st.net_pnl > 0 ? 'up' : st.net_pnl < 0 ? 'down' : undefined) : undefined },
+        { label: 'All-time trades', value: st ? <>{st.trades} · win rate {st.win_rate}%</> : 'n/a' },
+        { label: 'Entry window', value: `${o.settings.window_start}–${o.settings.window_end}` },
+        { label: 'Max stop distance', value: `${o.settings.stop_pct}%` },
+      ]}
+      tabs={[
+        { id: 'positions', label: 'Positions', count: o.open_positions.length, content: <>
+          <BookSection title="Open positions" label="Open positions"><TradeTable rows={o.open_positions} empty="No open Setup 16 positions." label="Open Setup 16 positions" /></BookSection>
+          <BookSection title="Closed today" label="Closed today"><TradeTable rows={o.today_closed} empty="No Setup 16 trades closed today." label="Setup 16 trades closed today" /></BookSection>
+        </> },
+        { id: 'contracts', label: 'Option charts', count: o.contracts_checked, content: (
+          <BookSection title="Where the option charts stand" label="Where each option chart stands" right={<span className="desk-pill desk-num">{o.contracts_checked} checked</span>}>
+            <FunnelBar funnel={o.funnel} total={o.contracts_checked} />
+            {near.length > 0 && (
+              <div className="overflow-x-auto"><table className="desk-table" aria-label="Closest to a breakout">
+                <thead><tr><th scope="col">Contract</th><th scope="col">Stage</th><th scope="col" className="r">Close</th><th scope="col" className="r">Upper band</th><th scope="col" className="r">Distance</th><th scope="col">Bands</th><th scope="col">Checked</th></tr></thead>
+                <tbody>{near.map((c) => <ContractRow key={c.strike_symbol} c={c} />)}</tbody></table></div>
+            )}
+          </BookSection>
+        ) },
+        { id: 'watchlist', label: 'Watchlist', count: o.watchlist?.candidates?.length, content: <WatchlistPanel initial={o.watchlist} /> },
+        { id: 'decisions', label: 'Entries and skips', count: o.decisions.length, content: (
+          <BookSection title="Entries and skips (24h)" label="Decisions">
+            {o.decisions.length === 0 ? <div className="p-4 text-xs desk-muted">Nothing recorded for Setup 16 in the last 24 hours.</div> : (
+              <div className="overflow-x-auto"><table className="desk-table" aria-label="Setup 16 decisions">
+                <thead><tr><th scope="col">Time</th><th scope="col">Stock</th><th scope="col">Side</th><th scope="col">Decision</th><th scope="col">Reason</th></tr></thead>
+                <tbody>{o.decisions.map((d, i) => (
+                  <tr key={`${d.ts}-${i}`}><td className="desk-num">{d.ts.slice(11, 19)}</td><td className="desk-sym">{d.symbol}</td><td>{d.side}</td><td>{d.decision}</td><td>{d.reason}</td></tr>
+                ))}</tbody></table></div>
+            )}
+          </BookSection>
+        ) },
+      ]}
+    />
   );
 };

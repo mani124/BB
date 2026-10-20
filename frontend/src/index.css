@@ -6,14 +6,14 @@
 /* Trading-desk design tokens. Light by default, `.dark` on <html> switches the palette.
    Rules of thumb: --line is for table rules, --line-strong is for anything you can click or type in. */
 :root {
-  --bg: #eceff3;
+  --bg: #f3f4f6;
   --panel: #ffffff;
-  --line: #dbe0e6;
-  --line-strong: #98a3b0;
-  --fg: #141a22;
-  --muted: #4d5a69;
-  --accent: #2145cc;
-  --accent-soft: #e4eaff;
+  --line: #e3e6ea;
+  --line-strong: #aab2bd;
+  --fg: #232830;
+  --muted: #566070;
+  --accent: #2a67b8;
+  --accent-soft: #e6eefa;
   --on-accent: #ffffff;
   --up: #0a7048;
   --up-soft: #daf3e6;
@@ -22,7 +22,7 @@
   --warn: #7d5200;
   --warn-soft: #fbefd0;
   --alt: #f5f7fa;
-  --hover: #eef2ff;
+  --hover: #f0f5fc;
   --fs-xs: 0.75rem;    /* 12px: smallest text; labels, chips, secondary lines */
   --fs-sm: 0.8125rem;  /* 13px: tables and controls */
   --fs-base: 0.875rem; /* 14px: body */
@@ -80,7 +80,7 @@
   .desk-panel {
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: 6px;
     min-width: 0;
   }
   .desk-control-link { border: 1px solid var(--line-strong); background: var(--alt); color: var(--fg); }
@@ -242,38 +242,34 @@
   .desk-ticker.desk-flow { display: flex; flex-wrap: wrap; }
   .desk-ticker.desk-flow > * { flex: 1 1 11rem; }
   .desk-ticker > * { background: var(--panel); box-shadow: 1px 1px 0 var(--line); padding: 6px 12px; min-width: 0; font-size: var(--fs-sm); white-space: nowrap; }
-  /* ---- Left rail (bottom bar below lg) ---- */
-  .desk-rail {
-    position: fixed; inset: auto 0 0 0; z-index: 40; display: flex; background: var(--panel);
-    border-top: 1px solid var(--line-strong);
+  /* ---- Top navigation: a bar in the header from tablets up, a bottom bar on phones ---- */
+  .desk-topnav {
+    position: fixed; inset: auto 0 0 0; z-index: 40; display: flex; background: var(--panel); border-top: 1px solid var(--line-strong);
   }
-  .desk-rail .desk-rail-brand, .desk-rail .desk-rail-work, .desk-rail .desk-rail-toggle { display: none; }
-  .desk-rail-tabs { display: flex; width: 100%; }
-  .desk-nav {
-    display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 6px 10px; border-radius: 6px;
-    background: none; border: 0; color: var(--muted); font-size: var(--fs-base); font-weight: 500; text-align: left;
+  .desk-navtab {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 52px;
+    padding: 6px 4px; background: none; border: 0; color: var(--muted); font-size: var(--fs-xs); font-weight: 500;
+    border-top: 3px solid transparent; margin-top: -1px;
   }
-  .desk-nav:hover { background: var(--hover); color: var(--fg); }
-  .desk-nav[aria-selected='true'], .desk-nav[aria-current='page'] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-  .desk-rail-tabs .desk-nav { flex: 1; flex-direction: column; justify-content: center; gap: 2px; font-size: var(--fs-xs); padding: 6px 4px; border-radius: 0; }
-  .desk-rail-tabs .desk-nav .desk-pill { display: none; }
-  @media (min-width: 1024px) {
-    .desk-rail {
-      position: static; inset: auto; flex-direction: column; flex: none; width: 14rem; height: 100vh; padding: 12px 10px;
-      border-top: 0; border-right: 1px solid var(--line-strong); overflow-y: auto;
+  .desk-navtab[aria-selected='true'] { color: var(--accent); font-weight: 600; border-top-color: var(--accent); background: var(--accent-soft); }
+  @media (min-width: 768px) {
+    .desk-topnav { position: static; inset: auto; border-top: 0; background: transparent; align-self: stretch; gap: 4px; }
+    .desk-navtab {
+      flex: none; flex-direction: row; gap: 8px; min-height: 52px; padding: 0 14px; font-size: var(--fs-base);
+      border-top: 0; border-bottom: 3px solid transparent; margin: 0 0 -1px;
     }
-    .desk-rail[data-collapsed='true'] { width: 4.25rem; }
-    .desk-rail .desk-rail-brand { display: flex; align-items: center; gap: 12px; padding: 6px 12px 16px; color: var(--accent); }
-    .desk-rail-brand .desk-nav-label { color: var(--fg); }
-    .desk-rail-tabs { flex-direction: column; gap: 2px; }
-    .desk-rail-tabs .desk-nav { flex: none; flex-direction: row; justify-content: flex-start; gap: 12px; font-size: var(--fs-base); padding: 8px 12px; border-radius: 8px; }
-    .desk-rail-tabs .desk-nav .desk-pill { display: inline-flex; }
-    .desk-rail .desk-rail-work { display: flex; flex-direction: column; gap: 2px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
-    .desk-rail .desk-rail-toggle { display: flex; margin-top: auto; }
-    .desk-rail[data-collapsed='true'] .desk-nav-label { display: none; }
-    .desk-rail[data-collapsed='true'] .desk-nav, .desk-rail[data-collapsed='true'] .desk-rail-brand { justify-content: center; padding-inline: 0; }
-    .desk-rail[data-collapsed='true'] .desk-rail-work { margin-top: 12px; }
+    .desk-navtab svg { display: none; }
+    .desk-navtab:hover { color: var(--fg); }
+    .desk-navtab[aria-selected='true'] { background: none; border-bottom-color: var(--accent); }
   }
+  /* The market strip: every index on one line, under the header on every screen. */
+  .desk-marketstrip {
+    display: flex; align-items: center; gap: 0; overflow-x: auto; background: var(--panel); border-bottom: 1px solid var(--line);
+    padding: 0 16px; font-size: var(--fs-sm); scrollbar-width: none;
+  }
+  .desk-marketstrip > div { display: flex; align-items: baseline; gap: 8px; padding: 6px 14px 6px 0; margin-right: 14px; white-space: nowrap; border-right: 1px solid var(--line); }
+  .desk-marketstrip > div:last-child { border-right: 0; }
+  .desk-marketstrip > div > div { display: contents; }
   .desk-subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
   .desk-subtab {
     background: none; border: 0; padding: 6px 14px; min-height: 36px; color: var(--muted); font-weight: 500; font-size: var(--fs-base);
