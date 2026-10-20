@@ -52,12 +52,14 @@ A real-time, high-probability options buying and scanning platform for Indian de
 Your Dhan Client ID and 24-hour Access Token are **never stored anywhere permanently**:
 - **Never saved to `.env`, configuration files, SQLite, or databases.**
 - **Never committed to Git or written to persistent disk.**
-- **Stored exclusively in browser `sessionStorage`**: Tokens remain in volatile browser memory only for the duration of the active browser tab.
+- **The Dhan token itself is never stored in the browser**: the server holds the live session in memory; the browser keeps only the client ID, a marker and the expiry time (`localStorage`) so a new tab or a revisit recognises the session. A server restart or token expiry still needs a fresh Dhan login.
 - **In-Memory Request Transmission**: Transmitted via HTTP headers `X-Dhan-Client-Id` and `X-Dhan-Access-Token` over localhost/HTTPS.
 - **Process-Wide Security Log Redaction**: Dedicated `RedactingFilter` and custom `LogRecordFactory` hook mask all JWT tokens (`eyJ...`) and raw credentials from server logs and console outputs.
-- **One-Click Disconnect**: Instantly clears `sessionStorage` and returns the application to Simulated Demo Mode.
+- **One-Click Disconnect**: Instantly clears that browser state and the server session and returns the application to Simulated Demo Mode.
 
 ### Dashboard key (required)
+
+The key is remembered per device (`localStorage`), so new tabs and later visits sign in by themselves. The session cookie is a signed 30-day token that survives server restarts. Rotating the key signs every device out.
 
 Every API call except `/api/health` needs the private dashboard key. There is no built-in key.
 - Set `DASHBOARD_CAPABILITY` in the service environment, **or** leave it unset: on first start the server
