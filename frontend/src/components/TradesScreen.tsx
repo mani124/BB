@@ -77,7 +77,7 @@ export const TradesScreen: React.FC<Props> = ({ trades, loadDetail, loadChart, o
         <label className="text-xs desk-muted flex flex-col gap-1">Entry date <input className="desk-input" style={{ width: 'auto' }} type="date" value={day} onChange={(event) => setDay(event.target.value)} /></label>
         <span className="desk-muted text-sm ml-auto pb-2 desk-num">{filtered.length} {filtered.length === 1 ? 'trade' : 'trades'}</span>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.6fr)] gap-3 lg:min-h-0 lg:flex-1">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(440px,1fr)_minmax(0,1.3fr)] gap-3 lg:min-h-0 lg:flex-1">
         <section className={`desk-panel overflow-hidden lg:overflow-y-auto ${phoneDetailOpen ? 'hidden lg:block' : ''}`} aria-label="Trade queue">
           <TradeQueue trades={filtered} selectedId={selected?.id ?? null} onSelect={(id) => { setSelectedId(id); setPhoneDetailOpen(true); }} />
         </section>

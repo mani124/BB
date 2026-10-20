@@ -31,7 +31,7 @@ const SourceItems: React.FC<Omit<Props, 'entriesAllowed'>> = ({ sources, openCou
 </div>;
 
 export const DashboardStatus: React.FC<Props> = ({ sources, openCount, risk, stream, error, entriesAllowed }) => (
-  <section className="desk-panel px-3 py-2" aria-label="Dashboard status">
+  <section className="desk-panel px-3 py-1" aria-label="Dashboard status">
     <div className="hidden sm:block"><SourceItems sources={sources} openCount={openCount} risk={risk} stream={stream} error={error} /></div>
     <details className="sm:hidden desk-status-mobile">
       <summary className="flex items-center justify-between gap-2 text-xs">

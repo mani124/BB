@@ -88,16 +88,15 @@ export const CompactStrip: React.FC<{ portfolio?: PaperPortfolio }> = ({ portfol
       <div className="flex flex-wrap items-baseline gap-x-2">{children}</div>
     </div>
   );
-  const cols = { gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' };
   if (!portfolio) {
     return (
-      <section className="desk-ticker" style={cols} aria-label="Portfolio summary" aria-busy="true">
+      <section className="desk-ticker desk-flow" aria-label="Portfolio summary" aria-busy="true">
         {[0, 1, 2, 3, 4].map((i) => <div key={i}><div className="desk-skel h-4 w-24 mb-2" /><div className="desk-skel h-6 w-32" /></div>)}
       </section>
     );
   }
   return (
-    <section className="desk-ticker" style={cols} aria-label="Portfolio summary">
+    <section className="desk-ticker desk-flow" aria-label="Portfolio summary">
       <Item label="Net realized" title="Closed trades only, after charges">
         <b className={`desk-hero md ${pnlClass(net)}`}>{formatCurrency(net, true)}</b>
       </Item>

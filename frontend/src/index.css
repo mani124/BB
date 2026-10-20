@@ -23,12 +23,12 @@
   --warn-soft: #fbefd0;
   --alt: #f5f7fa;
   --hover: #eef2ff;
-  --fs-xs: 0.8125rem;  /* 13px: smallest text; labels, chips, secondary lines */
-  --fs-sm: 0.875rem;   /* 14px: tables and controls */
-  --fs-base: 0.9375rem; /* 15px: body */
-  --fs-lg: 1.0625rem;
-  --fs-xl: 1.375rem;
-  --fs-2xl: 2rem;
+  --fs-xs: 0.75rem;    /* 12px: smallest text; labels, chips, secondary lines */
+  --fs-sm: 0.8125rem;  /* 13px: tables and controls */
+  --fs-base: 0.875rem; /* 14px: body */
+  --fs-lg: 0.9375rem;
+  --fs-xl: 1.25rem;
+  --fs-2xl: 1.625rem;
   --sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
@@ -60,7 +60,7 @@
     color: var(--fg);
     font-family: var(--sans);
     font-size: var(--fs-base);
-    line-height: 1.45;
+    line-height: 1.4;
   }
   button { cursor: pointer; }
   button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
@@ -90,7 +90,7 @@
   .trade-chart-canvas { height: 360px; }
   .desk-ph {
     display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
-    padding: 12px 16px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--line);
   }
   .desk-ph h2, .desk-ph h3 { margin: 0; font-size: var(--fs-lg); font-weight: 600; color: var(--fg); }
@@ -102,18 +102,24 @@
     border-radius: 8px;
     overflow: hidden;
   }
-  .desk-strip > * { background: var(--panel); padding: 12px 16px; min-width: 0; box-shadow: 1px 1px 0 var(--line); }
+  .desk-strip > * { background: var(--panel); padding: 8px 12px; min-width: 0; box-shadow: 1px 1px 0 var(--line); }
   .desk-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
   .desk-table th {
     text-align: left; font-weight: 600; font-size: var(--fs-xs); color: var(--muted);
-    padding: 9px 12px; border-bottom: 1px solid var(--line-strong); white-space: nowrap;
+    padding: 5px 10px; border-bottom: 1px solid var(--line-strong); white-space: nowrap;
   }
   .desk-table td {
-    padding: 11px 12px; border-bottom: 1px solid var(--line);
-    white-space: nowrap; vertical-align: middle; color: var(--fg);
+    padding: 6px 10px; border-bottom: 1px solid var(--line);
+    white-space: nowrap; vertical-align: middle; color: var(--fg); font-variant-numeric: tabular-nums;
   }
   /* No zebra: a row you point at lights up, so the eye can follow it across the columns. */
+  /* With a detail pane open the table gives up its secondary column rather than scrolling sideways. */
+  .desk-table[data-compact] .col-extra { display: none; }
+  /* Phones keep time, instrument, entry and the Inspect action; levels live in the detail view. */
+  @media (max-width: 639px) { .desk-table .col-wide, .desk-table .col-extra { display: none; } .desk-table td { white-space: normal; padding-inline: 6px; } .desk-table th { padding-inline: 6px; } }
+  .desk-table[data-compact] th, .desk-table[data-compact] td { padding-inline: 6px; }
   .desk-table tbody tr:hover { background: var(--hover); }
+  .desk-table tbody tr.desk-selected { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
   .desk-table tbody tr:last-child td { border-bottom: 0; }
   /* Cells set color: var(--fg); keep P&L tones winning over it. */
   .desk-table .desk-up { color: var(--up); }
@@ -125,7 +131,7 @@
     display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 14px;
     background: var(--alt); border-bottom: 1px solid var(--line); font-weight: 500;
   }
-  .desk-sym { font-weight: 600; font-size: var(--fs-base); }
+  .desk-sym { font-weight: 600; }
   .desk-sub { display: block; font-size: var(--fs-xs); color: var(--muted); font-family: var(--mono); margin-top: 1px; }
   .desk-code {
     display: inline-block; min-width: 24px; text-align: center; padding: 2px 7px;
@@ -136,7 +142,7 @@
   .desk-side.ce { background: var(--up-soft); color: var(--up); }
   .desk-side.pe { background: var(--down-soft); color: var(--down); }
   .desk-pill {
-    display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
+    display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px;
     border-radius: 999px; font-size: var(--fs-xs); font-weight: 500; white-space: nowrap;
     background: var(--accent-soft); color: var(--accent);
   }
@@ -144,13 +150,18 @@
   .desk-pill.up { background: var(--up-soft); color: var(--up); }
   .desk-pill.down { background: var(--down-soft); color: var(--down); }
   .desk-pill.mute { background: var(--alt); color: var(--muted); border: 1px solid var(--line-strong); }
+  /* Status is never colour alone: each tone carries a symbol as well as its words. */
+  .desk-pill.up:not(.nomark):not(:has(.desk-dot))::before { content: '✓'; }
+  .desk-pill.warn:not(.nomark):not(:has(.desk-dot))::before { content: '!'; font-weight: 700; }
+  .desk-pill.down:not(.nomark):not(:has(.desk-dot))::before { content: '✕'; }
+  .desk-pill.mute:not(.nomark):not(:has(.desk-dot))::before { content: '–'; }
   .desk-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; display: inline-block; }
   .desk-btn {
     border: 1px solid var(--line-strong); background: var(--panel); color: var(--fg);
-    border-radius: 7px; padding: 6px 12px; font-size: var(--fs-sm); font-weight: 500;
-    display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px;
+    border-radius: 6px; padding: 4px 10px; font-size: var(--fs-sm); font-weight: 500;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px;
   }
-  .desk-btn.sm { min-height: 32px; padding: 4px 10px; }
+  .desk-btn.sm { min-height: 26px; padding: 2px 8px; }
   .desk-btn:hover { border-color: var(--accent); background: var(--hover); }
   .desk-btn.accent { border-color: var(--accent); color: var(--accent); }
   .desk-btn.accent:hover { background: var(--accent-soft); }
@@ -166,13 +177,13 @@
   .desk-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .desk-chip {
     border: 1px solid var(--line-strong); background: var(--panel); color: var(--fg);
-    border-radius: 999px; padding: 4px 12px; font-size: var(--fs-sm); white-space: nowrap; min-height: 34px;
+    border-radius: 999px; padding: 2px 10px; font-size: var(--fs-sm); white-space: nowrap; min-height: 28px;
   }
   .desk-chip:hover { border-color: var(--accent); }
   .desk-chip[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-  .desk-seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 7px; overflow: hidden; }
+  .desk-seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; }
   .desk-seg button {
-    background: var(--panel); color: var(--fg); border: 0; padding: 5px 12px; min-height: 34px;
+    background: var(--panel); color: var(--fg); border: 0; padding: 3px 10px; min-height: 28px;
     font-size: var(--fs-sm); font-weight: 500; border-right: 1px solid var(--line-strong);
   }
   .desk-seg button:last-child { border-right: 0; }
@@ -192,13 +203,22 @@
   .desk-bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 2px; display: block; }
   .desk-input {
     width: 100%; background: var(--panel); color: var(--fg); border: 1px solid var(--line-strong);
-    border-radius: 7px; padding: 8px 10px; font-size: var(--fs-sm); min-height: 36px;
+    border-radius: 6px; padding: 4px 8px; font-size: var(--fs-sm); min-height: 30px;
   }
   .desk-input:focus { border-color: var(--accent); }
   /* A candidate/trade list row: one whole-row button with a clear selected state. */
   .desk-row {
     width: 100%; text-align: left; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
-    padding: 12px 16px; border-left: 4px solid transparent; background: transparent;
+    padding: 7px 12px; border-left: 3px solid transparent; background: transparent;
+  }
+  .trade-grid { display: grid; gap: 12px; align-items: center; grid-template-columns: minmax(0, 1fr) 7.5rem 5.75rem 6.25rem; }
+  @media (max-width: 639px) {
+    .trade-head { display: none; }
+    .trade-grid { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; }
+    .trade-grid > :nth-child(1) { grid-area: 1 / 1; }
+    .trade-grid > :nth-child(4) { grid-area: 1 / 2; }
+    .trade-grid > :nth-child(2) { grid-area: 2 / 1; }
+    .trade-grid > :nth-child(3) { grid-area: 2 / 2; justify-self: end; }
   }
   .desk-row:hover { background: var(--hover); }
   .desk-row[aria-pressed='true'] { background: var(--accent-soft); border-left-color: var(--accent); }
@@ -218,7 +238,10 @@
   .desk-ticker {
     display: grid; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
   }
-  .desk-ticker > * { background: var(--panel); box-shadow: 1px 1px 0 var(--line); padding: 8px 14px; min-width: 0; font-size: var(--fs-sm); white-space: nowrap; }
+  /* Tiles share the row evenly, so a short last row stretches instead of leaving a blank cell. */
+  .desk-ticker.desk-flow { display: flex; flex-wrap: wrap; }
+  .desk-ticker.desk-flow > * { flex: 1 1 11rem; }
+  .desk-ticker > * { background: var(--panel); box-shadow: 1px 1px 0 var(--line); padding: 6px 12px; min-width: 0; font-size: var(--fs-sm); white-space: nowrap; }
   /* ---- Left rail (bottom bar below lg) ---- */
   .desk-rail {
     position: fixed; inset: auto 0 0 0; z-index: 40; display: flex; background: var(--panel);
@@ -227,7 +250,7 @@
   .desk-rail .desk-rail-brand, .desk-rail .desk-rail-work, .desk-rail .desk-rail-toggle { display: none; }
   .desk-rail-tabs { display: flex; width: 100%; }
   .desk-nav {
-    display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 12px; border-radius: 8px;
+    display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 6px 10px; border-radius: 6px;
     background: none; border: 0; color: var(--muted); font-size: var(--fs-base); font-weight: 500; text-align: left;
   }
   .desk-nav:hover { background: var(--hover); color: var(--fg); }
@@ -253,7 +276,7 @@
   }
   .desk-subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
   .desk-subtab {
-    background: none; border: 0; padding: 10px 16px; min-height: 44px; color: var(--muted); font-weight: 500; font-size: var(--fs-base);
+    background: none; border: 0; padding: 6px 14px; min-height: 36px; color: var(--muted); font-weight: 500; font-size: var(--fs-base);
     border-bottom: 3px solid transparent; margin-bottom: -1px;
   }
   .desk-subtab:hover { color: var(--fg); }
