@@ -14,10 +14,11 @@ describe('client api and capability helper', () => {
     vi.restoreAllMocks();
   });
 
-  it('drops a key left in localStorage by older versions', () => {
-    localStorage.setItem(CAPABILITY_STORAGE_KEY, 'old-secret');
-    expect(getDashboardCapability()).toBe('');
-    expect(localStorage.getItem(CAPABILITY_STORAGE_KEY)).toBeNull();
+  it('moves a key an older version kept in sessionStorage to localStorage', () => {
+    sessionStorage.setItem(CAPABILITY_STORAGE_KEY, 'tab-secret');
+    expect(getDashboardCapability()).toBe('tab-secret');
+    expect(localStorage.getItem(CAPABILITY_STORAGE_KEY)).toBe('tab-secret');
+    expect(sessionStorage.getItem(CAPABILITY_STORAGE_KEY)).toBeNull();
   });
 
   it('has no built-in key when none is stored', () => {
@@ -25,7 +26,7 @@ describe('client api and capability helper', () => {
   });
 
   it('ignores the old public default key left in storage', () => {
-    sessionStorage.setItem(CAPABILITY_STORAGE_KEY, 'bb-options-local-capability');
+    localStorage.setItem(CAPABILITY_STORAGE_KEY, 'bb-options-local-capability');
     expect(getDashboardCapability()).toBe('');
   });
 
@@ -39,8 +40,8 @@ describe('client api and capability helper', () => {
   it('stores and retrieves custom capability token', () => {
     setDashboardCapability('custom-secret-123');
     expect(getDashboardCapability()).toBe('custom-secret-123');
-    expect(sessionStorage.getItem(CAPABILITY_STORAGE_KEY)).toBe('custom-secret-123');
-    expect(localStorage.getItem(CAPABILITY_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(CAPABILITY_STORAGE_KEY)).toBe('custom-secret-123');
+    expect(sessionStorage.getItem(CAPABILITY_STORAGE_KEY)).toBeNull();
   });
 
   it('bootstrapDashboardSession calls /api/auth/session and saves secret on success', async () => {

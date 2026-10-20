@@ -179,8 +179,8 @@ const DashboardContent: React.FC = () => {
             setLoaded(true);
             setWsConnected(Boolean(data.feed_status === 'WS_LIVE' || data.ws_connected));
             if (data.active_mode === 'demo' && !reconnectingRef.current) {
-              const savedId = sessionStorage.getItem('dhan_client_id');
-              const savedToken = sessionStorage.getItem('dhan_access_token');
+              const savedId = localStorage.getItem('dhan_client_id');
+              const savedToken = localStorage.getItem('dhan_access_token');
               if (savedId && savedToken && !savedToken.includes('*')) {
                 reconnectingRef.current = true;
                 connect(savedId, savedToken).finally(() => {
@@ -252,8 +252,8 @@ const DashboardContent: React.FC = () => {
           // Sync wsConnected with state snapshot to enable HTTP polling fallback
           setWsConnected(Boolean(data.feed_status === 'WS_LIVE' || data.ws_connected));
           if (data.active_mode === 'demo' && !reconnectingRef.current) {
-            const savedId = sessionStorage.getItem('dhan_client_id');
-            const savedToken = sessionStorage.getItem('dhan_access_token');
+            const savedId = localStorage.getItem('dhan_client_id');
+            const savedToken = localStorage.getItem('dhan_access_token');
             if (savedId && savedToken && !savedToken.includes('*')) {
               reconnectingRef.current = true;
               connect(savedId, savedToken).finally(() => {

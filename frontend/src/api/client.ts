@@ -2,16 +2,32 @@ export const CAPABILITY_STORAGE_KEY = 'dashboard_capability';
 // The old public default key; it is never sent and is dropped if found in storage.
 const LEGACY_PUBLIC_KEY = 'bb-options-local-capability';
 
-// The key lives in sessionStorage (this tab only, gone when it closes). The HttpOnly session cookie is what keeps
-// a returning visitor signed in; an older copy left in localStorage is removed.
+// The key is remembered on this device (localStorage) so every tab and every later visit stays signed in. A copy a
+// previous version kept in sessionStorage is moved over. Clear it with forgetDashboardCapability().
 export function getDashboardCapability(): string {
-  try { localStorage.removeItem(CAPABILITY_STORAGE_KEY); } catch { /* storage unavailable */ }
-  const stored = sessionStorage.getItem(CAPABILITY_STORAGE_KEY) || '';
-  return stored === LEGACY_PUBLIC_KEY ? '' : stored;
+  try {
+    let stored = localStorage.getItem(CAPABILITY_STORAGE_KEY) || '';
+    if (!stored) {
+      stored = sessionStorage.getItem(CAPABILITY_STORAGE_KEY) || '';
+      if (stored && stored !== LEGACY_PUBLIC_KEY) localStorage.setItem(CAPABILITY_STORAGE_KEY, stored);
+    }
+    try { sessionStorage.removeItem(CAPABILITY_STORAGE_KEY); } catch { /* storage unavailable */ }
+    if (stored === LEGACY_PUBLIC_KEY) {
+      localStorage.removeItem(CAPABILITY_STORAGE_KEY);
+      return '';
+    }
+    return stored;
+  } catch {
+    return '';
+  }
 }
 
 export function setDashboardCapability(token: string): void {
-  sessionStorage.setItem(CAPABILITY_STORAGE_KEY, token);
+  try { localStorage.setItem(CAPABILITY_STORAGE_KEY, token); } catch { /* storage unavailable */ }
+}
+
+export function forgetDashboardCapability(): void {
+  try { localStorage.removeItem(CAPABILITY_STORAGE_KEY); sessionStorage.removeItem(CAPABILITY_STORAGE_KEY); } catch { /* storage unavailable */ }
 }
 
 export async function bootstrapDashboardSession(customToken?: string): Promise<boolean> {

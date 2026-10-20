@@ -49,7 +49,7 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const params = new URLSearchParams(window.location.search);
     const consentId = params.get('tokenId') || params.get('consentId') || params.get('token_id');
     if (consentId) {
-      const appId = sessionStorage.getItem('dhan_oauth_app_id');
+      const appId = localStorage.getItem('dhan_oauth_app_id');
       const appSecret = sessionStorage.getItem('dhan_oauth_app_secret');
       if (appId && appSecret) {
         exchangeOAuthToken(appId, appSecret, consentId);
@@ -60,9 +60,9 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     // 2. Restore and verify from sessionStorage on reload/reopen
-    const savedId = sessionStorage.getItem('dhan_client_id');
-    const savedToken = sessionStorage.getItem('dhan_access_token');
-    const savedExpiry = sessionStorage.getItem('dhan_token_expiry');
+    const savedId = localStorage.getItem('dhan_client_id');
+    const savedToken = localStorage.getItem('dhan_access_token');
+    const savedExpiry = localStorage.getItem('dhan_token_expiry');
 
     if (savedExpiry) {
       const exp = Number(savedExpiry);
@@ -80,17 +80,17 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setClientId(cid);
           setAccessToken('server_active');
           setError(null);
-          sessionStorage.setItem('dhan_client_id', cid);
-          sessionStorage.setItem('dhan_access_token', 'server_active');
+          localStorage.setItem('dhan_client_id', cid);
+          localStorage.setItem('dhan_access_token', 'server_active');
           return;
         }
 
         if (savedId && savedToken) {
           if (savedToken.includes('*') || savedToken === 'server_active') {
             // The server says there is no session (restart, expiry), so a masked token must not look logged in.
-            sessionStorage.removeItem('dhan_client_id');
-            sessionStorage.removeItem('dhan_access_token');
-            sessionStorage.removeItem('dhan_token_expiry');
+            localStorage.removeItem('dhan_client_id');
+            localStorage.removeItem('dhan_access_token');
+            localStorage.removeItem('dhan_token_expiry');
           } else {
             connect(savedId, savedToken);
           }
@@ -133,9 +133,9 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // Store in sessionStorage for zero-token persistence guarantee
       const expiryMs = Date.now() + 24 * 3600 * 1000;
-      sessionStorage.setItem('dhan_client_id', id.trim());
-      sessionStorage.setItem('dhan_access_token', 'server_active');
-      sessionStorage.setItem('dhan_token_expiry', expiryMs.toString());
+      localStorage.setItem('dhan_client_id', id.trim());
+      localStorage.setItem('dhan_access_token', 'server_active');
+      localStorage.setItem('dhan_token_expiry', expiryMs.toString());
 
       setClientId(id.trim());
       setAccessToken(token.trim());
@@ -151,10 +151,10 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const loginWithOAuth = async (appId: string, appSecret: string, clientId?: string): Promise<void> => {
     setError(null);
     try {
-      sessionStorage.setItem('dhan_oauth_app_id', appId.trim());
+      localStorage.setItem('dhan_oauth_app_id', appId.trim());
       sessionStorage.setItem('dhan_oauth_app_secret', appSecret.trim());
       if (clientId && clientId.trim()) {
-        sessionStorage.setItem('dhan_client_id', clientId.trim());
+        localStorage.setItem('dhan_client_id', clientId.trim());
       }
       const redirectUri = window.location.origin + window.location.pathname;
       const res = await apiFetch('/api/auth/oauth/login-url', {
@@ -224,9 +224,9 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       const maskedToken = data.masked_token || 'oauth_connected';
 
-      sessionStorage.setItem('dhan_client_id', cId);
-      sessionStorage.setItem('dhan_access_token', maskedToken);
-      sessionStorage.setItem('dhan_token_expiry', expiryMs.toString());
+      localStorage.setItem('dhan_client_id', cId);
+      localStorage.setItem('dhan_access_token', maskedToken);
+      localStorage.setItem('dhan_token_expiry', expiryMs.toString());
 
       setClientId(cId);
       setAccessToken(maskedToken);
@@ -242,9 +242,9 @@ export const DhanAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const disconnect = () => {
-    sessionStorage.removeItem('dhan_client_id');
-    sessionStorage.removeItem('dhan_access_token');
-    sessionStorage.removeItem('dhan_token_expiry');
+    localStorage.removeItem('dhan_client_id');
+    localStorage.removeItem('dhan_access_token');
+    localStorage.removeItem('dhan_token_expiry');
     sessionStorage.removeItem('dhan_oauth_app_secret');
     localStorage.removeItem('dhan_client_id');
     localStorage.removeItem('dhan_access_token');

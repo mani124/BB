@@ -8,29 +8,34 @@ import secrets
 import time
 from app.core.config import settings
 
-SESSION_TTL_SECONDS = 86400
-# Browser sessions: random per-login tokens (the master key itself is never put in a cookie).
-_sessions: dict[str, float] = {}
+SESSION_TTL_SECONDS = 30 * 86400
+
+
+def _sign(payload: str) -> str:
+    # Keyed on the dashboard key, so cookies survive a restart but die if the key is rotated.
+    key = settings.DASHBOARD_CAPABILITY.strip().encode()
+    return hmac.new(key, payload.encode(), "sha256").hexdigest()
 
 
 def issue_session_token() -> str:
-    now = time.time()
-    for tok, exp in list(_sessions.items()):
-        if exp <= now:
-            _sessions.pop(tok, None)
-    token = secrets.token_urlsafe(32)
-    _sessions[token] = now + SESSION_TTL_SECONDS
-    return token
+    """Stateless signed token '<nonce>.<expiry>.<sig>': no server memory, so a restart does not sign anyone out."""
+    payload = f"{secrets.token_urlsafe(16)}.{int(time.time()) + SESSION_TTL_SECONDS}"
+    return f"{payload}.{_sign(payload)}"
 
 
 def is_valid_session_token(token: str) -> bool:
-    exp = _sessions.get(token)
-    if exp is None:
+    if not settings.DASHBOARD_CAPABILITY.strip():
         return False
-    if exp <= time.time():
-        _sessions.pop(token, None)
+    parts = token.split(".")
+    if len(parts) != 3:
         return False
-    return True
+    payload = f"{parts[0]}.{parts[1]}"
+    if not hmac.compare_digest(parts[2], _sign(payload)):
+        return False
+    try:
+        return int(parts[1]) > time.time()
+    except ValueError:
+        return False
 
 JWT_PATTERN = re.compile(r"eyJ[a-zA-Z0-9_\-\.]{15,}")
 

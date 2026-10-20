@@ -25,6 +25,7 @@ describe('DhanAuthContext OAuth and Zero-Persistence Flow', () => {
   beforeEach(() => {
     sessionStorage.clear();
     localStorage.clear();
+    localStorage.clear();
     vi.restoreAllMocks();
   });
 
@@ -52,13 +53,13 @@ describe('DhanAuthContext OAuth and Zero-Persistence Flow', () => {
       await result.current.loginWithOAuth('test_app_id', 'test_app_secret');
     });
 
-    expect(sessionStorage.getItem('dhan_oauth_app_id')).toBe('test_app_id');
+    expect(localStorage.getItem('dhan_oauth_app_id')).toBe('test_app_id');
     expect(sessionStorage.getItem('dhan_oauth_app_secret')).toBe('test_app_secret');
     expect(window.location.href).toBe('https://auth.dhan.co/login?client_id=test_app');
   });
 
   it('exchanges consentId automatically when returning from redirect and clears URL', async () => {
-    sessionStorage.setItem('dhan_oauth_app_id', 'my_app_123');
+    localStorage.setItem('dhan_oauth_app_id', 'my_app_123');
     sessionStorage.setItem('dhan_oauth_app_secret', 'sec_456');
 
     // Simulate returning to dashboard with ?consentId=consent_abc
@@ -107,17 +108,17 @@ describe('DhanAuthContext OAuth and Zero-Persistence Flow', () => {
 
     expect(result.current.clientId).toBe('1000000001');
     expect(result.current.isLoggedIn).toBe(true);
-    expect(sessionStorage.getItem('dhan_client_id')).toBe('1000000001');
-    expect(sessionStorage.getItem('dhan_access_token')).toBe('dhan_***');
-    expect(sessionStorage.getItem('dhan_token_expiry')).toBeTruthy();
+    expect(localStorage.getItem('dhan_client_id')).toBe('1000000001');
+    expect(localStorage.getItem('dhan_access_token')).toBe('dhan_***');
+    expect(localStorage.getItem('dhan_token_expiry')).toBeTruthy();
     expect(sessionStorage.getItem('dhan_oauth_app_secret')).toBeNull();
     expect(replaceStateSpy).toHaveBeenCalledWith({}, document.title, '/');
   });
 
   it('disconnects and wipes tokens strictly from sessionStorage', () => {
-    sessionStorage.setItem('dhan_client_id', '1000000001');
-    sessionStorage.setItem('dhan_access_token', 'test_tok');
-    sessionStorage.setItem('dhan_token_expiry', '123456');
+    localStorage.setItem('dhan_client_id', '1000000001');
+    localStorage.setItem('dhan_access_token', 'test_tok');
+    localStorage.setItem('dhan_token_expiry', '123456');
 
     const wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
       <DhanAuthProvider>{children}</DhanAuthProvider>
@@ -131,13 +132,13 @@ describe('DhanAuthContext OAuth and Zero-Persistence Flow', () => {
 
     expect(result.current.isLoggedIn).toBe(false);
     expect(result.current.clientId).toBeNull();
-    expect(sessionStorage.getItem('dhan_client_id')).toBeNull();
-    expect(sessionStorage.getItem('dhan_access_token')).toBeNull();
-    expect(sessionStorage.getItem('dhan_token_expiry')).toBeNull();
+    expect(localStorage.getItem('dhan_client_id')).toBeNull();
+    expect(localStorage.getItem('dhan_access_token')).toBeNull();
+    expect(localStorage.getItem('dhan_token_expiry')).toBeNull();
   });
 
   it('clears dhan_oauth_app_secret from sessionStorage even if exchange fails', async () => {
-    sessionStorage.setItem('dhan_oauth_app_id', 'my_app_123');
+    localStorage.setItem('dhan_oauth_app_id', 'my_app_123');
     sessionStorage.setItem('dhan_oauth_app_secret', 'sec_456');
 
     delete (window as any).location;
