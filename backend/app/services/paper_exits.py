@@ -18,6 +18,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+
+def _level_hit(pos, curr_spot, level: str) -> bool:
+    """Whether spot or the option price currently sits beyond the stop ('sl'), Target 1 ('t1') or Target 2 ('t2')."""
+    ce = pos.option_type == "CE"
+    opt = pos.current_option_price
+    if level == "sl":
+        spot_hit = curr_spot is not None and (curr_spot <= pos.underlying_sl if ce else curr_spot >= pos.underlying_sl)
+        return spot_hit or opt <= pos.option_sl
+    target_spot = pos.underlying_target_1 if level == "t1" else pos.underlying_target_2
+    target_opt = pos.option_target_1 if level == "t1" else pos.option_target_2
+    spot_hit = curr_spot is not None and (curr_spot >= target_spot if ce else curr_spot <= target_spot)
+    return spot_hit or opt >= target_opt
+
+
+def _pending_is_stop(pos) -> bool:
+    reason = pos.pending_spot_exit or ""
+    return "Stop-Loss" in reason or "SL" in reason
+
 class PaperExitsMixin:
     """Methods split out of PaperTradingEngine (no behaviour change)."""
 
@@ -228,6 +246,14 @@ class PaperExitsMixin:
                 (real_bid_price is not None and float(real_bid_price) > 0)
                 or (real_opt_price is not None and float(real_opt_price) > 0)
             )
+
+            # A stop queued while no live quote existed: with a fresh quote, act on it only if the stop is still
+            # breached. If price has recovered above it, drop the stale flag and evaluate normally. Targets stay
+            # pending: they filled at the touch and are booked at the real quote (labelled a late fill if lower).
+            if has_fresh_quote and getattr(pos, "pending_spot_exit", None) and _pending_is_stop(pos) \
+                    and not _level_hit(pos, curr_spot, "sl"):
+                logger.info("Pending stop for %s dropped: price recovered above the stop before a fresh quote arrived", pos.id)
+                pos.pending_spot_exit = None
 
             # Check if pending spot exit can now execute with fresh quote
             if getattr(pos, "pending_spot_exit", None) and has_fresh_quote:

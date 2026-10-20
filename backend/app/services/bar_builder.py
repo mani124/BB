@@ -44,18 +44,23 @@ class BarBuilder:
             bar = grouped.get(slot)
             if bar is None:
                 grouped[slot] = {"timestamp": slot, "open": float(row["open"]), "high": float(row["high"]), "low": float(row["low"]),
-                                 "close": float(row["close"]), "volume": int(row.get("volume", 0) or 0)}
+                                 "close": float(row["close"]), "volume": int(row.get("volume", 0) or 0), "_n": 1}
             else:
+                bar["_n"] += 1
                 bar["high"] = max(bar["high"], float(row["high"]))
                 bar["low"] = min(bar["low"], float(row["low"]))
                 bar["close"] = float(row["close"])
                 bar["volume"] += int(row.get("volume", 0) or 0)
         completed, forming = [], None
         for slot in sorted(grouped):
+            bar = grouped[slot]
+            n = bar.pop("_n")
             if slot + timedelta(minutes=self.minutes) <= now:
-                completed.append(grouped[slot])
+                # A finished slot missing a constituent minute would carry a wrong close/range: leave the gap instead.
+                if n >= self.minutes:
+                    completed.append(bar)
             else:
-                forming = grouped[slot]
+                forming = bar
         self.bars, self.forming = completed, forming
         return len(completed)
 

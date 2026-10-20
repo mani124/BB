@@ -192,6 +192,7 @@ export interface RiskStatus {
   kill_switch_since?: string | null;
   entries_blocked: boolean;
   block_reason?: string | null;
+  capped_pools?: string[]; // setups (11, 21-23) whose own daily cap has tripped; other setups keep trading
 }
 
 export interface PaperPortfolio {

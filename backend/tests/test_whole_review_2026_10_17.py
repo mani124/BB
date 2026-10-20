@@ -127,3 +127,37 @@ def test_db_connect_closes_at_the_end_of_with(tmp_path):
         warnings.simplefilter("error", ResourceWarning)
         with db.connect(str(tmp_path / "c.db")) as c2:
             assert c2.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 0
+
+
+# ---- a pending stop must not close a position whose price has recovered above the stop
+def test_pending_stop_is_dropped_when_price_recovered(tmp_path):
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    pos = e.open_position_from_signal(make_test_signal("PSTOP"))
+    pos.feed_mode = "live"
+    pos.pending_spot_exit = "Stop-Loss Hit"
+    recovered = round(pos.option_sl + 10, 2)
+    spot = (pos.underlying_sl + 20) if pos.option_type == "CE" else (pos.underlying_sl - 20)
+    e.update_market_prices({pos.symbol: spot}, option_price_map={pos.id: recovered}, feed_mode="live")
+    assert pos in e._portfolio.active_positions and pos.pending_spot_exit is None
+
+
+def test_pending_stop_still_closes_when_the_stop_is_still_breached(tmp_path):
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    pos = e.open_position_from_signal(make_test_signal("PSTOP2"))
+    pos.feed_mode = "live"
+    pos.pending_spot_exit = "Stop-Loss Hit"
+    e.update_market_prices({}, option_price_map={pos.id: round(pos.option_sl - 2, 2)}, feed_mode="live")
+    assert e._portfolio.closed_trades[-1].id == pos.id and e._portfolio.closed_trades[-1].status == "STOPPED_OUT"
+
+
+# ---- a capped T315-F pool shows up in the risk status without claiming every entry is blocked
+def test_risk_status_reports_a_capped_pool(tmp_path):
+    from app.services.setup_t315f import VERSIONS
+    e = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    e.set_daily_loss_limit(1000)
+    sig = make_test_signal("POOL22")
+    sig.setup_type = VERSIONS[22].setup_type
+    pos = e.open_position_from_signal(sig, feed_mode="live") if False else None
+    e.day_pnl = lambda book=None, pool="main": -5000.0 if pool == "f22" else 0.0
+    st = e.risk_status("live")
+    assert st.capped_pools == ["Setup 22"] and not st.loss_cap_tripped and not st.entries_blocked

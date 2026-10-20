@@ -179,3 +179,11 @@ def test_a_version_losing_money_does_not_trip_the_main_loss_cap(engine, monkeypa
     f.pnl_points, f.pnl_rupees = -1000.0, -999999.0
     assert engine.day_pnl("live", pool="f22") < 0
     assert engine.day_pnl("live", pool="main") == 0
+
+
+def test_runner_trail_exits_at_the_cycle_bid_not_the_stale_option_price(engine):
+    p = _open(engine, "R", "9", 22, "NIFTY 50")
+    p.status = "TARGET_1"
+    p.current_option_price = 180.0
+    closed = engine.close_t315f_runners("NIFTY 50", 5, bar_close=22690.0, ema15=22700.0, option_bid_map={"9": 155.0})
+    assert [c.id for c in closed] == [p.id] and closed[0].theoretical_exit == 155.0

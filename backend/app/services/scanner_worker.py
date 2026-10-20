@@ -482,6 +482,8 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         # Extract live option quotes and bid prices from NSE_FNO
         option_price_map: dict[str, float] = {}
         option_bid_map: dict[str, float] = {}
+        # Runner-trail checks are queued here and run after this cycle's option prices are applied, so they exit at a fresh bid.
+        runner_checks: list[tuple[str, int, float, float]] = []
         if live_quotes:
             quotes_dict = live_quotes.get("data", live_quotes) if isinstance(live_quotes.get("data"), dict) else live_quotes
             fno_quotes = {**quotes_dict.get("NSE_FNO", {}), **quotes_dict.get("BSE_FNO", {})}
@@ -734,7 +736,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                     if inst.symbol in self._bar_completed_symbols and len(completed_df) > 15:
                         try:
                             ema15 = float(t315f_emas(completed_df)[1].iloc[-1])
-                            paper_trader.close_t315f_runners(inst.symbol, 5, float(completed_df["close"].iloc[-1]), ema15)
+                            runner_checks.append((inst.symbol, 5, float(completed_df["close"].iloc[-1]), ema15))
                         except Exception as e:
                             logger.warning(f"T315-F 5m runner check failed for {inst.symbol}: {e}")
 
@@ -771,7 +773,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                                 confirmed_signals.append(s)
                         if done3:
                             ema15 = float(t315f_emas(df3)[1].iloc[-1])
-                            paper_trader.close_t315f_runners(inst.symbol, 3, float(df3["close"].iloc[-1]), ema15)
+                            runner_checks.append((inst.symbol, 3, float(df3["close"].iloc[-1]), ema15))
                 except Exception as e:
                     logger.warning(f"Setup 21 (T315-F 3m) failed for {inst.symbol}: {e}")
 
@@ -937,6 +939,11 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
         )
         # P0-5: in every mode (a demo scan after a disconnect too) close positions carried over
         # from an earlier date (both books) and square off live positions at the EOD time.
+        for r_symbol, r_minutes, r_close, r_ema in runner_checks:
+            try:
+                paper_trader.close_t315f_runners(r_symbol, r_minutes, r_close, r_ema, option_bid_map=option_bid_map)
+            except Exception as e:
+                logger.warning(f"T315-F runner exit failed for {r_symbol}: {e}")
         paper_trader.flag_stale_carryover()
         paper_trader.square_off_if_due(feed_mode="live", option_bid_map=option_bid_map)
         self.persist_trade_candles()

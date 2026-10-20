@@ -30,6 +30,12 @@ export const RiskControls: React.FC<RiskControlsProps> = ({ risk, onKillSwitch, 
         <span className="desk-dot" />Loss cap hit · entries off today
       </span>
     );
+  } else if (risk.capped_pools && risk.capped_pools.length > 0) {
+    chip = (
+      <span className="desk-pill warn" title={`Daily loss cap reached for ${risk.capped_pools.join(', ')}; other setups keep trading`}>
+        {risk.capped_pools.join(', ')} capped today
+      </span>
+    );
   } else if (risk.daily_loss_limit > 0) {
     chip = (
       <span className="desk-pill" title="Day P&L (realised + open, after charges) vs the daily loss limit">

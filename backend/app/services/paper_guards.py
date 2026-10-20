@@ -158,7 +158,7 @@ class PaperGuardsMixin:
             self._recalculate_metrics()
         return stale
 
-    def close_t315f_runners(self, symbol: str, minutes: int, bar_close: float, ema15: float) -> list[PaperPosition]:
+    def close_t315f_runners(self, symbol: str, minutes: int, bar_close: float, ema15: float, option_bid_map: Optional[dict] = None) -> list[PaperPosition]:
         """T315-F runners (positions that have booked Target 1) close when a completed bar of their timeframe closes back
         across the 15 EMA: below it for a CE, above it for a PE. Call once per completed bar."""
         from app.services.setup_t315f import runner_should_close
@@ -167,7 +167,10 @@ class PaperGuardsMixin:
             if not is_t315f(pos.setup_type) or pos.symbol != symbol or pos.timeframe != f"{minutes}m" or pos.status != "TARGET_1":
                 continue
             if runner_should_close(pos.option_type, float(bar_close), float(ema15)):
-                res = self.close_position(pos.id, reason=T315F_RUNNER_TRAIL)
+                bid = None
+                if option_bid_map and getattr(pos, "feed_mode", "demo") == "live":
+                    bid = option_bid_map.get(str(pos.option_security_id)) or option_bid_map.get(pos.id)
+                res = self.close_position(pos.id, reason=T315F_RUNNER_TRAIL, real_bid_price=bid if bid and bid > 0 else None)
                 if res:
                     closed.append(res)
         return closed

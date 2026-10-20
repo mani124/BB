@@ -83,7 +83,7 @@ export const SignalsPane: React.FC<Props> = ({
             <div className="flex flex-wrap gap-1.5">
               <Seg label="Side" value={filters.optionType} onChange={(v) => onFilters({ optionType: v })} options={[['ALL', 'Both'], ['CE', 'CE'], ['PE', 'PE']]} />
               <Seg label="Universe" value={filters.instrumentType} onChange={(v) => onFilters({ instrumentType: v })} options={[['ALL', 'All'], ['INDEX', 'Idx'], ['STOCK', 'Stk']]} />
-              <Seg label="Timeframe" value={filters.timeframe} onChange={(v) => onFilters({ timeframe: v })} options={[['ALL', 'All'], ['5m', '5m'], ['15m', '15m']]} />
+              <Seg label="Timeframe" value={filters.timeframe} onChange={(v) => onFilters({ timeframe: v })} options={[['ALL', 'All'], ['3m', '3m'], ['5m', '5m'], ['15m', '15m']]} />
             </div>
             <p className="text-xs desk-muted flex flex-wrap items-center gap-1.5">
               <span>Bias</span>

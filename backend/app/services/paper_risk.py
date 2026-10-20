@@ -33,6 +33,7 @@ class RiskStatus(BaseModel):
     kill_switch_since: Optional[str] = None
     entries_blocked: bool = False
     block_reason: Optional[str] = None
+    capped_pools: list[str] = []  # pools (Setup 11, T315-F versions) whose own daily cap has tripped; the rest keep trading
 
 
 class PaperRiskMixin:
@@ -163,6 +164,9 @@ class PaperRiskMixin:
     def risk_status(self, mode: Optional[str] = None) -> RiskStatus:
         books = [mode] if mode in ("live", "demo") else ["live", "demo"]
         tripped = [b for b in books if self._check_loss_cap(b)]
+        # Other pools (Setup 11, T315-F versions) have their own caps; report them so a blocked setup is not invisible.
+        pool_trips = [POOL_LABELS[pl] for pl in POOL_LABELS if pl != "main" for b in books if self._check_loss_cap(b, pl)]
+        pool_trips = list(dict.fromkeys(pool_trips))
         pnl = self.day_pnl(mode if mode in ("live", "demo") else None)
         reason = None
         if self._kill_switch:
@@ -178,6 +182,7 @@ class PaperRiskMixin:
             kill_switch_since=self._kill_switch_since,
             entries_blocked=bool(reason),
             block_reason=reason,
+            capped_pools=pool_trips,
         )
 
     def set_daily_loss_limit(self, amount: float) -> None:

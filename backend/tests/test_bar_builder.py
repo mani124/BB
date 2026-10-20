@@ -27,7 +27,7 @@ def test_seed_aggregates_one_minute_bars_and_keeps_the_unfinished_slot_as_formin
 
 def test_seed_drops_bars_outside_the_session():
     b = BarBuilder(3)
-    n = b.seed([_min(9, 10, 1, 1, 1, 1), _min(9, 15, 100, 101, 99, 100), _min(15, 31, 1, 1, 1, 1)], now=datetime(2026, 10, 15, 16, 0))
+    n = b.seed([_min(9, 10, 1, 1, 1, 1), _min(9, 15, 100, 101, 99, 100), _min(9, 16, 100, 101, 99, 100), _min(9, 17, 100, 101, 99, 100), _min(15, 31, 1, 1, 1, 1)], now=datetime(2026, 10, 15, 16, 0))
     assert n == 1 and b.bars[0]["timestamp"] == datetime(2026, 10, 15, 9, 15)
 
 
@@ -49,3 +49,12 @@ def test_nothing_is_built_outside_market_hours_or_from_bad_prices():
     assert b.update(100.0, now=datetime(2026, 10, 15, 16, 0)) is False and b.forming is None
     assert b.update(0.0, now=datetime(2026, 10, 15, 10, 0)) is False and b.forming is None
     assert b.update(100.0, now=datetime(2026, 10, 17, 10, 0)) is False       # Saturday
+
+
+def test_seed_leaves_a_gap_instead_of_building_a_bar_from_missing_minutes():
+    b = BarBuilder(3)
+    rows = [_min(9, 15, 100, 102, 99, 101), _min(9, 16, 101, 105, 100, 104),                      # 09:17 missing
+            _min(9, 18, 99, 100, 97, 98), _min(9, 19, 98, 99, 96, 97), _min(9, 20, 97, 99, 95, 96)]
+    n = b.seed(rows, now=datetime(2026, 10, 15, 9, 22))
+    assert n == 1 and b.bars[0]["timestamp"] == datetime(2026, 10, 15, 9, 18)
+    assert "_n" not in b.bars[0]
