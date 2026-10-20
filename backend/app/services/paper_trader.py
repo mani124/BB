@@ -538,28 +538,19 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
 
         self._portfolio.active_positions.append(pos)
         self._recalculate_metrics()
-        if not self._persist_entry(pos, signal.id):
+        evidence_decision = {"reason": "SIGNAL_CONFIRMED", "rationale": signal.rationale,
+                             "signal_id": signal.id, "setup": pos.setup_type,
+                             "checks": signal.indicators_snapshot,
+                             "entry": pos.option_entry, "stop": pos.option_sl,
+                             "target_1": pos.option_target_1, "target_2": pos.option_target_2,
+                             "lots": pos.lots, "opened_at": pos.entry_datetime}
+        if not self._persist_entry(pos, signal.id, evidence_decision):
             # The entry never reached storage: do not report a trade that would vanish on restart.
             self._portfolio.active_positions.remove(pos)
             self._processed_signal_ids.discard(signal.id)  # allow a retry once storage recovers
             self._recalculate_metrics()
             self._log_skip(signal, feed_mode, "STORAGE_WRITE_FAILED")
             return None
-        try:
-            from app.services import dashboard_evidence
-            if self.storage:
-                dashboard_evidence.save_trade_evidence(
-                    "paper", pos.id,
-                    {"reason": "SIGNAL_CONFIRMED", "rationale": signal.rationale,
-                     "signal_id": signal.id, "setup": pos.setup_type,
-                     "checks": signal.indicators_snapshot,
-                     "entry": pos.option_entry, "stop": pos.option_sl,
-                     "target_1": pos.option_target_1, "target_2": pos.option_target_2,
-                     "lots": pos.lots, "opened_at": pos.entry_datetime},
-                    {}, db_path=self.storage.db_path,
-                )
-        except Exception:
-            logger.warning("Could not save dashboard evidence for %s", pos.id, exc_info=True)
         self.telemetry.decision(
             book=feed_mode, strategy=pos.setup_type, symbol=pos.symbol, side=pos.option_type, decision="ENTERED",
             reason="SIGNAL_CONFIRMED", signal_id=signal.id, position_id=pos.id,

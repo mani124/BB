@@ -1,6 +1,15 @@
 import sqlite3
 
 
+def _reject_evidence_inserts(path):
+    from app.services.dashboard_evidence import save_trade_evidence
+
+    save_trade_evidence("paper", "seed", {"reason": "seed"}, {}, db_path=str(path))
+    with sqlite3.connect(path) as conn:
+        conn.execute("""CREATE TRIGGER reject_evidence BEFORE INSERT ON dashboard_trade_evidence
+            BEGIN SELECT RAISE(ABORT, 'evidence unavailable'); END""")
+
+
 def test_evidence_survives_new_reader_and_isolated_by_book(tmp_path, monkeypatch):
     from app.services import dashboard_evidence
 
@@ -37,20 +46,85 @@ def test_old_trade_detail_and_chart_admit_missing_evidence(monkeypatch):
     assert chart["series"] == []
 
 
-def test_paper_entry_records_original_signal_reason(monkeypatch, tmp_path):
+def test_paper_entry_records_original_signal_reason(tmp_path, monkeypatch):
     from app.services import dashboard_evidence
     from app.services.paper_trader import PaperTradingEngine
     from test_paper_trader import create_mock_signal
 
-    captured = []
-    monkeypatch.setattr(dashboard_evidence, "save_trade_evidence", lambda *args, **kwargs: captured.append((args, kwargs)))
     engine = PaperTradingEngine(str(tmp_path / "paper.db"))
     position = engine.open_position_from_signal(create_mock_signal(), lots=1)
 
     assert position is not None
-    assert len(captured) == 1
-    assert captured[0][0][0:2] == ("paper", position.id)
-    assert captured[0][0][2]["rationale"] == "Test"
+    monkeypatch.setattr(dashboard_evidence, "_db_path", lambda _book: engine.storage.db_path)
+    assert dashboard_evidence.get_trade_evidence("paper", position.id)["decision"]["rationale"] == "Test"
+
+
+def test_paper_entry_rolls_back_position_and_signal_when_evidence_fails(tmp_path):
+    from app.services.paper_trader import PaperTradingEngine
+    from test_paper_trader import create_mock_signal
+
+    path = tmp_path / "paper.db"
+    engine = PaperTradingEngine(str(path))
+    _reject_evidence_inserts(path)
+    called = []
+    engine.on_live_entry = lambda *_args: called.append("routed")
+
+    assert engine.open_position_from_signal(create_mock_signal(), lots=1) is None
+    with sqlite3.connect(path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM processed_signals").fetchone()[0] == 0
+    assert called == []
+
+
+def test_two_paper_engines_cannot_route_the_same_signal_twice(tmp_path):
+    from app.services.paper_trader import PaperTradingEngine
+    from test_paper_trader import create_mock_signal
+
+    path = tmp_path / "paper.db"
+    first = PaperTradingEngine(str(path))
+    second = PaperTradingEngine(str(path))  # loaded before the first entry
+    routed = []
+    first.on_live_entry = lambda *_args: routed.append("first")
+    second.on_live_entry = lambda *_args: routed.append("second")
+
+    assert first.open_position_from_signal(create_mock_signal(), lots=1) is not None
+    assert second.open_position_from_signal(create_mock_signal(), lots=1) is None
+    with sqlite3.connect(path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM processed_signals").fetchone()[0] == 1
+    assert routed == ["first"]
+
+
+def test_cx_entry_rolls_back_position_when_evidence_fails(tmp_path, monkeypatch):
+    from app.services import market_hours
+    from app.services.cx_signals import SETUP_17
+    from test_cx_book import make, force_signal, run, NOW
+
+    force_signal(monkeypatch)
+    engine = make(tmp_path)
+    _reject_evidence_inserts(engine.store.db_path)
+    with market_hours.override_clock(NOW):
+        run(engine, NOW)
+    with sqlite3.connect(engine.store.db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM cx_positions").fetchone()[0] == 0
+    marker = f"last_bar:CRUDEOIL:{SETUP_17}"
+    assert engine.store.get_meta(marker) is None
+    with sqlite3.connect(engine.store.db_path) as conn:
+        conn.execute("DROP TRIGGER reject_evidence")
+    with market_hours.override_clock(NOW):
+        run(engine, NOW)
+    assert len(engine.positions("OPEN")) == 1
+
+
+def test_earnings_entry_rolls_back_position_when_evidence_fails(tmp_path):
+    from test_earnings import make_engine, add_a_candidate, run, NOW
+
+    engine = make_engine(tmp_path)
+    add_a_candidate(engine)
+    _reject_evidence_inserts(engine.store.db_path)
+    run(engine.run_cycle(NOW))
+    with sqlite3.connect(engine.store.db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM earnings_positions").fetchone()[0] == 0
 
 
 def test_cx_entry_keeps_recorded_underlying_candles(tmp_path, monkeypatch):

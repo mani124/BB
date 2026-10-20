@@ -258,18 +258,24 @@ class PaperStorage:
             conn.execute(self._upsert_sql(), self._row_params(pos))
             conn.commit()
 
-    def record_entry(self, pos: PaperPosition, signal_id: str, created_at: str = "") -> None:
-        """Atomically persist a newly opened position together with its processed signal id.
+    def record_entry(self, pos: PaperPosition, signal_id: str, created_at: str = "",
+                     evidence_decision: dict | None = None) -> None:
+        """Atomically persist a new position, its processed signal and recorded decision.
 
-        Both rows are committed in one transaction so a crash or reload can never leave a
-        position without its processed-signal marker (which would let the same signal open
-        a second position after restart)."""
+        All rows commit together, preventing duplicate opens and missing entry evidence."""
         with self._get_connection() as conn:
-            conn.execute(self._upsert_sql(), self._row_params(pos))
-            conn.execute(
+            marker = conn.execute(
                 "INSERT OR IGNORE INTO processed_signals (signal_id, created_at) VALUES (?, ?);",
                 (signal_id, created_at),
             )
+            if marker.rowcount == 0:
+                existing = conn.execute("SELECT id FROM positions WHERE signal_id = ? LIMIT 1", (signal_id,)).fetchone()
+                if existing is None or existing["id"] != pos.id:
+                    raise sqlite3.IntegrityError(f"Signal {signal_id} already has a recorded entry")
+            conn.execute(self._upsert_sql(), self._row_params(pos))
+            if evidence_decision is not None:
+                from app.services.dashboard_evidence import save_trade_evidence
+                save_trade_evidence("paper", pos.id, evidence_decision, {}, connection=conn)
             conn.commit()
 
     def batch_upsert_positions(self, positions: list[PaperPosition]):
