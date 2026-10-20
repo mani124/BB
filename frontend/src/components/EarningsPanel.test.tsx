@@ -14,7 +14,7 @@ describe('EarningsPanel', () => {
     render(<EarningsPanel initial={{ summary, positions: [], candidates: [], calendar: [] }} />);
     expect(screen.getByText(/Entries off/)).toBeInTheDocument();
     expect(screen.getByText('Paper only')).toBeInTheDocument();
-    expect(screen.getByTestId('earnings-summary')).toHaveTextContent('Equity ₹5,01,300');
+    expect(screen.getByTestId('earnings-summary')).toHaveTextContent('Equity₹5,01,300');
     expect(screen.getByTestId('earnings-summary')).toHaveTextContent('no_credentials');
   });
 

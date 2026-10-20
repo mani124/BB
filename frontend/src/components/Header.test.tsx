@@ -6,13 +6,13 @@ import { ThemeProvider } from '../context/ThemeContext';
 import { DhanAuthProvider } from '../context/DhanAuthContext';
 
 describe('Header Theme Toggle', () => {
-  it('offers four primary jobs with Watch first', () => {
+  it('offers the primary jobs with Watch first', () => {
     render(
       <ThemeProvider><DhanAuthProvider><Header activeMode="demo" scanCycleCount={0} lastScanTime="" isScanning={false}
         scanProgress={0} onScanNow={vi.fn()} activeTab="watch" onTabChange={vi.fn()} /></DhanAuthProvider></ThemeProvider>
     );
     const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent?.trim());
-    expect(tabs).toEqual(['Watch', 'Trades', 'Session', 'Control']);
+    expect(tabs).toEqual(['Watch', 'Books', 'Trades', 'Session', 'Control']);
   });
 
   it('renders theme toggle button and switches theme on click', () => {

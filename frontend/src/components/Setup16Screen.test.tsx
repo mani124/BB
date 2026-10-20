@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { Setup16Screen } from './Setup16Screen';
 import type { Setup16Overview } from '../types';
@@ -17,24 +17,29 @@ const base: Setup16Overview = {
   as_of: '10:31:10',
 };
 
+const openTab = (name: RegExp) => fireEvent.click(screen.getByRole('tab', { name }));
+
 describe('Setup16Screen', () => {
   it('explains that the switch is off and shows the funnel, contracts, results and decisions', () => {
     render(<Setup16Screen initial={base} />);
     expect(screen.getByText(/OFF: signals are seen but no trade is entered/)).toBeInTheDocument();
+    expect(screen.getByText('-₹1,800', { selector: 'td' })).toBeInTheDocument();
+    expect(screen.getByTestId('s16-figures')).toHaveTextContent('win rate 25%');
+    openTab(/Option charts/);
     expect(screen.getByTestId('s16-funnel')).toHaveTextContent('Below upper band');
     expect(screen.getByTestId('s16-funnel')).toHaveTextContent('Signal');
-    expect(screen.getAllByText('NIFTY 22500 CE', { selector: 'td' })).toHaveLength(2);
+    expect(screen.getAllByText('NIFTY 22500 CE', { selector: 'td' })).toHaveLength(1);
     expect(screen.getByText('2.18% to go')).toBeInTheDocument();
     expect(screen.getByText('12.5% above')).toBeInTheDocument();
-    expect(screen.getByText('-₹1,800', { selector: 'td' })).toBeInTheDocument();
+    openTab(/Entries and skips/);
     expect(screen.getByText('SETUP_OFF')).toBeInTheDocument();
-    expect(screen.getByText(/All time/)).toHaveTextContent('win rate 25%');
   });
 
   it('shows an empty state before any option chart is checked', () => {
     render(<Setup16Screen initial={{ ...base, mode: 'index', funnel: {}, contracts: [], contracts_checked: 0, today_closed: [], decisions: [], stats_all_time: null }} />);
-    expect(screen.getByText(/No option charts checked yet/)).toBeInTheDocument();
     expect(screen.getByText('ON for indices only')).toBeInTheDocument();
     expect(screen.getByText('No Setup 16 trades closed today.')).toBeInTheDocument();
+    openTab(/Option charts/);
+    expect(screen.getByText(/No option charts checked yet/)).toBeInTheDocument();
   });
 });

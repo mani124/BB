@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
-import { Tabs } from './Tabs';
+import { BookFrame } from './BookFrame';
 import type { EarningsCalendarRow, EarningsCandidate, EarningsPosition, EarningsSummary } from '../types';
 
 const money = (v: number | null | undefined, plus = false) => {
@@ -10,7 +10,6 @@ const money = (v: number | null | undefined, plus = false) => {
 };
 const tone = (v: number | null | undefined) => ((v ?? 0) > 0 ? 'desk-up' : (v ?? 0) < 0 ? 'desk-down' : '');
 
-type EarningsTab = 'positions' | 'signals' | 'calendar';
 const modeLabel = (m: string) => (m === 'MODE_A_RUNUP' ? 'A · Pre-earnings straddle' : m === 'MODE_B_CRUSH' ? 'B · Post-earnings condor' : m);
 
 export interface EarningsInitial {
@@ -28,7 +27,6 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
   const [form, setForm] = useState({ symbol: '', earnings_date: '', session: 'AMC', sector: '' });
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState<EarningsTab>('positions');
 
   const load = useCallback(async () => {
     try {
@@ -72,45 +70,35 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
 
   const open = positions.filter((p) => p.status === 'OPEN');
   const closed = positions.filter((p) => p.status === 'CLOSED').slice().reverse();
-  const tabs: { id: EarningsTab; label: string }[] = [
-    { id: 'positions', label: `Positions (${open.length} open)` },
-    { id: 'signals', label: `Signals now${candidates.length ? ` (${candidates.length})` : ''}` },
-    { id: 'calendar', label: `Calendar${calendar.length ? ` (${calendar.length})` : ''}` },
-  ];
 
+  const kpis = summary ? [
+    { label: 'Equity', value: money(summary.equity) },
+    { label: 'Realised', value: money(summary.realized_net_pnl, true), tone: summary.realized_net_pnl > 0 ? 'up' as const : summary.realized_net_pnl < 0 ? 'down' as const : undefined },
+    { label: 'Unrealised', value: money(summary.unrealized_net_pnl, true), tone: summary.unrealized_net_pnl > 0 ? 'up' as const : summary.unrealized_net_pnl < 0 ? 'down' as const : undefined },
+    { label: 'Closed trades', value: summary.closed_trades },
+    { label: 'Win rate', value: `${summary.win_rate}%` },
+    { label: 'Profit factor', value: summary.profit_factor ?? 'n/a' },
+    { label: 'Charges', value: money(summary.total_charges) },
+    { label: 'Last check', value: summary.last_cycle?.status ?? 'never' },
+  ] : [];
   return (
-    <div className="flex flex-col gap-2 lg:flex-1 lg:min-h-0" data-testid="earnings-panel">
-      <div className="desk-panel shrink-0">
-        <div className="desk-ph">
-          <h2>Stock earnings options</h2>
-          <span className={`desk-pill ${summary?.enabled ? 'up' : 'warn'}`}>{summary?.enabled ? 'Entries enabled' : 'Entries off (Settings)'}</span>
-          <span className="desk-pill">Paper only</span>
-          <div className="ml-auto flex gap-2">
-            <button type="button" className="desk-btn accent" disabled={busy} onClick={() => call('/api/earnings/run-cycle', { method: 'POST' }, 'Cycle run')}>Run check now</button>
-            <button type="button" className="desk-btn danger" disabled={busy || open.length === 0}
-              onClick={() => { if (window.confirm('Close all open earnings paper positions now?')) void call('/api/earnings/square-off', { method: 'POST' }, 'Positions closed'); }}>
-              Square off
-            </button>
-          </div>
-        </div>
-        {msg && <div className="px-3.5 py-2 text-xs desk-muted" role="status">{msg}</div>}
-        {summary && (
-          <div className="px-3.5 py-2.5 text-sm flex flex-wrap gap-x-6 gap-y-1" data-testid="earnings-summary">
-            <span>Equity <b className="desk-num">{money(summary.equity)}</b></span>
-            <span>Realised <b className={`desk-num ${tone(summary.realized_net_pnl)}`}>{money(summary.realized_net_pnl, true)}</b></span>
-            <span>Unrealised <b className={`desk-num ${tone(summary.unrealized_net_pnl)}`}>{money(summary.unrealized_net_pnl, true)}</b></span>
-            <span>Closed <b className="desk-num">{summary.closed_trades}</b></span>
-            <span>Win rate <b className="desk-num">{summary.win_rate}%</b></span>
-            <span>Profit factor <b className="desk-num">{summary.profit_factor ?? '-'}</b></span>
-            <span>Charges <b className="desk-num">{money(summary.total_charges)}</b></span>
-            <span className="desk-muted">Last check: {summary.last_cycle?.status ?? 'never'}</span>
-          </div>
-        )}
-      </div>
-
-      <Tabs<EarningsTab> idPrefix="earn" label="Earnings sections" className="desk-subtabs shrink-0" tabClassName="desk-subtab" items={tabs} value={tab} onChange={setTab} />
-      <div id="earn-panel" role="tabpanel" aria-labelledby={`earn-tab-${tab}`} className="flex flex-col gap-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto pb-3">
-      {tab === 'positions' && <>
+    <BookFrame
+      idPrefix="earn"
+      testId="earnings-panel"
+      kpiTestId="earnings-summary"
+      title="Stock earnings options"
+      pills={[{ text: summary?.enabled ? 'Entries enabled' : 'Entries off (Settings)', tone: summary?.enabled ? 'up' : 'warn' }, { text: 'Paper only', tone: 'mute' }]}
+      notice={msg ? { tone: 'mute', text: msg } : null}
+      actions={<>
+        <button type="button" className="desk-btn accent" disabled={busy} onClick={() => call('/api/earnings/run-cycle', { method: 'POST' }, 'Cycle run')}>Run check now</button>
+        <button type="button" className="desk-btn danger" disabled={busy || open.length === 0}
+          onClick={() => { if (window.confirm('Close all open earnings paper positions now?')) void call('/api/earnings/square-off', { method: 'POST' }, 'Positions closed'); }}>
+          Square off
+        </button>
+      </>}
+      kpis={kpis}
+      tabs={[
+        { id: 'positions', label: 'Positions', count: open.length, content: <>
       <section className="desk-panel" aria-label="Open positions">
         <div className="desk-ph"><h3>Open positions</h3></div>
         {open.length === 0 ? <div className="p-4 text-xs desk-muted">No open earnings positions.</div> : (
@@ -136,9 +124,8 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
             ))}</tbody></table></div>
         )}
       </section>
-      </>}
-
-      {tab === 'signals' && (
+        </> },
+        { id: 'signals', label: 'Signals now', count: candidates.length || undefined, content: <>
       <section className="desk-panel" aria-label="Signals now">
         <div className="desk-ph"><h3>What the engine sees now</h3><span className="desk-muted text-xs">Needs a connected Dhan session. Nothing is opened from here.</span></div>
         {candidates.length === 0 ? <div className="p-4 text-xs desk-muted">No calendar rows are due today.</div> : (
@@ -153,9 +140,8 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
             ))}</tbody></table></div>
         )}
       </section>
-      )}
-
-      {tab === 'calendar' && (
+        </> },
+        { id: 'calendar', label: 'Calendar', count: calendar.length || undefined, content: <>
       <section className="desk-panel" aria-label="Earnings calendar">
         <div className="desk-ph"><h3>Earnings calendar</h3><span className="desk-muted text-xs">Filled daily from NSE (F&O stocks with a financial-results board meeting). NSE gives no before/after flag, so the session is inferred from its event text when possible, else the default in Settings (AMC) applies. Choosing BMO or AMC on a row overrides both.</span>
           <button type="button" className="desk-btn accent ml-auto" disabled={busy} onClick={() => call('/api/earnings/calendar/sync', { method: 'POST' }, 'Calendar updated from NSE')}>Sync from NSE</button></div>
@@ -184,8 +170,8 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
             ))}</tbody></table></div>
         )}
       </section>
-      )}
-      </div>
-    </div>
+        </> },
+      ]}
+    />
   );
 };

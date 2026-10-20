@@ -3,6 +3,8 @@ import { IndexRadarItem } from '../types';
 
 interface IndexHeroRadarProps {
   radar: Record<string, IndexRadarItem>;
+  /** One scrolling line for the global market strip. */
+  compact?: boolean;
 }
 
 // Short labels so all six indices fit one row on a laptop; the full name is in the tooltip.
@@ -10,12 +12,12 @@ const SHORT_NAMES: Record<string, string> = {
   'NIFTY 50': 'NIFTY', 'NIFTY BANK': 'BANKNIFTY', FINNIFTY: 'FINNIFTY', SENSEX: 'SENSEX', MIDCPNIFTY: 'MIDCP', NIFTYNXT50: 'NXT50',
 };
 
-export const IndexHeroRadar: React.FC<IndexHeroRadarProps> = ({ radar }) => {
+export const IndexHeroRadar: React.FC<IndexHeroRadarProps> = ({ radar, compact = false }) => {
   const indexKeys = ['NIFTY 50', 'NIFTY BANK', 'FINNIFTY', 'SENSEX', 'MIDCPNIFTY', 'NIFTYNXT50'];
 
   return (
     <section
-      className="desk-ticker grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
+      className={compact ? 'desk-marketstrip' : 'desk-ticker grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'}
       aria-label="Benchmark indices Bollinger radar (5m)"
     >
       {indexKeys.map((key) => {

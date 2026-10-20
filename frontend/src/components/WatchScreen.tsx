@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { PaperPosition, ScannerState, Signal } from '../types';
 import { CompactStrip } from './PortfolioStrips';
-import { IndexHeroRadar } from './IndexHeroRadar';
 import { OpenPositionsPanel } from './OpenPositionsPanel';
 import { TodaySummary } from './TodaySummary';
 import { SetupFilterTabs } from './SetupFilterTabs';
@@ -240,7 +239,6 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
       {!dashboardWatch && <WatchStatus state={state} stream={stream} confirmedCount={confirmedCount} />}
       <div className="desk-panel desk-band overflow-hidden">
         <CompactStrip portfolio={pf} />
-        <IndexHeroRadar radar={state.radar} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(320px,0.62fr)_minmax(0,1.5fr)] gap-3 lg:flex-1 lg:min-h-0">

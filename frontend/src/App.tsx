@@ -21,7 +21,8 @@ import { countOpenTrades } from './lib/dashboardCounts';
 import { TradesScreen } from './components/TradesScreen';
 import { SessionScreen } from './components/SessionScreen';
 import { ControlScreen } from './components/ControlScreen';
-import { Sidebar } from './components/Sidebar';
+import { BooksScreen, type BookId } from './components/BooksScreen';
+import { IndexHeroRadar } from './components/IndexHeroRadar';
 import { ConnectionBanner } from './components/ConnectionStatus';
 import type { DashboardTrade, DashboardWatch } from './types/dashboard';
 
@@ -45,6 +46,7 @@ const DashboardContent: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<AppTab>('watch');
   const [detailView, setDetailView] = useState<DetailView>(null);
+  const [book, setBook] = useState<BookId>('setup16');
   const [dashboardWatch, setDashboardWatch] = useState<DashboardWatch | null>(null);
   const [watchError, setWatchError] = useState<string | null>(null);
   const [dashboardTrades, setDashboardTrades] = useState<DashboardTrade[]>([]);
@@ -570,14 +572,7 @@ const DashboardContent: React.FC = () => {
 
   return (
     <div className="min-h-screen flex lg:h-screen lg:overflow-hidden">
-      <Sidebar
-        activeTab={activeTab}
-        activeView={detailView}
-        onTabChange={(tab) => { setActiveTab(tab); setDetailView(null); }}
-        onOpenView={(view) => { setActiveTab('control'); setDetailView(view); }}
-        openCount={activePositionsCount}
-      />
-      <div className="flex-1 min-w-0 min-h-screen flex flex-col pb-16 lg:pb-0 lg:min-h-0 lg:h-screen">
+      <div className="flex-1 min-w-0 min-h-screen flex flex-col pb-14 md:pb-0 lg:min-h-0 lg:h-screen">
       <Header
         activeMode={state.active_mode}
         scanCycleCount={state.scan_cycle_count}
@@ -587,6 +582,8 @@ const DashboardContent: React.FC = () => {
         onScanNow={handleScanNow}
         feedStatus={state.feed_status}
         wsConnected={state.ws_connected || wsConnected}
+        activeTab={activeTab}
+        onTabChange={(tab) => { setActiveTab(tab); setDetailView(null); }}
         openPositionsCount={activePositionsCount ?? undefined}
         onOpenAccessKey={openCapabilityModal}
         risk={state.paper_portfolio?.risk}
@@ -594,6 +591,7 @@ const DashboardContent: React.FC = () => {
         stream={stream}
       />
       <LiveAnnouncer message={announcement} />
+      <IndexHeroRadar compact radar={state.radar} />
 
       <main className="flex-1 min-h-0 w-full px-4 sm:px-6 py-2 flex flex-col gap-2">
         <DashboardStatus sources={dashboardWatch?.sources ?? []} openCount={activePositionsCount}
@@ -651,6 +649,8 @@ const DashboardContent: React.FC = () => {
             trades={dashboardTrades}
             onOpenTrade={openTrade}
           />
+        ) : activeTab === 'books' ? (
+          <BooksScreen key={book} initialBook={book} sources={dashboardWatch?.sources} />
         ) : activeTab === 'trades' ? (
           <>
             {tradesError && <p role="alert" className="desk-alert p-3">{tradesError}</p>}
@@ -664,7 +664,10 @@ const DashboardContent: React.FC = () => {
             onOpenReview={() => setDetailView('legacy-review')} />
         ) : activeTab === 'control' ? (
           <ControlScreen portfolio={state.paper_portfolio} risk={state.paper_portfolio?.risk}
-            onPause={handleToggleAutoTrade} onKillSwitch={handleKillSwitch} onOpenView={setDetailView}
+            onPause={handleToggleAutoTrade} onKillSwitch={handleKillSwitch}
+            onOpenView={(view) => {
+              if (view === 'setup16' || view === 'cx' || view === 'earnings') { setBook(view); setDetailView(null); setActiveTab('books'); } else setDetailView(view);
+            }}
             onScanNow={handleScanNow} onOpenAccessKey={openCapabilityModal} settings={<SettingsPanel />} />
         ) : (
           <ReviewScreen

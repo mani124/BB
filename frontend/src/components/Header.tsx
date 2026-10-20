@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Key, RefreshCw, LogOut, Sun, Moon, KeyRound } from 'lucide-react';
+import { ShieldCheck, Key, RefreshCw, LogOut, Sun, Moon, KeyRound, Radar, Layers, ArrowLeftRight, History, SlidersHorizontal } from 'lucide-react';
 import { useDhanAuth } from '../context/DhanAuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { RiskControls } from './RiskControls';
@@ -108,24 +108,25 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <>
       <header
-        className="shrink-0 z-40 px-4 sm:px-6 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2"
-        style={{ background: 'var(--bg)', borderBottom: '1px solid var(--line)' }}
+        className="shrink-0 z-40 px-4 sm:px-6 flex flex-wrap items-center gap-x-6 gap-y-1 min-h-[52px] py-1.5 md:py-0"
+        style={{ background: 'var(--panel)', borderBottom: '1px solid var(--line-strong)' }}
       >
-        <h1 className="font-semibold text-base tracking-tight m-0 lg:hidden">BB Options</h1>
+        <h1 className="font-semibold text-base tracking-tight m-0">BB Options</h1>
 
         {onTabChange && (
           <Tabs<AppTab>
             idPrefix="main"
             label="Sections"
-            className="flex items-center gap-1 order-3 w-full justify-between sm:order-none sm:w-auto sm:justify-start"
-            tabClassName="desk-tab"
+            className="desk-topnav"
+            tabClassName="desk-navtab"
             value={activeTab ?? 'watch'}
             onChange={onTabChange}
             items={[
-              { id: 'watch', label: 'Watch' },
-              { id: 'trades', label: 'Trades' },
-              { id: 'session', label: 'Session' },
-              { id: 'control', label: 'Control' },
+              { id: 'watch', name: 'Watch', label: <><Radar className="h-[18px] w-[18px]" aria-hidden /><span>Watch</span></> },
+              { id: 'books', name: 'Books', label: <><Layers className="h-[18px] w-[18px]" aria-hidden /><span>Books</span></> },
+              { id: 'trades', name: 'Trades', label: <><ArrowLeftRight className="h-[18px] w-[18px]" aria-hidden /><span>Trades</span></> },
+              { id: 'session', name: 'Session', label: <><History className="h-[18px] w-[18px]" aria-hidden /><span>Session</span></> },
+              { id: 'control', name: 'Control', label: <><SlidersHorizontal className="h-[18px] w-[18px]" aria-hidden /><span>Control</span></> },
             ]}
           />
         )}

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { CxScreen } from './CxScreen';
 import type { CxOverview, CxPosition } from '../types';
@@ -18,23 +18,29 @@ const base: CxOverview = {
   settings: { lots: 1, sl_pct: 30, target_pct: 50, symbols: ['CRUDEOIL'] }, as_of: '19:10:00',
 };
 
+const openTab = (name: RegExp) => fireEvent.click(screen.getByRole('tab', { name }));
+
 describe('CxScreen', () => {
   it('shows the off state, pools with separate loss caps, sessions, positions and decisions', () => {
     render(<CxScreen initial={base} />);
     expect(screen.getByText(/OFF: nothing is entered/)).toBeInTheDocument();
+    expect(screen.getByText('+₹1,100', { selector: 'td' })).toBeInTheDocument();
+    expect(screen.getByText('STOP_LOSS')).toBeInTheDocument();
+    openTab(/Pools and sessions/);
     expect(screen.getByText('Commodities (MCX)')).toBeInTheDocument();
     expect(screen.getByText('Parked until a USDINR data check passes')).toBeInTheDocument();
     expect(screen.getByTestId('cx-sessions')).toHaveTextContent('MCX open');
     expect(screen.getByTestId('cx-sessions')).not.toHaveTextContent('NSE currency');
-    expect(screen.getByText('+₹1,100', { selector: 'td' })).toBeInTheDocument();
-    expect(screen.getByText('STOP_LOSS')).toBeInTheDocument();
+    openTab(/Underlyings/);
     expect(screen.getByText('Watching')).toBeInTheDocument();
+    openTab(/Entries and skips/);
     expect(screen.getAllByText('Setup 17 range break').length).toBeGreaterThan(0);
   });
 
   it('shows empty states', () => {
     render(<CxScreen initial={{ ...base, open_positions: [], recent_closed: [], decisions: [], summary: { ...base.summary, enabled: true, symbols: {} } }} />);
     expect(screen.getByText('No open positions.')).toBeInTheDocument();
+    openTab(/Underlyings/);
     expect(screen.getByText(/No cycle has run yet/)).toBeInTheDocument();
     expect(screen.getByText('ON')).toBeInTheDocument();
   });
