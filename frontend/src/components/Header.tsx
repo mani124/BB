@@ -109,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({
         className="shrink-0 z-40 px-4 sm:px-6 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2"
         style={{ background: 'var(--bg)', borderBottom: '1px solid var(--line)' }}
       >
-        <h1 className="font-semibold text-base tracking-tight m-0">BB Options</h1>
+        <h1 className="font-semibold text-base tracking-tight m-0 lg:hidden">BB Options</h1>
 
         {onTabChange && (
           <Tabs<AppTab>

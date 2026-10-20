@@ -21,6 +21,7 @@ import { countOpenTrades } from './lib/dashboardCounts';
 import { TradesScreen } from './components/TradesScreen';
 import { SessionScreen } from './components/SessionScreen';
 import { ControlScreen } from './components/ControlScreen';
+import { Sidebar } from './components/Sidebar';
 import type { DashboardTrade, DashboardWatch } from './types/dashboard';
 
 type DetailView = 'legacy-review' | 'setup16' | 'cx' | 'earnings' | 'settings' | null;
@@ -554,7 +555,15 @@ const DashboardContent: React.FC = () => {
   }, [risk?.kill_switch_active, risk?.loss_cap_tripped]);
 
   return (
-    <div className="min-h-screen flex flex-col lg:h-screen lg:overflow-hidden">
+    <div className="min-h-screen flex lg:h-screen lg:overflow-hidden">
+      <Sidebar
+        activeTab={activeTab}
+        activeView={detailView}
+        onTabChange={(tab) => { setActiveTab(tab); setDetailView(null); }}
+        onOpenView={(view) => { setActiveTab('control'); setDetailView(view); }}
+        openCount={activePositionsCount}
+      />
+      <div className="flex-1 min-w-0 min-h-screen flex flex-col pb-16 lg:pb-0 lg:min-h-0 lg:h-screen">
       <Header
         activeMode={state.active_mode}
         scanCycleCount={state.scan_cycle_count}
@@ -564,8 +573,6 @@ const DashboardContent: React.FC = () => {
         onScanNow={handleScanNow}
         feedStatus={state.feed_status}
         wsConnected={state.ws_connected || wsConnected}
-        activeTab={activeTab}
-        onTabChange={(tab) => { setActiveTab(tab); setDetailView(null); }}
         openPositionsCount={activePositionsCount ?? undefined}
         onOpenAccessKey={openCapabilityModal}
         risk={state.paper_portfolio?.risk}
@@ -673,7 +680,7 @@ const DashboardContent: React.FC = () => {
         )}
         </div>
       </main>
-
+      </div>
     </div>
   );
 };

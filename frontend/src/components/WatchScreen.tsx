@@ -212,7 +212,7 @@ export const WatchScreen: React.FC<WatchScreenProps> = ({
         <IndexHeroRadar radar={state.radar} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(380px,0.95fr)_minmax(0,1.5fr)] gap-3 lg:flex-1 lg:min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(340px,0.8fr)_minmax(0,1.5fr)] gap-3 lg:flex-1 lg:min-h-0">
         {positionsRail}
         <section className="desk-panel desk-pane min-h-0" aria-label="Scanner results">
           {dashboardWatch && (
