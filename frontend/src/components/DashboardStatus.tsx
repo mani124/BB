@@ -19,9 +19,9 @@ interface Props {
 const SourceItems: React.FC<Omit<Props, 'entriesAllowed'>> = ({ sources, openCount, risk, stream, error }) => <div className="flex flex-wrap items-center gap-2 text-xs">
   <strong className="mr-1 text-sm">{openCount == null ? 'Open count unavailable' : `${openCount} open ${openCount === 1 ? 'position' : 'positions'}`}</strong>
   {sources.map((source) => (
-    <span key={source.book} className={`desk-pill ${source.state === 'error' ? 'down' : source.state === 'stale' || source.state === 'unknown' ? 'warn' : source.state === 'ready' ? 'up' : ''}`}
+    <span key={source.book} className={`desk-pill ${source.state === 'error' ? 'down' : source.state === 'stale' || source.state === 'idle' || source.state === 'unknown' ? 'warn' : source.state === 'ready' ? 'up' : ''}`}
       title={source.message || (source.as_of ? `Last evaluation: ${source.as_of}` : 'Last evaluation time unavailable')}>
-      {labels[source.book]} · {source.mode} · {source.state}
+      {labels[source.book]} · {source.mode} · {source.state === 'idle' ? 'waiting for first scan' : source.state}
     </span>
   ))}
   {error && <span className="desk-pill down">Status unavailable: {error}</span>}
