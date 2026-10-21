@@ -8,16 +8,16 @@ def test_session_orders_cross_book_events_and_links_observation(monkeypatch):
     monkeypatch.setattr(dashboard_read, "now_ist", lambda: datetime(2026, 10, 19, 12, tzinfo=ZoneInfo("Asia/Kolkata")))
 
     decisions = [
-        {"id": 1, "ts": "2026-10-19 09:01:00", "book": "paper", "strategy": "Setup 16", "symbol": "NIFTY", "decision": "SKIPPED", "reason": "SPREAD", "metrics": {"spread": 9}, "position_id": None},
-        {"id": 2, "ts": "2026-10-19 09:02:00", "book": "paper", "strategy": "Setup 16", "symbol": "NIFTY", "decision": "SKIPPED", "reason": "SPREAD", "metrics": {"spread": 8}, "position_id": None},
-        {"id": 3, "ts": "2026-10-19 09:05:00", "book": "cx", "strategy": "Setup 17", "symbol": "CRUDEOIL", "decision": "ENTERED", "reason": "READY", "metrics": {}, "position_id": "c1"},
+        {"id": 1, "ts": "2026-10-19 09:01:00", "book": "paper", "strategy": "Setup 5", "symbol": "NIFTY", "decision": "SKIPPED", "reason": "SPREAD", "metrics": {"spread": 9}, "position_id": None},
+        {"id": 2, "ts": "2026-10-19 09:02:00", "book": "paper", "strategy": "Setup 5", "symbol": "NIFTY", "decision": "SKIPPED", "reason": "SPREAD", "metrics": {"spread": 8}, "position_id": None},
+        {"id": 3, "ts": "2026-10-19 09:05:00", "book": "earnings", "strategy": "MODE_A_RUNUP", "symbol": "INFY", "decision": "ENTERED", "reason": "READY", "metrics": {}, "position_id": "c1"},
     ]
     errors = [{"id": 4, "ts": "2026-10-19 09:03:00", "code": "FEED_STALE", "component": "scanner", "severity": "ERROR", "message": "Feed stale", "payload": {}}]
     monkeypatch.setattr(dashboard_read.paper_trader.telemetry, "day_events", lambda day: {"decisions": decisions, "errors": errors})
     monkeypatch.setattr(dashboard_read.paper_trader.runtime, "audit_day", lambda day: [])
     monkeypatch.setattr(dashboard_read, "list_dashboard_trades", lambda: [
-        {"id": "cx:c1", "book": "cx", "display_book": "Commodities & FX", "source_id": "c1", "instrument": "CRUDEOIL", "setup": "Setup 17", "opened_at": "2026-10-19T09:05:30+05:30", "closed_at": "2026-10-19T10:00:00+05:30", "status": "CLOSED", "net_pnl": 200, "net_kind": "realized", "evidence_state": "recorded"},
-        {"id": "paper:p1", "book": "paper", "display_book": "Setup 16", "source_id": "p1", "instrument": "NIFTY CE", "setup": "Setup 16", "opened_at": "2026-10-19T09:10:00+05:30", "closed_at": None, "status": "OPEN", "net_pnl": 30, "net_kind": "estimated", "evidence_state": "unavailable"},
+        {"id": "earnings:c1", "book": "earnings", "display_book": "Earnings", "source_id": "c1", "instrument": "INFY", "setup": "MODE_A_RUNUP", "opened_at": "2026-10-19T09:05:30+05:30", "closed_at": "2026-10-19T10:00:00+05:30", "status": "CLOSED", "net_pnl": 200, "net_kind": "realized", "evidence_state": "recorded"},
+        {"id": "paper:p1", "book": "paper", "display_book": "Main scanner", "source_id": "p1", "instrument": "NIFTY CE", "setup": "Setup 5", "opened_at": "2026-10-19T09:10:00+05:30", "closed_at": None, "status": "OPEN", "net_pnl": 30, "net_kind": "estimated", "evidence_state": "unavailable"},
     ])
     result = dashboard_read.get_dashboard_session("2026-10-19")
     assert [e["type"] for e in result["events"]] == ["decision", "decision", "error", "decision", "entry", "entry", "exit"]

@@ -96,8 +96,6 @@ if "earnings_positions" in tables:  # the earnings book holds positions for days
     paper += con.execute("SELECT COUNT(*) FROM earnings_positions WHERE status='OPEN'").fetchone()[0]
 if "swing_positions" in tables:  # the swing book holds positions (and queued entries) for days
     paper += con.execute("SELECT COUNT(*) FROM swing_positions WHERE status IN ('OPEN','PENDING')").fetchone()[0]
-if "cx_positions" in tables:  # the Commodities & Currency book trades MCX until 23:30 and currency until 17:00, outside the NSE window above
-    paper += con.execute("SELECT COUNT(*) FROM cx_positions WHERE status='OPEN'").fetchone()[0]
 routed = orders = 0
 if "live_positions" in tables:
     routed = con.execute("SELECT COUNT(*) FROM live_positions WHERE mode='LIVE' AND state IN ('ENTERING','OPEN')").fetchone()[0]

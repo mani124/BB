@@ -15,9 +15,7 @@ No secrets anywhere, and GitHub never connects to the VM.
 Deploys only when ALL hold: the bundle is newer than what runs, it was built by CI after green tests, it is outside
 09:15-15:30 IST, no position is OPEN/TARGET_1 in trades.db (unreadable db = no deploy), no `PAUSE` file, and
 (optional) the commit is approved.
-The open-position check also covers the Commodities & Currency book (`cx_positions` with status OPEN). MCX runs to 23:30 IST and
-NSE currency to 17:00, so after 15:30 a deploy can still land mid-session: it waits only while such a position is open. Restarting
-between sessions is safe; positions persist in trades.db and are managed again after the restart.
+Restarting between sessions is safe; positions persist in trades.db and are managed again after the restart.
 Then: backup to `/home/mani_vutla7/bb-backups/deploy-<time>/` (code, built frontend, consistent trades.db copy; last 10 kept),
 replace `backend/app` and `frontend/dist`, `pip install` only if `requirements.txt` changed, restart ONLY `bb-options.service`,
 wait for `/api/health` and an active service, and roll back automatically on failure (that commit is then not retried).

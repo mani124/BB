@@ -14,12 +14,12 @@ describe('TradeDetail', () => {
     expect(screen.getByRole('button', { name: 'Close position' })).toBeInTheDocument();
   });
 
-  it('renders a structured CX signal without object coercion', () => {
-    const cx = { ...trade, book: 'cx', display_book: 'Commodities & FX', status: 'OPEN' } as DashboardTrade;
+  it('renders a structured signal without object coercion', () => {
+    const cx = { ...trade, book: 'earnings', display_book: 'Earnings', status: 'OPEN' } as DashboardTrade;
     const detail = { ...cx, reason_state: 'recorded', decision: { reason: 'SIGNAL',
-      rationale: { setup: 'Setup 17', side: 'CE', symbol: 'CRUDEOIL' }, checks: { adx: 30 } } } as DashboardTradeDetail;
+      rationale: { setup: 'MODE_A', side: 'CE', symbol: 'INFY' }, checks: { adx: 30 } } } as DashboardTradeDetail;
     render(<TradeDetail trade={cx} detail={detail} chart={null} loading={false} onClose={vi.fn()} closing={false} actionError={null} />);
-    expect(screen.getByText('Setup 17 · CE · CRUDEOIL')).toBeInTheDocument();
+    expect(screen.getByText('MODE_A · CE · INFY')).toBeInTheDocument();
     expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
   });
 });

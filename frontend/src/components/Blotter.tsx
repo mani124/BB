@@ -7,19 +7,18 @@ import { SignalTable } from './SignalTable';
 import { TradesScreen } from './TradesScreen';
 import { SessionScreen } from './SessionScreen';
 import { ReviewScreen } from './ReviewScreen';
-import { CxScreen } from './CxScreen';
 import { EarningsPanel } from './EarningsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { ControlScreen, type ControlView } from './ControlScreen';
 import { formatCurrency, pnlClass } from './format';
 import { setupCode } from './setupCode';
 
-export type BlotterTab = 'positions' | 'signals' | 'trades' | 'session' | 'review' | 'cx' | 'earnings' | 'settings' | 'control';
+export type BlotterTab = 'positions' | 'signals' | 'trades' | 'session' | 'review' | 'earnings' | 'settings' | 'control';
 
 /** Tabs that need the whole workspace; the terminal collapses to give them room. */
-export const FULL_HEIGHT_TABS: BlotterTab[] = ['trades', 'session', 'review', 'cx', 'earnings', 'settings', 'control'];
+export const FULL_HEIGHT_TABS: BlotterTab[] = ['trades', 'session', 'review', 'earnings', 'settings', 'control'];
 
-const BOOK_OF: Partial<Record<BlotterTab, DashboardSource['book']>> = { cx: 'cx', earnings: 'earnings' };
+const BOOK_OF: Partial<Record<BlotterTab, DashboardSource['book']>> = { earnings: 'earnings' };
 
 export interface BlotterProps {
   tab: BlotterTab;
@@ -101,7 +100,6 @@ export const Blotter: React.FC<BlotterProps> = (p) => {
     { id: 'trades', label: 'Trades' },
     { id: 'session', label: 'Session' },
     { id: 'review', label: 'Review' },
-    { id: 'cx', label: 'Commodities & FX' },
     { id: 'earnings', label: 'Earnings' },
     { id: 'settings', label: 'Settings' },
     { id: 'control', label: 'Control' },
@@ -128,7 +126,6 @@ export const Blotter: React.FC<BlotterProps> = (p) => {
       body = <ReviewScreen portfolio={p.portfolio} closedTrades={p.closedTrades} onClosePosition={p.onClosePosition} onToggleAutoTrade={p.onToggleAutoTrade}
         onChangeLots={p.onChangeLots} onChangeSetupMode={p.onChangeSetupMode} onResetPortfolio={p.onResetPortfolio} />;
       break;
-    case 'cx': body = <CxScreen />; break;
     case 'earnings': body = <EarningsPanel />; break;
     case 'settings': body = <SettingsPanel />; break;
     case 'control':

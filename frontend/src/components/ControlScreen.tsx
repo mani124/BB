@@ -2,7 +2,7 @@ import React from 'react';
 import type { PaperPortfolio, RiskStatus } from '../types';
 import { RiskControls } from './RiskControls';
 
-export type ControlView = 'legacy-review' | 'cx' | 'earnings' | 'settings';
+export type ControlView = 'legacy-review' | 'earnings' | 'settings';
 
 interface Props {
   portfolio?: PaperPortfolio;
@@ -17,7 +17,6 @@ interface Props {
 
 const views: { id: ControlView; title: string; detail: string }[] = [
   { id: 'legacy-review', title: 'Review and journal', detail: 'Today, trade history, setups, costs and analytics' },
-  { id: 'cx', title: 'Commodities & FX', detail: 'Candidates, positions and book controls' },
   { id: 'earnings', title: 'Earnings calendar and IV', detail: 'Candidates, positions, calendar and IV import' },
   { id: 'settings', title: 'Runtime settings and audit', detail: 'Limits, routing, alerts and recent setting changes' },
 ];
@@ -30,7 +29,7 @@ export const ControlScreen: React.FC<Props> = ({ portfolio, risk, onPause, onKil
       <section className="desk-panel p-3">
         <p className="desk-label">Paper scanner · automatic entries</p>
         <h2 style={{ fontFamily: 'var(--sans)' }} className={`desk-hero md mt-1 ${portfolio ? (portfolio.auto_trade_enabled ? 'desk-up' : 'desk-down') : 'desk-muted'}`}>{portfolio ? (portfolio.auto_trade_enabled ? 'Entries allowed' : 'Entries paused') : 'Entry state unavailable'}</h2>
-        <p className="desk-muted text-xs mt-1">Pausing stops new automatic entries in the paper scanner. It does not close open positions. Commodities, FX and earnings have separate controls below.</p>
+        <p className="desk-muted text-xs mt-1">Pausing stops new automatic entries in the paper scanner. It does not close open positions. Earnings has its own controls below.</p>
         <button type="button" className="desk-btn solid mt-3" disabled={!portfolio}
           onClick={() => onPause(!portfolio?.auto_trade_enabled)}>
           {portfolio?.auto_trade_enabled ? 'Pause paper entries' : 'Resume paper entries'}

@@ -7,7 +7,6 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.services.paper_trader import paper_trader
-from app.services.cx_registry import get_engine as get_cx_engine
 from app.services.earnings_registry import get_engine as get_earnings_engine
 from app.services.dashboard_evidence import evidence_ids
 from app.services.market_hours import now_ist
@@ -45,17 +44,6 @@ def _row(book: str, raw: Any) -> dict:
         closed = _timestamp(_value(raw, "exit_datetime"))
         mode = _value(raw, "feed_mode", "demo")
         net, net_kind = _net(raw, status, "net_pnl", "est_net_pnl")
-    elif book == "cx":
-        setup = str(_value(raw, "setup", ""))
-        display_book = "Commodities & FX"
-        strike = _value(raw, "strike")
-        strike_label = f"{strike:g}" if isinstance(strike, (int, float)) else str(strike or "")
-        instrument = _value(raw, "option_symbol") or " ".join(part for part in (
-            str(_value(raw, "symbol", "")), strike_label, str(_value(raw, "side", ""))) if part)
-        opened = _timestamp(_value(raw, "opened_at"))
-        closed = _timestamp(_value(raw, "closed_at"))
-        mode = "paper"
-        net, net_kind = _net(raw, status, "net_pnl", "unrealized_net")
     else:
         setup = str(_value(raw, "mode", ""))
         display_book = "Earnings"
@@ -78,9 +66,8 @@ def _row(book: str, raw: Any) -> dict:
 def _all_trade_rows() -> list[dict]:
     portfolio = paper_trader.get_portfolio(None)
     rows = [_row("paper", p) for p in portfolio.active_positions + portfolio.closed_trades]
-    rows += [_row("cx", p) for p in get_cx_engine().positions()]
     rows += [_row("earnings", p) for p in get_earnings_engine().positions()]
-    by_book = {book: evidence_ids(book) for book in ("paper", "cx", "earnings")}
+    by_book = {book: evidence_ids(book) for book in ("paper", "earnings")}
     for row in rows:
         if row["source_id"] in by_book[row["book"]]:
             row["evidence_state"] = "recorded"
@@ -150,7 +137,6 @@ def get_dashboard_session(day: str) -> dict:
     by_book: list[dict] = []
     for book, mode, label in (("paper", "demo", "Main scanner · demo"),
                               ("paper", "live", "Main scanner · live"),
-                              ("cx", None, "Commodities & FX"),
                               ("earnings", None, "Earnings")):
         rows = [row for row in all_trades if row["book"] == book and (mode is None or row.get("mode", "demo") == mode)]
         touched = [row for row in rows if any((_ist_iso(row.get(key)) or "")[:10] == day for key in ("opened_at", "closed_at"))]
@@ -220,7 +206,7 @@ def _checks(metrics: Any) -> list[dict]:
     return [{"name": str(k), "value": v} for k, v in metrics.items()] if isinstance(metrics, dict) else []
 
 
-def build_dashboard_watch(snapshot: dict, cx: dict, earnings: dict, *, observed_at: str) -> dict:
+def build_dashboard_watch(snapshot: dict, earnings: dict, *, observed_at: str) -> dict:
     """Combine source snapshots without treating on-demand previews as recorded decisions."""
     sources: list[dict] = []
     candidates: list[dict] = []
@@ -237,7 +223,7 @@ def build_dashboard_watch(snapshot: dict, cx: dict, earnings: dict, *, observed_
                            "instrument": sig.get("symbol", ""), "setup": sig.get("setup_type", ""),
                            "detail": sig.get("rationale", ""), "source_ref": sig})
 
-    for name, payload in (("cx", cx), ("earnings", earnings)):
+    for name, payload in (("earnings", earnings),):
         summary = payload.get("summary") or {}
         cycle = summary.get("last_cycle") or {}
         as_of = _timestamp(cycle.get("at"))

@@ -13,7 +13,6 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 @router.get("/watch")
 async def watch() -> dict:
     from app.main import worker
-    from app.services.cx_registry import get_engine as get_cx_engine
     from app.services.earnings_registry import get_engine as get_earnings_engine
 
     try:
@@ -21,16 +20,11 @@ async def watch() -> dict:
     except Exception as exc:
         scanner = {"_error": str(exc), "signals": []}
     try:
-        cx_engine = get_cx_engine()
-        cx = {"summary": cx_engine.summary(), "candidates": await asyncio.wait_for(cx_engine.candidates(), timeout=10)}
-    except Exception as exc:
-        cx = {"_error": str(exc)}
-    try:
         earnings_engine = get_earnings_engine()
         earnings = {"summary": earnings_engine.summary(), "candidates": await earnings_engine.preview_cached()}
     except Exception as exc:
         earnings = {"_error": str(exc)}
-    return build_dashboard_watch(scanner, cx, earnings, observed_at=now_ist().isoformat())
+    return build_dashboard_watch(scanner, earnings, observed_at=now_ist().isoformat())
 
 
 @router.get("/trades")
@@ -51,7 +45,7 @@ def session(day: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$")) -> dict:
 
 
 def _trade(book: str, position_id: str) -> dict:
-    if book not in ("paper", "cx", "earnings"):
+    if book not in ("paper", "earnings"):
         raise HTTPException(status_code=404, detail="Unknown book")
     key = f"{book}:{position_id}"
     row = next((r for r in list_dashboard_trades() if r["id"] == key), None)
@@ -103,7 +97,7 @@ def trade_chart(book: str, position_id: str) -> dict:
     series = [{"key": key, "label": key.replace("leg:", "Leg ").title(), "candles": rows,
                "indicators": {}, "levels": {}, "interval": "5m"}
               for key, rows in (evidence or {}).get("bars", {}).items() if rows]
-    traded_keys = {"option"} if book == "cx" else {f"leg:{i}" for i in range(len((evidence or {}).get("decision", {}).get("legs", [])))}
+    traded_keys = {f"leg:{i}" for i in range(len((evidence or {}).get("decision", {}).get("legs", [])))}
     return {"candle_state": "recorded" if any(s["key"] in traded_keys for s in series) else "unavailable",
             "entry_time": actual_epoch(trade.get("opened_at")), "exit_time": actual_epoch(trade.get("closed_at")),
             "series": convert_series(series)}

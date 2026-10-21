@@ -16,12 +16,12 @@ describe('terminal workspace', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({}) }));
     render(<App />);
     expect(screen.getByRole('tab', { name: 'Positions' })).toHaveAttribute('aria-selected', 'true');
-    for (const name of ['Signals', 'Trades', 'Session', 'Review', 'Commodities & FX', 'Earnings', 'Settings', 'Control']) {
+    for (const name of ['Signals', 'Trades', 'Session', 'Review', 'Earnings', 'Settings', 'Control']) {
       expect(screen.getByRole('tab', { name })).toBeInTheDocument();
     }
     fireEvent.click(screen.getByRole('tab', { name: 'Control' }));
     expect(screen.getByRole('tab', { name: 'Control' })).toHaveAttribute('aria-selected', 'true');
-    for (const label of ['Review and journal', 'Commodities & FX', 'Earnings calendar and IV', 'Runtime settings and audit']) {
+    for (const label of ['Review and journal', 'Earnings calendar and IV', 'Runtime settings and audit']) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
     }
     fireEvent.click(screen.getByRole('button', { name: 'Review and journal' }));

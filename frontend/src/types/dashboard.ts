@@ -1,4 +1,4 @@
-export type DashboardBook = 'paper' | 'cx' | 'earnings';
+export type DashboardBook = 'paper' | 'earnings';
 export type WatchBook = DashboardBook;
 export type SourceState = 'ready' | 'stale' | 'error' | 'disabled' | 'idle' | 'unknown';
 

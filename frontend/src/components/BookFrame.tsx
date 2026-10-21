@@ -33,7 +33,7 @@ interface Props {
 
 /**
  * The one layout every trading book uses: a status line, a row of figures, then tabbed tables.
- * Commodities & FX and Earnings differ only in what they put in these slots.
+ * Earnings differs only in what they put in these slots.
  */
 export const BookFrame: React.FC<Props> = ({ idPrefix, title, titleId, pills = [], updated, actions, notice, kpis, tabs, testId, kpiTestId }) => {
   const [active, setActive] = useState(tabs[0].id);

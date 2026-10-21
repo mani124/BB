@@ -323,3 +323,14 @@ def test_stored_setup_16_runtime_settings_are_ignored(tmp_path):
     conn.execute("INSERT INTO runtime_settings(key, value) VALUES ('watchlist_size', '40')")
     conn.commit(); conn.close()
     assert PaperTradingEngine(db_path=db).runtime.get("max_open_positions") == 8
+
+
+# ---- Commodities & Currency removal: stored settings from that book are ignored
+def test_stored_cx_runtime_settings_are_ignored(tmp_path):
+    import sqlite3
+    db = str(tmp_path / "t.db")
+    PaperTradingEngine(db_path=db)
+    conn = sqlite3.connect(db)
+    conn.execute("INSERT INTO runtime_settings(key, value) VALUES ('cx_lots', '3')")
+    conn.commit(); conn.close()
+    assert PaperTradingEngine(db_path=db).runtime.get("max_open_positions") == 8

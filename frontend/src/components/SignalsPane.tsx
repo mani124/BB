@@ -6,7 +6,7 @@ import { setupCode } from './setupCode';
 
 export interface WatchFilters { setup: string; optionType: string; instrumentType: string; timeframe: string }
 
-const bookName: Record<DashboardCandidate['book'], string> = { paper: 'Main', cx: 'Commodities & FX', earnings: 'Earnings' };
+const bookName: Record<DashboardCandidate['book'], string> = { paper: 'Main', earnings: 'Earnings' };
 const clock = (ts?: string) => (ts?.match(/(\d{2}:\d{2})/)?.[1] ?? '--:--');
 const actionable = (stage: string) => ['READY', 'CONFIRMED', 'SIGNAL'].includes(stage);
 
@@ -127,7 +127,7 @@ export const SignalsPane: React.FC<Props> = ({
           <div className="px-2 pb-2 flex gap-1.5" style={{ borderBottom: '1px solid var(--line)' }}>
             <select className="desk-input flex-1 min-w-0" value={bookFilter} onChange={(e) => setBookFilter(e.target.value as typeof bookFilter)} aria-label="Book filter">
               <option value="all">All books</option><option value="paper">Main scanner</option>
-              <option value="cx">Commodities & FX</option><option value="earnings">Earnings</option>
+              <option value="earnings">Earnings</option>
             </select>
             <select className="desk-input flex-1 min-w-0" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Status filter">
               <option value="all">All states</option><option value="actionable">Ready / signaled</option><option value="waiting">Waiting / blocked</option>

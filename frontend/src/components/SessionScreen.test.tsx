@@ -8,7 +8,7 @@ const session: DashboardSession = {
   day: '2026-10-19', timezone: 'Asia/Kolkata',
   by_book: [
     { book: 'paper', display_book: 'Main scanner', entries: 1, exits: 0, realized_net: null, estimated_net: 30 },
-    { book: 'cx', display_book: 'Commodities & FX', entries: 0, exits: 1, realized_net: -60, estimated_net: null },
+    { book: 'earnings', display_book: 'Earnings', entries: 0, exits: 1, realized_net: -60, estimated_net: null },
   ],
   events: [
     { id: 'decision:1', at: '2026-10-19T09:01:00+05:30', type: 'decision', book: 'paper', trade_id: null, instrument: 'NIFTY', title: 'SKIPPED · NIFTY', reason: 'SPREAD', metrics: { spread: 9 }, evidence_id: 'decision:1', evidence_state: 'recorded' },

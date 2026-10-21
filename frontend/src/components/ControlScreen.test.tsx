@@ -12,10 +12,10 @@ describe('ControlScreen', () => {
     const onOpenView = vi.fn();
     render(<ControlScreen portfolio={portfolio} risk={risk} onPause={vi.fn()} onKillSwitch={vi.fn()}
       onOpenView={onOpenView} onScanNow={vi.fn()} onOpenAccessKey={vi.fn()} settings={<div>Runtime settings panel</div>} />);
-    for (const name of ['Review and journal', 'Commodities & FX', 'Earnings calendar and IV', 'Runtime settings and audit']) {
+    for (const name of ['Review and journal', 'Earnings calendar and IV', 'Runtime settings and audit']) {
       fireEvent.click(screen.getByRole('button', { name }));
     }
-    expect(onOpenView).toHaveBeenCalledTimes(4);
+    expect(onOpenView).toHaveBeenCalledTimes(3);
     expect(screen.getByText('Runtime settings panel')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Scan now' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Dashboard key' })).toBeInTheDocument();

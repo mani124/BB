@@ -8,8 +8,8 @@ const trades: DashboardTrade[] = [
   { id: 'paper:p1', book: 'paper', display_book: 'Main scanner', source_id: 'p1', status: 'OPEN', instrument: 'NIFTY CE',
     setup: 'Setup 5', opened_at: '2026-10-19T09:30:00+05:30', closed_at: null, mode: 'demo', net_pnl: 120,
     net_kind: 'estimated', evidence_state: 'recorded' },
-  { id: 'cx:c1', book: 'cx', display_book: 'Commodities & FX', source_id: 'c1', status: 'CLOSED', instrument: 'CRUDEOIL',
-    setup: 'Setup 17', opened_at: '2026-10-19T10:00:00+05:30', closed_at: '2026-10-19T10:30:00+05:30', mode: 'paper', net_pnl: -40,
+  { id: 'paper:p2', book: 'paper', display_book: 'Main scanner', source_id: 'p2', status: 'CLOSED', instrument: 'BANKNIFTY PE',
+    setup: 'Setup 1', opened_at: '2026-10-19T10:00:00+05:30', closed_at: '2026-10-19T10:30:00+05:30', mode: 'demo', net_pnl: -40,
     net_kind: 'realized', evidence_state: 'recorded' },
   { id: 'earnings:e1', book: 'earnings', display_book: 'Earnings', source_id: 'e1', status: 'OPEN', instrument: 'INFY',
     setup: 'MODE_A', opened_at: '2026-10-19T11:00:00+05:30', closed_at: null, mode: 'paper', net_pnl: 0,
@@ -25,10 +25,10 @@ describe('TradesScreen', () => {
   it('finds trades across books and filters by book and status', async () => {
     render(<TradesScreen trades={trades} loadDetail={detail} loadChart={chart} onClosePaper={vi.fn()} onRefresh={vi.fn()} />);
     expect(screen.getByRole('button', { name: /NIFTY CE/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /CRUDEOIL/i })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Search trades'), { target: { value: 'crude' } });
+    expect(screen.getByRole('button', { name: /BANKNIFTY PE/i })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Search trades'), { target: { value: 'banknifty' } });
     expect(screen.queryByRole('button', { name: /NIFTY CE/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /CRUDEOIL/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /BANKNIFTY PE/i })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Search trades'), { target: { value: '' } });
     fireEvent.change(screen.getByLabelText('Trade book'), { target: { value: 'earnings' } });
     expect(screen.getByRole('button', { name: /INFY/i })).toBeInTheDocument();
@@ -71,11 +71,11 @@ describe('TradesScreen', () => {
 
   it('returns from phone detail with its search and selection intact', async () => {
     render(<TradesScreen trades={trades} loadDetail={detail} loadChart={chart} onClosePaper={vi.fn()} onRefresh={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText('Search trades'), { target: { value: 'crude' } });
-    fireEvent.click(screen.getByRole('button', { name: /CRUDEOIL/i }));
+    fireEvent.change(screen.getByLabelText('Search trades'), { target: { value: 'banknifty' } });
+    fireEvent.click(screen.getByRole('button', { name: /BANKNIFTY PE/i }));
     expect(screen.getByRole('button', { name: 'Back to trades' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Back to trades' }));
-    expect(screen.getByLabelText('Search trades')).toHaveValue('crude');
-    expect(screen.getByRole('button', { name: /CRUDEOIL/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Search trades')).toHaveValue('banknifty');
+    expect(screen.getByRole('button', { name: /BANKNIFTY PE/i })).toHaveAttribute('aria-pressed', 'true');
   });
 });

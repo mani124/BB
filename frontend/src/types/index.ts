@@ -356,26 +356,3 @@ export interface LiveOrderRow {
   order_type: string | null; price: number | null; status: string; filled_qty: number; message: string | null;
 }
 
-export interface CxPosition {
-  id: string; symbol: string; pool: 'commodity' | 'currency'; setup: string; side: 'CE' | 'PE'; status: 'OPEN' | 'CLOSED';
-  opened_at: string; closed_at?: string; strike: number; expiry: string; lots: number; entry_price: number; last_bid?: number;
-  exit_price?: number; exit_reason?: string; unrealized_net?: number; net_pnl?: number; invalidate_level: number;
-}
-export interface CxPoolSummary {
-  enabled: boolean; parked?: boolean; day_pnl: number; loss_cap: number; loss_cap_tripped: boolean; realized_net_pnl: number;
-  unrealized_net_pnl: number; open_positions: number; closed_trades: number; win_rate: number; profit_factor: number | null; total_charges: number;
-}
-export interface CxOverview {
-  summary: {
-    enabled: boolean; starting_capital: number; equity: number; realized_net_pnl: number; unrealized_net_pnl: number;
-    open_positions: number; closed_trades: number; win_rate: number; total_charges: number;
-    pools: Record<string, CxPoolSummary>;
-    sessions: Record<string, { open: boolean; entry_allowed: boolean; square_off_due: boolean }>;
-    last_cycle: { status?: string; error?: string };
-    symbols: Record<string, { state?: string; session_open?: boolean; contract?: string; expiry?: string | null; last_bar?: string | null }>;
-  };
-  open_positions: CxPosition[]; closed_today: CxPosition[]; recent_closed: CxPosition[];
-  decisions: { ts: string; symbol: string; side: string; strategy: string; decision: string; reason: string }[];
-  settings: { lots: number; sl_pct: number; target_pct: number; symbols: string[] };
-  as_of: string;
-}

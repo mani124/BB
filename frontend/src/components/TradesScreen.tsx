@@ -69,7 +69,7 @@ export const TradesScreen: React.FC<Props> = ({ trades, loadDetail, loadChart, o
       <div className="desk-panel p-3 flex flex-wrap items-end gap-3" role="search" aria-label="Trade filters">
         <input className="desk-input" style={{ flex: '1 1 14rem', width: 'auto' }} aria-label="Search trades" placeholder="Search instrument or setup" value={query} onChange={(event) => setQuery(event.target.value)} />
         <label className="text-xs desk-muted flex flex-col gap-1">Trade book <select className="desk-input" style={{ width: 'auto' }} value={book} onChange={(event) => setBook(event.target.value as typeof book)}>
-          <option value="all">All books</option><option value="paper">Main scanner</option><option value="cx">Commodities & FX</option><option value="earnings">Earnings</option>
+          <option value="all">All books</option><option value="paper">Main scanner</option><option value="earnings">Earnings</option>
         </select></label>
         <label className="text-xs desk-muted flex flex-col gap-1">Trade status <select className="desk-input" style={{ width: 'auto' }} value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
           <option value="all">All</option><option value="OPEN">Open</option><option value="CLOSED">Closed</option>

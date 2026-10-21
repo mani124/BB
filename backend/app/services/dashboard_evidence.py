@@ -8,16 +8,13 @@ from typing import Any
 
 from app.services import db
 
-BOOKS = {"paper", "cx", "earnings"}
+BOOKS = {"paper", "earnings"}
 
 
 def _db_path(book: str) -> str | None:
     if book == "paper":
         from app.services.paper_trader import paper_trader
         return paper_trader.storage.db_path if paper_trader.storage else None
-    if book == "cx":
-        from app.services.cx_registry import get_engine
-        return get_engine().store.db_path
     from app.services.earnings_registry import get_engine
     return get_engine().store.db_path
 

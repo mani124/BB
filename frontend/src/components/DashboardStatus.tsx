@@ -4,7 +4,7 @@ import type { DashboardSource } from '../types/dashboard';
 import type { StreamStatus } from './Header';
 
 const labels: Record<DashboardSource['book'], string> = {
-  paper: 'Main scanner', cx: 'Commodities & FX', earnings: 'Earnings',
+  paper: 'Main scanner', earnings: 'Earnings',
 };
 
 interface Props {
