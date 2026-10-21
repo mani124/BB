@@ -77,7 +77,9 @@ def test_analysis_script_runs(tmp_path):
 
 
 def _gate_engine(tmp_path):
-    return PaperTradingEngine(db_path=str(tmp_path / "g.db"))
+    eng = PaperTradingEngine(db_path=str(tmp_path / "g.db"))
+    eng.runtime.set("setup5_quality_gate_enabled", False)     # these tests are about the general liquidity gate only
+    return eng
 
 
 def _liq_signal(sig_id, bid, ask, oi, volume=5000, symbol="IRFC", sec_id="55001"):
@@ -116,5 +118,6 @@ def test_gate_toggle_and_thresholds_are_runtime_settings(tmp_path, monkeypatch):
     eng.runtime.set("liquidity_max_spread_pct", 15)
     assert eng.open_position_from_signal(wide, feed_mode="demo") is not None
     eng2 = PaperTradingEngine(db_path=str(tmp_path / "g2.db"))
+    eng2.runtime.set("setup5_quality_gate_enabled", False)
     eng2.runtime.set("liquidity_gate_enabled", False)
     assert eng2.open_position_from_signal(_liq_signal("G_5", bid=50, ask=100, oi=10), feed_mode="demo") is not None

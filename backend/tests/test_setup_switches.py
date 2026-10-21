@@ -71,6 +71,7 @@ def test_modes_persist_and_survive_reset(tmp_path):
 
 def test_entry_logs_liquidity_snapshot(tmp_path):
     eng = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
+    eng.runtime.set("setup5_quality_gate_enabled", False)     # this test is about the logged snapshot, not the Setup 5 gate
     sig = make_signal("LQ_1", symbol="IRFC", entry=40.0)
     rec = sig.strike_recommendation
     rec.real_ask_price, rec.real_bid_price = 40.0, 39.0

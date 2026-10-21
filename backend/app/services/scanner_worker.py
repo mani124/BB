@@ -29,6 +29,7 @@ from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.setup13 import evaluate_option_vwap_reclaim
 from app.services.setup12 import evaluate_adx_ema_cross
 from app.services.setup_t315 import evaluate_t315
+from app.services.setup5_quality import stock_range_pct
 from app.services.setup_t315f import INDEX_SCALE, emas as t315f_emas, evaluate_t315f
 from app.services.bar_builder import BarBuilder
 from app.services.setup14 import WALL_REFRESH_S, compute_oi_walls, evaluate_oi_wall_bounce
@@ -1133,6 +1134,9 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                     current_quote=leg_quote,
                 )
                 if sig:
+                    if inst.instrument_type == "EQUITY":
+                        # the volatility of the underlying stock, for the Setup 5 quality gate (setup5_quality.py)
+                        sig.indicators_snapshot["stock_range_pct"] = stock_range_pct(self._candle_history.get(inst.symbol))
                     results.append(sig)
                 s13 = None
                 try:

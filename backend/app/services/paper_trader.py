@@ -18,6 +18,7 @@ from app.services.paper_models import _now_stamp, _parse_iso, _signed_slip, _vie
 from app.services.paper_persistence import PaperPersistenceMixin
 from app.services.paper_guards import PaperGuardsMixin
 from app.services import liquidity_filter
+from app.services import setup5_quality
 from app.services.paper_exits import PaperExitsMixin
 from app.services.paper_risk import PaperRiskMixin
 from app.services import setup_switches
@@ -412,6 +413,15 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
                 self._processed_signal_ids.add(signal.id)
                 self._log_skip(signal, feed_mode, self._skip_code(quote_block), quote_block)
                 return None
+
+        s5_block = setup5_quality.block_reason(
+            signal, rec, enabled=bool(self.runtime.get("setup5_quality_gate_enabled")),
+            range_min=float(self.runtime.get("setup5_range_min_pct")), range_max=float(self.runtime.get("setup5_range_max_pct")),
+            min_oi=float(self.runtime.get("setup5_min_oi")))
+        if s5_block:
+            self._processed_signal_ids.add(signal.id)
+            self._log_skip(signal, feed_mode, s5_block[0], s5_block[1])
+            return None
 
         liq_block = liquidity_filter.check_recommendation(
             rec, signal.symbol, signal.option_type,
