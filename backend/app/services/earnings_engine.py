@@ -246,6 +246,7 @@ class DhanChainProvider:
         self.universe_path = universe_path or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "fno_universe.json")
         self._universe: Optional[dict] = None
         self._expiry_cache: dict[str, tuple[float, list]] = {}  # symbol -> (monotonic ts, raw expiry list)
+        self._spot_cache: dict[str, tuple[float, float]] = {}   # symbol -> (monotonic ts, last price)
 
     def _load(self) -> dict:
         if self._universe is None:
@@ -262,10 +263,23 @@ class DhanChainProvider:
     def instrument(self, symbol: str) -> Optional[dict]:
         return self._load().get(symbol.upper())
 
+    SPOT_TTL_S = 20.0
+
+    def cooling_down(self) -> bool:
+        """True while the shared Dhan client is pausing after a 429."""
+        fn = getattr(self.dhan, "cooldown_remaining", None)
+        try:
+            return bool(fn and fn() > 0)
+        except Exception:
+            return False
+
     async def spot(self, symbol: str) -> Optional[float]:
         inst, creds = self.instrument(symbol), self.get_credentials()
         if not inst or not creds:
             return None
+        hit = self._spot_cache.get(symbol.upper())
+        if hit and time.monotonic() - hit[0] < self.SPOT_TTL_S:
+            return hit[1]
         res = await self.dhan.fetch_marketfeed_quotes(creds[0], creds[1], {inst["exchange_segment"]: [int(inst["security_id"])]})
         data = res.get("data", res) if isinstance(res.get("data"), dict) else res
         q = (data.get(inst["exchange_segment"]) or {}).get(str(inst["security_id"]))
@@ -273,6 +287,8 @@ class DhanChainProvider:
             v = float(q.get("last_price", 0)) if q else 0.0
         except (TypeError, ValueError):
             v = 0.0
+        if v > 0:
+            self._spot_cache[symbol.upper()] = (time.monotonic(), v)
         return v if v > 0 else None
 
     async def expiries(self, symbol: str) -> list[date]:
@@ -318,6 +334,8 @@ class EarningsEngine:
         self._lock = asyncio.Lock()
         self.last_cycle: dict = {"status": "never_run"}
         self._last_sync_failure: Optional[float] = None
+        self._preview_cache: Optional[tuple[float, list[dict]]] = None   # (monotonic ts, rows)
+        self._preview_task: Optional[asyncio.Task] = None
 
     # ---------------------------------------------------------------- calendar sync
     def _fno_symbols(self) -> set:
@@ -551,7 +569,8 @@ class EarningsEngine:
                 spot = await self.provider.spot(sym)
                 expiries = await self.provider.expiries(sym) if spot else []
                 if not spot or not expiries:
-                    yield row, mode, skip(mode, sym, "NO_MARKET_DATA")
+                    cooling = getattr(self.provider, "cooling_down", None)
+                    yield row, mode, skip(mode, sym, "RATE_LIMITED" if (cooling and cooling()) else "NO_MARKET_DATA")
                     continue
                 needed = (es.mode_a_exit_date(edate, session, cfg["exit_days_before"]) if mode == es.MODE_A
                           else es.mode_b_exit_date(edate, session))
@@ -601,6 +620,30 @@ class EarningsEngine:
                              "detail": block[1] if block else "", "earnings_date": out.earnings_date.isoformat(),
                              "expiry": out.expiry.isoformat(), "exit_date": out.exit_date.isoformat(), "net_unit": out.net_unit,
                              "max_risk": out.max_risk, "lots": out.lots, "legs": [l.as_dict() for l in out.legs], "metrics": out.metrics})
+        return rows
+
+    PREVIEW_TTL_S = 60.0
+
+    async def preview_cached(self, wait_s: float = 8.0) -> list[dict]:
+        """`preview()` for screens that poll. One evaluation runs at a time and its rows are reused for PREVIEW_TTL_S, so
+        repeated polling cannot pile up sequential Dhan calls (the cause of most Earnings 429s). A caller waits at most
+        `wait_s` seconds; if the evaluation is still running it gets the last rows (empty before the first one)."""
+        now = time.monotonic()
+        if self._preview_cache and now - self._preview_cache[0] < self.PREVIEW_TTL_S:
+            return self._preview_cache[1]
+        cooling = getattr(self.provider, "cooling_down", None)
+        if cooling and cooling():
+            return self._preview_cache[1] if self._preview_cache else []
+        if self._preview_task is None or self._preview_task.done():
+            self._preview_task = asyncio.create_task(self._refresh_preview())
+        try:
+            return await asyncio.wait_for(asyncio.shield(self._preview_task), wait_s)
+        except Exception:
+            return self._preview_cache[1] if self._preview_cache else []
+
+    async def _refresh_preview(self) -> list[dict]:
+        rows = await self.preview()
+        self._preview_cache = (time.monotonic(), rows)
         return rows
 
     def _open(self, c: es.Candidate, now: datetime) -> dict:

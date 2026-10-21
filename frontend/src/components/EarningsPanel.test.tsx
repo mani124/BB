@@ -1,5 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { EarningsPanel } from './EarningsPanel';
 import type { EarningsSummary } from '../types';
 
@@ -9,7 +9,33 @@ const summary: EarningsSummary = {
   by_mode: {}, last_cycle: { status: 'no_credentials' },
 };
 
+vi.mock('../api/client', () => ({ apiFetch: vi.fn() }));
+import { apiFetch } from '../api/client';
+
+const json = (body: unknown, ok = true) => ({ ok, json: async () => body }) as unknown as Response;
+
 describe('EarningsPanel', () => {
+  afterEach(() => vi.mocked(apiFetch).mockReset());
+
+  it('still shows the summary when the candidates preview fails', async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/summary')) return json(summary);
+      if (u.endsWith('/candidates')) throw new Error('timeout');
+      return json([]);
+    });
+    render(<EarningsPanel />);
+    await waitFor(() => expect(screen.getByTestId('earnings-summary')).toHaveTextContent('Equity₹5,01,300'));
+    expect(screen.getByText(/1 of 4 sections could not be refreshed/)).toBeInTheDocument();
+    expect(screen.queryByText('Could not reach the server.')).not.toBeInTheDocument();
+  });
+
+  it('says the server is unreachable only when every section fails', async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new Error('down'));
+    render(<EarningsPanel />);
+    await waitFor(() => expect(screen.getByText('Could not reach the server.')).toBeInTheDocument());
+  });
+
   it('says entries are off and paper only, and shows the summary', () => {
     render(<EarningsPanel initial={{ summary, positions: [], candidates: [], calendar: [] }} />);
     expect(screen.getByText(/Entries off/)).toBeInTheDocument();

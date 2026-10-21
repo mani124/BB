@@ -520,3 +520,73 @@ def test_bulk_calendar_import_is_all_or_nothing():
         {"symbol": "BADCO", "earnings_date": "not-a-date"}]})
     assert r.status_code == 422
     assert len(get_engine().store.calendar()) == before
+
+
+# ---------------------------------------------------------------- polling previews must not pile up Dhan calls
+class SlowProvider(FakeProvider):
+    def __init__(self):
+        super().__init__()
+        self.spot_calls = 0
+        self.cooling = False
+
+    async def spot(self, symbol):
+        self.spot_calls += 1
+        await asyncio.sleep(0.3)
+        return self.spot_value
+
+    def cooling_down(self): return self.cooling
+
+
+def test_cached_preview_runs_one_evaluation_for_many_polls(tmp_path):
+    prov = SlowProvider()
+    eng = make_engine(tmp_path, prov)
+    add_a_candidate(eng)
+
+    async def poll():
+        with market_hours.override_clock(NOW):
+            first = await asyncio.gather(*[eng.preview_cached(wait_s=2.0) for _ in range(5)])   # five screens polling at once
+            calls_after_first = prov.spot_calls
+            again = await eng.preview_cached(wait_s=2.0)                                       # within the TTL
+        return first, calls_after_first, again
+
+    first, calls, again = run(poll())
+    assert calls == 1 and prov.spot_calls == 1
+    assert all(rows == first[0] for rows in first) and again == first[0]
+
+
+def test_slow_preview_returns_last_rows_instead_of_blocking(tmp_path):
+    prov = SlowProvider()
+    eng = make_engine(tmp_path, prov)
+    add_a_candidate(eng)
+
+    async def poll():
+        with market_hours.override_clock(NOW):
+            return await eng.preview_cached(wait_s=0.01)      # shorter than the evaluation: nothing cached yet
+    assert run(poll()) == []
+
+
+def test_preview_is_not_refreshed_while_dhan_is_cooling_down(tmp_path):
+    prov = SlowProvider()
+    prov.cooling = True
+    eng = make_engine(tmp_path, prov)
+    add_a_candidate(eng)
+
+    async def poll():
+        with market_hours.override_clock(NOW):
+            return await eng.preview_cached(wait_s=1.0)
+    assert run(poll()) == [] and prov.spot_calls == 0
+
+
+def test_rate_limited_skip_is_labelled_when_dhan_is_cooling(tmp_path):
+    class NoData(SlowProvider):
+        async def spot(self, symbol): return None
+    prov = NoData()
+    prov.cooling = True
+    eng = make_engine(tmp_path, prov)
+    add_a_candidate(eng)
+
+    async def rows():
+        with market_hours.override_clock(NOW):
+            return await eng.preview()
+    codes = {r["code"] for r in run(rows())}
+    assert codes == {"RATE_LIMITED"}

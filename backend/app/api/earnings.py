@@ -45,7 +45,7 @@ async def positions(status: Optional[str] = Query(None, pattern="^(OPEN|CLOSED)$
 @router.get("/candidates")
 async def candidates() -> list[dict]:
     """What the engine would do right now (needs a connected Dhan session). Nothing is opened or logged."""
-    return await get_engine().preview()
+    return await get_engine().preview_cached()
 
 
 @router.get("/calendar")

@@ -27,7 +27,7 @@ async def watch() -> dict:
         cx = {"_error": str(exc)}
     try:
         earnings_engine = get_earnings_engine()
-        earnings = {"summary": earnings_engine.summary(), "candidates": await asyncio.wait_for(earnings_engine.preview(), timeout=10)}
+        earnings = {"summary": earnings_engine.summary(), "candidates": await earnings_engine.preview_cached()}
     except Exception as exc:
         earnings = {"_error": str(exc)}
     return build_dashboard_watch(scanner, cx, earnings, observed_at=now_ist().isoformat())

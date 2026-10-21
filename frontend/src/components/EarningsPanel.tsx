@@ -29,18 +29,21 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    try {
-      const [s, p, c, cal] = await Promise.all([
-        apiFetch('/api/earnings/summary'), apiFetch('/api/earnings/positions'),
-        apiFetch('/api/earnings/candidates'), apiFetch('/api/earnings/calendar'),
-      ]);
-      if (s.ok) setSummary(await s.json());
-      if (p.ok) setPositions(await p.json());
-      if (c.ok) setCandidates(await c.json());
-      if (cal.ok) setCalendar(await cal.json());
-    } catch {
-      setMsg('Could not reach the server.');
-    }
+    // Each piece loads on its own: a slow or failing candidates preview must not hide the summary, positions or calendar.
+    const pieces: [string, (r: Response) => Promise<void>][] = [
+      ['/api/earnings/summary', async (r) => setSummary(await r.json())],
+      ['/api/earnings/positions', async (r) => setPositions(await r.json())],
+      ['/api/earnings/candidates', async (r) => setCandidates(await r.json())],
+      ['/api/earnings/calendar', async (r) => setCalendar(await r.json())],
+    ];
+    const results = await Promise.allSettled(pieces.map(async ([url, apply]) => {
+      const res = await apiFetch(url);
+      if (!res.ok) throw new Error(url);
+      await apply(res);
+    }));
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (failed === pieces.length) setMsg('Could not reach the server.');
+    else if (failed > 0) setMsg(`${failed} of ${pieces.length} sections could not be refreshed; showing the rest.`);
   }, []);
 
   useEffect(() => { if (!initial) void load(); }, [initial, load]);
