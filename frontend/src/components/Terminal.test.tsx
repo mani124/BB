@@ -31,7 +31,7 @@ const base = (over: Partial<TerminalProps> = {}): TerminalProps => ({
   state, loaded: true, wsConnected: true, dashboardWatch: null,
   filters: { setup: 'ALL', optionType: 'ALL', instrumentType: 'ALL', timeframe: 'ALL' }, onFilters: () => {},
   filteredSignals: [signal, waiting], closedTrades: [], activeSignalIds: new Set<string>(), portfolio,
-  onPaperBuy: vi.fn(), onClosePosition: vi.fn(), onToggleAutoTrade: vi.fn(), onChangeLots: vi.fn(), onChangeSetupMode: vi.fn(), onResetPortfolio: vi.fn(),
+  onPaperBuy: vi.fn(), onClosePosition: vi.fn(), onToggleAutoTrade: vi.fn(), onChangeSetupMode: vi.fn(), onResetPortfolio: vi.fn(),
   onKillSwitch: vi.fn(), onScanNow: vi.fn(), onOpenAccessKey: vi.fn(), sources: [], trades: [], tradesError: null,
   loadTradeDetail: vi.fn(), loadTradeChart: vi.fn(), onClosePaperTrade: vi.fn(), onRefreshTrades: vi.fn(),
   loadSession: vi.fn(async () => ({ day: '2026-10-19', timezone: 'Asia/Kolkata', events: [], by_book: [], observations: [] })), sessionDay: '2026-10-19', ...over,

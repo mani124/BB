@@ -24,7 +24,6 @@ interface PaperPortfolioViewProps {
   portfolio?: PaperPortfolio;
   onClosePosition: (id: string) => void;
   onToggleAutoTrade: (enabled: boolean) => void;
-  onChangeLots: (lots: number) => void;
   onChangeSetupMode?: (setup: string, mode: SetupMode) => void;
   onResetPortfolio: () => void;
   hideStrip?: boolean;
@@ -152,7 +151,6 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
   portfolio,
   onClosePosition,
   onToggleAutoTrade,
-  onChangeLots,
   onChangeSetupMode,
   onResetPortfolio,
   hideStrip = false,
@@ -241,16 +239,7 @@ export const PaperPortfolioView: React.FC<PaperPortfolioViewProps> = ({
           <Power className="h-3.5 w-3.5" />
           {portfolio.auto_trade_enabled ? 'Auto-Enter on Signal: ON' : 'Auto-Enter on Signal: OFF'}
         </button>
-        <div className="flex items-center gap-2 text-xs desk-muted">
-          <span className="desk-label">Lot Multiplier</span>
-          <div className="desk-seg" role="group" aria-label="Lot multiplier">
-            {[2, 4, 6, 8, 10].map((l) => (
-              <button key={l} type="button" aria-pressed={portfolio.default_lots === l} onClick={() => onChangeLots(l)}>
-                {l}x
-              </button>
-            ))}
-          </div>
-        </div>
+        <span className="desk-pill desk-num" title="Every auto entry is 2 lots, so Target 1 can book half">2 lots per entry</span>
         <button type="button" className="desk-btn ml-auto" onClick={onResetPortfolio} title="Reset paper testing stats">
           <RefreshCcw className="h-3.5 w-3.5" />
           Reset Portfolio

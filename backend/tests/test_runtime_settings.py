@@ -82,12 +82,13 @@ def test_bad_stored_value_does_not_block_startup(tmp_path):
 def test_engine_mirrors_default_lots_and_loss_limit(tmp_path):
     db = str(tmp_path / "e.db")
     e = PaperTradingEngine(db_path=db)
-    e.runtime.set("default_lots", 6)
     e.runtime.set("daily_loss_limit", 777)
-    assert e.get_portfolio().default_lots == 6
+    assert e.get_portfolio().default_lots == 2
     assert e._daily_loss_limit == 777
     e2 = PaperTradingEngine(db_path=db)
-    assert e2.get_portfolio().default_lots == 6 and e2._daily_loss_limit == 777
+    assert e2.get_portfolio().default_lots == 2 and e2._daily_loss_limit == 777
+    with pytest.raises(SettingError):
+        e.runtime.set("default_lots", 6)          # lots per entry are fixed at 2
 
 
 def test_legacy_saved_values_are_adopted(tmp_path):
@@ -98,7 +99,7 @@ def test_legacy_saved_values_are_adopted(tmp_path):
     st.save_setting("max_risk_per_trade", "12000")
     st.save_setting("daily_loss_limit", "5000")
     e = PaperTradingEngine(db_path=db)
-    assert e.get_portfolio().default_lots == 4
+    assert e.get_portfolio().default_lots == 2   # an old saved 4 is not honoured
     assert e.get_portfolio().max_risk_per_trade == 12000
     assert e._daily_loss_limit == 5000
     assert PaperTradingEngine(db_path=db)._daily_loss_limit == 5000

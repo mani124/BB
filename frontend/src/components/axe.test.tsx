@@ -68,7 +68,7 @@ describe('axe: no structural accessibility violations', () => {
     const { container } = render(
       <Terminal state={state} loaded wsConnected dashboardWatch={null} filters={{ setup: 'ALL', optionType: 'ALL', instrumentType: 'ALL', timeframe: 'ALL' }}
         onFilters={noop} filteredSignals={[signal]} closedTrades={[trade(1)]} activeSignalIds={new Set()} portfolio={portfolio}
-        onPaperBuy={noop} onClosePosition={noop} onToggleAutoTrade={noop} onChangeLots={noop} onChangeSetupMode={noop} onResetPortfolio={noop}
+        onPaperBuy={noop} onClosePosition={noop} onToggleAutoTrade={noop} onChangeSetupMode={noop} onResetPortfolio={noop}
         onKillSwitch={noop} onScanNow={noop} onOpenAccessKey={noop} sources={[]} trades={[]} tradesError={null}
         loadTradeDetail={vi.fn()} loadTradeChart={vi.fn()} onClosePaperTrade={vi.fn()} onRefreshTrades={noop}
         loadSession={vi.fn()} sessionDay="2026-10-16" />,
@@ -77,7 +77,7 @@ describe('axe: no structural accessibility violations', () => {
   });
 
   it('review screen tabs', async () => {
-    const h = { onClosePosition: vi.fn(), onToggleAutoTrade: vi.fn(), onChangeLots: vi.fn(), onChangeSetupMode: vi.fn(), onResetPortfolio: vi.fn() };
+    const h = { onClosePosition: vi.fn(), onToggleAutoTrade: vi.fn(), onChangeSetupMode: vi.fn(), onResetPortfolio: vi.fn() };
     const { container } = render(<ReviewScreen portfolio={portfolio} closedTrades={[trade(1), trade(2)]} {...h} />);
     for (const name of ['Today', 'Trades', 'Setups', 'Costs']) {
       fireEvent.click(screen.getByRole('tab', { name }));

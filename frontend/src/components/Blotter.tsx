@@ -36,7 +36,6 @@ export interface BlotterProps {
   onSelectPosition: (position: PaperPosition) => void;
   onClosePosition: (id: string) => void;
   onToggleAutoTrade: (enabled: boolean) => void;
-  onChangeLots: (lots: number) => void;
   onChangeSetupMode: (setup: string, mode: SetupMode) => void;
   onResetPortfolio: () => void;
   onKillSwitch: (engage: boolean) => void;
@@ -123,8 +122,7 @@ export const Blotter: React.FC<BlotterProps> = (p) => {
       body = <SessionScreen initialDay={p.sessionDay} loadSession={p.loadSession} onOpenTrade={p.onOpenTrade} onOpenReview={() => p.onTab('review')} />;
       break;
     case 'review':
-      body = <ReviewScreen portfolio={p.portfolio} closedTrades={p.closedTrades} onClosePosition={p.onClosePosition} onToggleAutoTrade={p.onToggleAutoTrade}
-        onChangeLots={p.onChangeLots} onChangeSetupMode={p.onChangeSetupMode} onResetPortfolio={p.onResetPortfolio} />;
+      body = <ReviewScreen portfolio={p.portfolio} closedTrades={p.closedTrades} onClosePosition={p.onClosePosition} onToggleAutoTrade={p.onToggleAutoTrade} onChangeSetupMode={p.onChangeSetupMode} onResetPortfolio={p.onResetPortfolio} />;
       break;
     case 'earnings': body = <EarningsPanel />; break;
     case 'settings': body = <SettingsPanel />; break;

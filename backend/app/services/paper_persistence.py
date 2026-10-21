@@ -176,7 +176,7 @@ class PaperPersistenceMixin:
         saved_lots = self.storage.load_setting("default_lots")
         if saved_lots is not None:
             try:
-                self._portfolio.default_lots = max(2, int(saved_lots))
+                self._portfolio.default_lots = 2  # fixed: an older saved value (4, 6 ...) is not honoured
             except ValueError:
                 pass
 
@@ -200,7 +200,7 @@ class PaperPersistenceMixin:
         for key, saved in (("default_lots", saved_lots), ("max_risk_per_trade", saved_risk)):
             if saved is not None and not self.runtime.is_overridden(key):
                 try:
-                    self.runtime.adopt(key, max(2, int(saved)) if key == "default_lots" else float(saved))
+                    self.runtime.adopt(key, 2 if key == "default_lots" else float(saved))
                 except Exception:
                     pass
         self._sync_portfolio_from_runtime()

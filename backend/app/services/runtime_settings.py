@@ -89,9 +89,9 @@ DEFINITIONS: tuple[SettingDef, ...] = (
        description="Wait after an exit before re-entering the same stock and side.", env_attr="REENTRY_COOLDOWN_SECONDS",
        min=0, zero_disables=True),
     # ---- sizing ----
-    _d(key="default_lots", label="Default lots", group=G_SIZE, type="int", unit="lots",
-       description="Lots per auto entry before the risk cap trims it (minimum 2 so Target 1 can book half).",
-       default=2, min=2),
+    _d(key="default_lots", label="Lots per entry", group=G_SIZE, type="int", unit="lots",
+       description="Fixed at 2 lots per auto entry (before the risk cap trims it), so Target 1 can book half.",
+       default=2, min=2, max=2),
     _d(key="max_risk_per_trade", label="Max risk per trade", group=G_SIZE, type="float", unit="INR",
        description="Entry to stop distance x quantity may not exceed this; lots are trimmed or the trade skipped.",
        default=8000.0, min=500),

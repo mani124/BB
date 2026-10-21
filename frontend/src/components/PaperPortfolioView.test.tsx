@@ -115,7 +115,6 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
         portfolio={mockPortfolio}
         onClosePosition={() => {}}
         onToggleAutoTrade={() => {}}
-        onChangeLots={() => {}}
         onResetPortfolio={() => {}}
       />
     );
@@ -139,7 +138,6 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
         portfolio={mockPortfolio}
         onClosePosition={() => {}}
         onToggleAutoTrade={() => {}}
-        onChangeLots={() => {}}
         onResetPortfolio={() => {}}
       />
     );
@@ -157,7 +155,6 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
         portfolio={mockPortfolio}
         onClosePosition={() => {}}
         onToggleAutoTrade={() => {}}
-        onChangeLots={() => {}}
         onResetPortfolio={() => {}}
       />
     );
@@ -179,7 +176,6 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
         portfolio={mockPortfolio}
         onClosePosition={() => {}}
         onToggleAutoTrade={() => {}}
-        onChangeLots={() => {}}
         onResetPortfolio={() => {}}
       />
     );
@@ -303,7 +299,6 @@ describe('PaperPortfolioView Setup Filter & Tax Popover', () => {
         portfolio={portfolioWithSnapback}
         onClosePosition={() => {}}
         onToggleAutoTrade={() => {}}
-        onChangeLots={() => {}}
         onResetPortfolio={() => {}}
       />
     );
@@ -380,7 +375,7 @@ describe('PaperPortfolioView journal', () => {
       total_pnl: 900, win_rate_pct: 100, total_trades_count: 2, winning_trades_count: 2, losing_trades_count: 0,
     };
     render(
-      <PaperPortfolioView portfolio={portfolio} onClosePosition={() => {}} onToggleAutoTrade={() => {}} onChangeLots={() => {}} onResetPortfolio={() => {}} />
+      <PaperPortfolioView portfolio={portfolio} onClosePosition={() => {}} onToggleAutoTrade={() => {}} onResetPortfolio={() => {}} />
     );
     expect(screen.queryByText('OLD 100 CE')).not.toBeInTheDocument();
     expect(screen.getByText('LIVE 100 CE')).toBeInTheDocument();
@@ -404,7 +399,7 @@ describe('PaperPortfolioView journal', () => {
       total_pnl: 0, win_rate_pct: 0, total_trades_count: 2, winning_trades_count: 0, losing_trades_count: 0,
     } as unknown as PaperPortfolio;
     render(
-      <PaperPortfolioView portfolio={portfolio} onClosePosition={() => {}} onToggleAutoTrade={() => {}} onChangeLots={() => {}} onResetPortfolio={() => {}} />
+      <PaperPortfolioView portfolio={portfolio} onClosePosition={() => {}} onToggleAutoTrade={() => {}} onResetPortfolio={() => {}} />
     );
     const group = screen.getByRole('group', { name: 'Journal instrument filter' });
     fireEvent.click(within(group).getByText('Index'));

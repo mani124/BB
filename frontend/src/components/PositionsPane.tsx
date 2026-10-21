@@ -11,7 +11,6 @@ interface Props {
   onSelect: (position: PaperPosition) => void;
   onClosePosition: (id: string) => void;
   onToggleAutoTrade: (enabled: boolean) => void;
-  onChangeLots: (lots: number) => void;
 }
 
 const Figure: React.FC<{ label: string; title?: string; children: React.ReactNode }> = ({ label, title, children }) => (
@@ -22,7 +21,7 @@ const Figure: React.FC<{ label: string; title?: string; children: React.ReactNod
 );
 
 /** Right column: the day's figures, entry controls and every open position with its Close button. */
-export const PositionsPane: React.FC<Props> = ({ portfolio, closedTrades, selectedId, onSelect, onClosePosition, onToggleAutoTrade, onChangeLots }) => {
+export const PositionsPane: React.FC<Props> = ({ portfolio, closedTrades, selectedId, onSelect, onClosePosition, onToggleAutoTrade }) => {
   if (!portfolio) {
     return (
       <div className="flex flex-col h-full" aria-busy="true" aria-label="Portfolio">
@@ -48,9 +47,7 @@ export const PositionsPane: React.FC<Props> = ({ portfolio, closedTrades, select
           onClick={() => onToggleAutoTrade(!portfolio.auto_trade_enabled)}>
           Auto-enter: {portfolio.auto_trade_enabled ? 'ON' : 'OFF'}
         </button>
-        <div className="desk-seg" role="group" aria-label="Lot multiplier">
-          {[2, 4, 6, 8, 10].map((l) => <button key={l} type="button" aria-pressed={portfolio.default_lots === l} onClick={() => onChangeLots(l)}>{l}x</button>)}
-        </div>
+        <span className="desk-pill desk-num" title="Every auto entry is 2 lots, so Target 1 can book half">2 lots</span>
       </div>
       <div className="desk-ph"><h2 id="open-positions-title">Open positions</h2><span className="desk-pill desk-num ml-auto">{positions.length}</span></div>
       <div className="desk-scroll flex-1" tabIndex={0} aria-label="Open positions list">

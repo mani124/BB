@@ -102,7 +102,7 @@ def test_settings_and_duplicate_signal_protection_persisted(tmp_path):
     db_file = str(tmp_path / "test_trades.db")
     engine1 = PaperTradingEngine(db_path=db_file)
     engine1.set_auto_trade(False)
-    engine1.set_default_lots(4)
+    engine1.set_default_lots(4)   # clamped: lots per entry are fixed at 2
     sig = make_sample_signal("NIFTY 50", "SIG_DEDUP_01")
     engine1.open_position_from_signal(sig, lots=4)
 
@@ -110,7 +110,7 @@ def test_settings_and_duplicate_signal_protection_persisted(tmp_path):
     engine2 = PaperTradingEngine(db_path=db_file)
     p2 = engine2.get_portfolio()
     assert p2.auto_trade_enabled is False
-    assert p2.default_lots == 4
+    assert p2.default_lots == 2
 
     # Duplicate signal should be rejected by restored _processed_signal_ids
     duplicate_res = engine2.open_position_from_signal(sig)

@@ -445,30 +445,6 @@ const DashboardContent: React.FC = () => {
     }
   }, [applyPortfolio]);
 
-  const handleChangeLots = useCallback(async (lots: number) => {
-    try {
-      const res = await apiFetch('/api/paper/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ default_lots: lots }),
-      });
-      if (res.status === 401) {
-        setCapabilityModalOpen(true);
-        setActionError('Unauthorized: Dashboard capability required.');
-        return;
-      }
-      if (res.ok) {
-        const portData = await res.json();
-        applyPortfolio(portData);
-      } else {
-        setActionError(await settingsError(res, 'the lot size'));
-      }
-    } catch (e) {
-      console.error('Change lots failed', e);
-      setActionError('Network error changing the lot size.');
-    }
-  }, [applyPortfolio]);
-
   const handleResetPortfolio = async () => {
     if (!window.confirm('Reset the paper portfolio? Every trade is archived (hidden, not deleted) and today\'s loss cap stays as it is. It is refused while a live position is open.')) return;
     try {
@@ -612,7 +588,6 @@ const DashboardContent: React.FC = () => {
           onPaperBuy={handlePaperBuy}
           onClosePosition={handleClosePosition}
           onToggleAutoTrade={handleToggleAutoTrade}
-          onChangeLots={handleChangeLots}
           onChangeSetupMode={handleChangeSetupMode}
           onResetPortfolio={handleResetPortfolio}
           onKillSwitch={handleKillSwitch}

@@ -21,7 +21,6 @@ interface ReviewScreenProps {
   closedTrades: PaperPosition[];
   onClosePosition: (id: string) => void;
   onToggleAutoTrade: (enabled: boolean) => void;
-  onChangeLots: (lots: number) => void;
   onChangeSetupMode: (setup: string, mode: SetupMode) => void;
   onResetPortfolio: () => void;
 }

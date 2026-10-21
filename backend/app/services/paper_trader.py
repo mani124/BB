@@ -172,7 +172,8 @@ class PaperTradingEngine(PaperPersistenceMixin, PaperGuardsMixin, PaperExitsMixi
         self._enqueue_write("save_setting", ("setup_modes", json.dumps(merged)))
 
     def set_default_lots(self, lots: int):
-        self.runtime.set("default_lots", max(2, int(lots)))  # 2 lots minimum so Target 1 can book 50%
+        """Lots per entry are fixed at 2 (the minimum that lets Target 1 book half); any other request is clamped to it."""
+        self.runtime.set("default_lots", 2)
 
     def set_max_risk_per_trade(self, amount: float):
         self.runtime.set("max_risk_per_trade", max(500.0, float(amount)))

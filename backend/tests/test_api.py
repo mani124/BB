@@ -187,11 +187,11 @@ def test_api_paper_close_trade_and_not_found():
     assert "Position not found" in bad_close.json()["detail"]
 
 def test_api_paper_settings():
-    response = client.post("/api/paper/settings", json={"auto_trade_enabled": True, "default_lots": 3})
+    response = client.post("/api/paper/settings", json={"auto_trade_enabled": True, "default_lots": 3})   # any other request is clamped to the fixed 2
     assert response.status_code == 200
     data = response.json()
     assert data["auto_trade_enabled"] is True
-    assert data["default_lots"] == 3
+    assert data["default_lots"] == 2
 
     # Reset back to false / 1
     client.post("/api/paper/settings", json={"auto_trade_enabled": False, "default_lots": 2})

@@ -32,16 +32,15 @@ def _trade(e, sig_id, symbol="FINNIFTY", points=0.0, **kw):
 # ---------------------------------------------------------------- RMS caps are dynamic
 def test_max_lots_per_trade_caps_entry_and_changes_live(tmp_path):
     e = _engine(tmp_path)
-    e.runtime.set("default_lots", 6)
     e.runtime.set("max_risk_per_trade", 1_000_000)
     e.runtime.set("max_lots_per_trade", 3)
-    p = e.open_position_from_signal(make_test_signal("A"))
+    p = e.open_position_from_signal(make_test_signal("A"), lots=6)
     assert p.lots == 3
     e.runtime.set("max_lots_per_trade", 5)
-    p2 = e.open_position_from_signal(make_test_signal("B", symbol="NIFTY"))
+    p2 = e.open_position_from_signal(make_test_signal("B", symbol="NIFTY"), lots=6)
     assert p2.lots == 5
     e.runtime.set("max_lots_per_trade", 0)  # disabled
-    p3 = e.open_position_from_signal(make_test_signal("C", symbol="BANKNIFTY"))
+    p3 = e.open_position_from_signal(make_test_signal("C", symbol="BANKNIFTY"), lots=6)
     assert p3.lots == 6
 
 

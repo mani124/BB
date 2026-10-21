@@ -75,7 +75,7 @@ export const Terminal: React.FC<TerminalProps> = (props) => {
         </section>
         <section className={`${panel} ${show('positions')} min-h-[24rem] lg:min-h-0`}>
           <PositionsPane portfolio={portfolio} closedTrades={props.closedTrades} selectedId={position?.id ?? null} onSelect={selectPosition}
-            onClosePosition={onClosePosition} onToggleAutoTrade={props.onToggleAutoTrade} onChangeLots={props.onChangeLots} />
+            onClosePosition={onClosePosition} onToggleAutoTrade={props.onToggleAutoTrade} />
         </section>
       </div>
       <section className={`${panel} ${pane === 'blotter' ? 'flex' : 'hidden lg:flex'} ${expanded ? 'lg:flex-1' : 'lg:h-[32vh] lg:shrink-0'} min-h-[24rem] lg:min-h-0`} aria-label="Tables">

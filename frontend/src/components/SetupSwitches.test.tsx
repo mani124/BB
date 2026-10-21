@@ -21,7 +21,6 @@ const portfolio: PaperPortfolio = {
 const baseProps = {
   onClosePosition: vi.fn(),
   onToggleAutoTrade: vi.fn(),
-  onChangeLots: vi.fn(),
   onResetPortfolio: vi.fn(),
 };
 

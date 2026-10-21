@@ -29,7 +29,6 @@ describe('PaperPortfolioView Hero Bar', () => {
         portfolio={mockPortfolio}
         onClosePosition={() => {}}
         onToggleAutoTrade={() => {}}
-        onChangeLots={() => {}}
         onResetPortfolio={() => {}}
       />
     );
@@ -68,7 +67,6 @@ describe('PaperPortfolioView Hero Bar', () => {
         portfolio={negativePortfolio}
         onClosePosition={() => {}}
         onToggleAutoTrade={() => {}}
-        onChangeLots={() => {}}
         onResetPortfolio={() => {}}
       />
     );

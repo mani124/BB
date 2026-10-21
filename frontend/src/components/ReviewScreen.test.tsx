@@ -22,7 +22,7 @@ describe('ReviewScreen', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
   const handlers = {
-    onClosePosition: vi.fn(), onToggleAutoTrade: vi.fn(), onChangeLots: vi.fn(),
+    onClosePosition: vi.fn(), onToggleAutoTrade: vi.fn(),
     onChangeSetupMode: vi.fn(), onResetPortfolio: vi.fn(),
   };
 
