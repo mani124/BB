@@ -1,5 +1,5 @@
 export type DashboardBook = 'paper' | 'cx' | 'earnings';
-export type WatchBook = DashboardBook | 'setup16';
+export type WatchBook = DashboardBook;
 export type SourceState = 'ready' | 'stale' | 'error' | 'disabled' | 'idle' | 'unknown';
 
 export interface DashboardSource {

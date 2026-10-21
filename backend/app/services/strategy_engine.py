@@ -21,7 +21,6 @@ class SetupType(str, enum.Enum):
     SETUP_12_ADX_EMA_CROSS = "Setup 12: ADX + EMA 20 Trend Cross"
     SETUP_13_OPTION_VWAP_RECLAIM = "Setup 13: Option VWAP Reclaim"
     SETUP_14_OI_WALL_BOUNCE = "Setup 14: OI Wall Bounce"
-    SETUP_16_OPTION_SQUEEZE_BREAK = "Setup 16: Option Squeeze Breakout"
     SETUP_20_T315 = "Setup 20: T315 EMA 3/15 Cross"
     SETUP_21_T315F_3M = "Setup 21: T315-F 3m"
     SETUP_22_T315F_5M = "Setup 22: T315-F 5m"
@@ -135,12 +134,12 @@ def pool_of(setup_type) -> str:
 
 
 def is_setup5(setup_type) -> bool:
-    """True for setups managed on the option premium chart (Setups 5, 10, 11, 13 and 16), whether given
+    """True for setups managed on the option premium chart (Setups 5, 10, 11 and 13; a legacy Setup 16 label also counts), whether given
     as the enum, its value, or a legacy stored label."""
     if setup_type in (SetupType.SETUP_5_OPTION_BB, SetupType.SETUP_10_STRADDLE_SQUEEZE,
-                      SetupType.SETUP_11_FILTERED_OPTION_BB, SetupType.SETUP_13_OPTION_VWAP_RECLAIM,
-                      SetupType.SETUP_16_OPTION_SQUEEZE_BREAK):
+                      SetupType.SETUP_11_FILTERED_OPTION_BB, SetupType.SETUP_13_OPTION_VWAP_RECLAIM):
         return True
+    # Closed trades stored before Setup 16 was removed still carry its label and are still option-chart trades.
     if "Setup 16" in str(getattr(setup_type, "value", setup_type)):
         return True
     if "Setup 13" in str(getattr(setup_type, "value", setup_type)):

@@ -59,7 +59,6 @@ G_EARN = "Earnings options strategy"
 G_LIVE = "Live broker routing"
 G_REC = "Market data recorder"
 G_SWING = "Swing equity book (Setup 15)"
-G_S16 = "Option squeeze breakout (Setup 16)"
 G_CX = "Commodities & Currency book (Setups 17-19)"
 G_CXS = "Commodities & Currency sessions"
 
@@ -260,35 +259,6 @@ DEFINITIONS: tuple[SettingDef, ...] = (
        default=60, min=15, max=3600),
     _d(key="earnings_starting_capital", label="Starting paper capital", group=G_EARN, type="float", unit="INR",
        description="Capital the earnings paper book reports returns against.", default=500000.0, min=0),
-    # ---- Setup 16 (setup16.py) ----
-    _d(key="setup16_stop_pct", label="Setup 16 max stop distance", group=G_S16, type="float", unit="% below entry",
-       description="The stop is the nearer of the option's lower Bollinger Band and this percentage below the entry. "
-                   "After a breakout the lower band is often 30-50% under the price; this keeps the risk inside the cap.",
-       default=12.0, min=4, max=40),
-    _d(key="setup16_window_start", label="Setup 16 first entry bar", group=G_S16, type="time", unit="IST",
-       description="Earliest 5m bar start that may produce a Setup 16 entry.", default="09:30"),
-    _d(key="setup16_window_end", label="Setup 16 last entry bar", group=G_S16, type="time", unit="IST",
-       description="Latest 5m bar start that may produce a Setup 16 entry. Mid-morning entries lost heavily on 2026-10-19; "
-                   "narrow the window here if that repeats.", default="14:25"),
-    _d(key="watchlist_enabled", label="After-close watchlist", group=G_S16, type="bool",
-       description="After the close, screen the F&O stocks on daily charts for a squeeze and let the scanner check the "
-                   "qualifying stocks for Setup 16 (and only Setup 16) the next trading day. Needs a Dhan login after the close.",
-       default=True),
-    _d(key="watchlist_size", label="Watchlist size", group=G_S16, type="int", unit="stocks",
-       description="Most stocks kept on tomorrow's watchlist, tightest squeeze first.", default=40, min=1, max=100),
-    _d(key="watchlist_bw_percentile", label="Squeeze: BandWidth percentile", group=G_S16, type="float", unit="%",
-       description="A stock qualifies when its daily BandWidth (20, 2) is within this lowest share of its last 120 days.",
-       default=20.0, min=1, max=50),
-    _d(key="watchlist_use_nr7", label="Squeeze: count NR7 days", group=G_S16, type="bool",
-       description="Also qualify a stock whose last day had the narrowest high-low range of the last 7 days.", default=True),
-    _d(key="watchlist_min_avg_value_cr", label="Minimum average traded value", group=G_S16, type="float", unit="INR crore",
-       description="Liquidity filter: 20-day average of close x volume of the stock, a proxy for liquid options.",
-       default=50.0, min=0),
-    _d(key="watchlist_build_time", label="Build time", group=G_S16, type="time", unit="IST",
-       description="After this time on a trading day (the daily bar is final) the watchlist for the next trading day is built, once, as "
-                   "soon as a Dhan login exists. A missed build is retried every 10 minutes, and a login or restart before "
-                   "the close still gets a list for today built from yesterday's bars.", default="16:15"),
-    # ---- swing equity book (swing_engine.py / swing_signals.py) ----
     _d(key="swing_enabled", label="Swing book enabled", group=G_SWING, type="bool",
        description="Allow the swing paper book to queue new daily-bar entries. Open positions are always managed.", default=False),
     _d(key="swing_setup15_enabled", label="Setup 15 (ATR trend flip)", group=G_SWING, type="bool",

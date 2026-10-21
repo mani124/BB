@@ -5,8 +5,8 @@ import { TradesScreen } from './TradesScreen';
 import type { DashboardTrade } from '../types/dashboard';
 
 const trades: DashboardTrade[] = [
-  { id: 'paper:p1', book: 'paper', display_book: 'Setup 16', source_id: 'p1', status: 'OPEN', instrument: 'NIFTY CE',
-    setup: 'Setup 16', opened_at: '2026-10-19T09:30:00+05:30', closed_at: null, mode: 'demo', net_pnl: 120,
+  { id: 'paper:p1', book: 'paper', display_book: 'Main scanner', source_id: 'p1', status: 'OPEN', instrument: 'NIFTY CE',
+    setup: 'Setup 5', opened_at: '2026-10-19T09:30:00+05:30', closed_at: null, mode: 'demo', net_pnl: 120,
     net_kind: 'estimated', evidence_state: 'recorded' },
   { id: 'cx:c1', book: 'cx', display_book: 'Commodities & FX', source_id: 'c1', status: 'CLOSED', instrument: 'CRUDEOIL',
     setup: 'Setup 17', opened_at: '2026-10-19T10:00:00+05:30', closed_at: '2026-10-19T10:30:00+05:30', mode: 'paper', net_pnl: -40,

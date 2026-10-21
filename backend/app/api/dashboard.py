@@ -13,7 +13,6 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 @router.get("/watch")
 async def watch() -> dict:
     from app.main import worker
-    from app.api.setup16 import build_overview
     from app.services.cx_registry import get_engine as get_cx_engine
     from app.services.earnings_registry import get_engine as get_earnings_engine
 
@@ -21,10 +20,6 @@ async def watch() -> dict:
         scanner = worker.get_state().model_dump()
     except Exception as exc:
         scanner = {"_error": str(exc), "signals": []}
-    try:
-        setup16 = build_overview(worker)
-    except Exception as exc:
-        setup16 = {"_error": str(exc), "contracts": []}
     try:
         cx_engine = get_cx_engine()
         cx = {"summary": cx_engine.summary(), "candidates": await asyncio.wait_for(cx_engine.candidates(), timeout=10)}
@@ -35,7 +30,7 @@ async def watch() -> dict:
         earnings = {"summary": earnings_engine.summary(), "candidates": await asyncio.wait_for(earnings_engine.preview(), timeout=10)}
     except Exception as exc:
         earnings = {"_error": str(exc)}
-    return build_dashboard_watch(scanner, setup16, cx, earnings, observed_at=now_ist().isoformat())
+    return build_dashboard_watch(scanner, cx, earnings, observed_at=now_ist().isoformat())
 
 
 @router.get("/trades")

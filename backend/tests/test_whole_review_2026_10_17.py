@@ -304,3 +304,22 @@ def test_unreadable_entry_time_without_a_usable_id_is_quarantined(tmp_path):
     pos.id = "weird"
     stale = e.flag_stale_carryover()
     assert stale and stale[0].quarantine_reason == "CORRUPT_METADATA"
+
+
+# ---- Setup 16 removal: stored data from before the removal still loads
+def test_stored_setup_16_mode_and_label_are_tolerated():
+    from app.services.setup_switches import normalize_modes
+    from app.services.strategy_engine import is_setup5
+    assert "16" not in normalize_modes({"16": "all", "5": "all"})
+    assert is_setup5("Setup 16: Option Squeeze Breakout")          # legacy closed trades keep their option-chart handling
+
+
+def test_stored_setup_16_runtime_settings_are_ignored(tmp_path):
+    import sqlite3
+    db = str(tmp_path / "t.db")
+    PaperTradingEngine(db_path=db)
+    conn = sqlite3.connect(db)
+    conn.execute("INSERT INTO runtime_settings(key, value) VALUES ('setup16_stop_pct', '12')")
+    conn.execute("INSERT INTO runtime_settings(key, value) VALUES ('watchlist_size', '40')")
+    conn.commit(); conn.close()
+    assert PaperTradingEngine(db_path=db).runtime.get("max_open_positions") == 8

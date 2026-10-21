@@ -15,7 +15,7 @@ export const WatchCandidateDetail: React.FC<Props> = ({ candidate, tradeId, onOp
     <section className="desk-panel p-4 sm:p-5 min-w-0" aria-label="Candidate detail">
       <div className="flex flex-wrap justify-between gap-2 items-start">
         <div>
-          <p className="desk-label mb-1">{candidate.book === 'paper' ? 'Main scanner' : candidate.book === 'setup16' ? 'Setup 16' : candidate.book === 'cx' ? 'Commodities & FX' : 'Earnings'}</p>
+          <p className="desk-label mb-1">{candidate.book === 'paper' ? 'Main scanner' : candidate.book === 'cx' ? 'Commodities & FX' : 'Earnings'}</p>
           <h2 className="text-lg font-semibold">{candidate.instrument}</h2>
           <p className="desk-muted text-sm">{candidate.setup} · {candidate.stage.replaceAll('_', ' ')}</p>
         </div>

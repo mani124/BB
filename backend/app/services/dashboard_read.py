@@ -39,7 +39,7 @@ def _row(book: str, raw: Any) -> dict:
     status = str(_value(raw, "status", "UNKNOWN"))
     if book == "paper":
         setup = str(_value(raw, "setup_type", ""))
-        display_book = "Setup 16" if "Setup 16" in setup or "SETUP_16" in setup else "Main scanner"
+        display_book = "Main scanner"
         instrument = _value(raw, "strike_symbol") or _value(raw, "symbol", "")
         opened = _timestamp(_value(raw, "entry_datetime"))
         closed = _timestamp(_value(raw, "exit_datetime"))
@@ -148,8 +148,8 @@ def get_dashboard_session(day: str) -> dict:
                        "evidence_id": f"setting:{row['id']}", "evidence_state": "recorded"})
 
     by_book: list[dict] = []
-    for book, mode, label in (("paper", "demo", "Main + Setup 16 · demo"),
-                              ("paper", "live", "Main + Setup 16 · live"),
+    for book, mode, label in (("paper", "demo", "Main scanner · demo"),
+                              ("paper", "live", "Main scanner · live"),
                               ("cx", None, "Commodities & FX"),
                               ("earnings", None, "Earnings")):
         rows = [row for row in all_trades if row["book"] == book and (mode is None or row.get("mode", "demo") == mode)]
@@ -220,7 +220,7 @@ def _checks(metrics: Any) -> list[dict]:
     return [{"name": str(k), "value": v} for k, v in metrics.items()] if isinstance(metrics, dict) else []
 
 
-def build_dashboard_watch(snapshot: dict, setup16: dict, cx: dict, earnings: dict, *, observed_at: str) -> dict:
+def build_dashboard_watch(snapshot: dict, cx: dict, earnings: dict, *, observed_at: str) -> dict:
     """Combine source snapshots without treating on-demand previews as recorded decisions."""
     sources: list[dict] = []
     candidates: list[dict] = []
@@ -236,28 +236,6 @@ def build_dashboard_watch(snapshot: dict, setup16: dict, cx: dict, earnings: dic
                            "checks": _checks(sig.get("indicators_snapshot")), "block_reason": None,
                            "instrument": sig.get("symbol", ""), "setup": sig.get("setup_type", ""),
                            "detail": sig.get("rationale", ""), "source_ref": sig})
-
-    contracts = setup16.get("contracts") or []
-    times: list[str] = []
-    contract_times: dict[int, str] = {}
-    for contract in contracts:
-        try:
-            timestamp = datetime.fromtimestamp(float(contract["updated_ts"]), ZoneInfo("Asia/Kolkata")).isoformat()
-            times.append(timestamp)
-            contract_times[id(contract)] = timestamp
-        except (KeyError, TypeError, ValueError, OverflowError):
-            pass
-    s16_as_of = max(times, default=None)
-    sources.append(_source("setup16", str(setup16.get("mode", "unknown")), s16_as_of, observed_at,
-                           disabled=setup16.get("mode") == "off", error=setup16.get("_error")))
-    for contract in contracts:
-        symbol = str(contract.get("symbol") or contract.get("strike_symbol") or "unknown")
-        side = str(contract.get("side") or contract.get("option_type") or "")
-        candidates.append({"id": f"setup16:{symbol}:{side}", "book": "setup16", "stage": contract.get("stage", "NO_DATA"),
-                           "observed_at": contract_times.get(id(contract)), "is_preview": False,
-                           "checks": _checks({k: contract[k] for k in ("in_squeeze", "pct_to_upper") if k in contract}),
-                           "block_reason": None, "instrument": symbol, "setup": "Setup 16", "detail": "",
-                           "source_ref": contract})
 
     for name, payload in (("cx", cx), ("earnings", earnings)):
         summary = payload.get("summary") or {}

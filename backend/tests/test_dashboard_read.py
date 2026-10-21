@@ -32,7 +32,7 @@ def test_trades_include_each_book_once_and_keep_legacy_rows(monkeypatch):
     assert len(rows) == 4
     assert len({row["id"] for row in rows}) == 4
     assert rows[0]["id"] == "earnings:earn-1"
-    assert next(row for row in rows if row["id"] == "paper:p-open")["display_book"] == "Setup 16"
+    assert next(row for row in rows if row["id"] == "paper:p-open")["display_book"] == "Main scanner"
     assert next(row for row in rows if row["id"] == "paper:p-open")["net_kind"] == "estimated"
     assert next(row for row in rows if row["id"] == "cx:cx-1")["net_kind"] == "realized"
     assert next(row for row in rows if row["id"] == "cx:cx-1")["instrument"] == "CRUDEOIL 6500 CE"

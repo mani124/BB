@@ -7,7 +7,7 @@ import type { DashboardSession } from '../types/dashboard';
 const session: DashboardSession = {
   day: '2026-10-19', timezone: 'Asia/Kolkata',
   by_book: [
-    { book: 'paper', display_book: 'Main + Setup 16', entries: 1, exits: 0, realized_net: null, estimated_net: 30 },
+    { book: 'paper', display_book: 'Main scanner', entries: 1, exits: 0, realized_net: null, estimated_net: 30 },
     { book: 'cx', display_book: 'Commodities & FX', entries: 0, exits: 1, realized_net: -60, estimated_net: null },
   ],
   events: [

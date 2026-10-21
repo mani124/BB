@@ -2,7 +2,7 @@ import React from 'react';
 import type { DashboardCandidate } from '../types/dashboard';
 
 const bookName: Record<DashboardCandidate['book'], string> = {
-  paper: 'Main scanner', setup16: 'Setup 16', cx: 'Commodities & FX', earnings: 'Earnings',
+  paper: 'Main scanner', cx: 'Commodities & FX', earnings: 'Earnings',
 };
 
 interface Props {
