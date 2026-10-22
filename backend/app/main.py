@@ -23,6 +23,9 @@ from app.api.live import router as live_router_api
 from app.api.readiness import router as readiness_router
 from app.api.recorder import router as recorder_router
 from app.api.dashboard import router as dashboard_router
+from app.api.ui_layouts import router as ui_layouts_router
+from app.api.audit import router as audit_router
+from app.core.audit_middleware import AuditMiddleware
 
 setup_security_logging()
 
@@ -265,6 +268,11 @@ def create_app() -> FastAPI:
     app.include_router(readiness_router, prefix=settings.API_PREFIX)
     app.include_router(recorder_router, prefix=settings.API_PREFIX)
     app.include_router(dashboard_router, prefix=settings.API_PREFIX)
+    app.include_router(ui_layouts_router, prefix=settings.API_PREFIX)
+    app.include_router(audit_router, prefix=settings.API_PREFIX)
+
+    # Registered last so it is the outermost middleware and also records denied (401/403) mutations.
+    app.add_middleware(AuditMiddleware)
 
     return app
 
