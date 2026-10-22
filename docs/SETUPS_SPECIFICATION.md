@@ -14,7 +14,7 @@
 3. [Setup 2: Walking the Bands with 9 EMA](#3-setup-2-walking-the-bands-with-9-ema)
 4. [Setup 3: Bollinger W-Bottom & M-Top Reversals with RSI Divergence](#4-setup-3-bollinger-w-bottom--m-top-reversals-with-rsi-divergence)
 5. [Setup 4: 9:30 AM Opening Range Breakout (ORB)](#5-setup-4-930-am-opening-range-breakout-orb)
-6. [Setup 5: Standalone Option Chart Bollinger Scalper](#6-setup-5-standalone-option-chart-bollinger-scalper)
+6. [Setup 5: removed](#6-setup-5-removed-2026-10-22)
 7. [The Two-Tier Stock Selection Funnel](#7-the-two-tier-stock-selection-funnel)
 8. [Strike Selection Architecture & Risk Sizing](#8-strike-selection-architecture--risk-sizing)
 9. [Paper Trading, Partial Booking & Exit Engine](#9-paper-trading-partial-booking--exit-engine)
@@ -273,50 +273,13 @@ $$\text{BandWidth} \le \text{BW}_{20\text{-min}} \times 1.30 \quad \text{OR} \qu
 
 ---
 
-## 6. Setup 5: Standalone Option Chart Bollinger Scalper
+## 6. Setup 5: removed (2026-10-22)
 
-* **Setup Enum:** `SetupType.SETUP_5_OPTION_BB`
-* **File Reference:** [`backend/app/services/option_chart_strategy.py`](file:///Users/manigopal/Documents/BB_OPTIONS_DASHBOARD/backend/app/services/option_chart_strategy.py)
-* **Underlying Principle:** Independent technical analysis executed **directly on the live option premium chart** (ATM CE and ATM PE candles). Spot index or equity price moves are completely decoupled from entry and exit decisions.
+Setup 5 (the option-chart Bollinger scalp) no longer generates signals. The scanner stops evaluating it, its mode switch and the `setup5_*` quality-gate settings are gone, and its filter and switch rows are out of the dashboard. A replay of its stored trades (15-21 Oct) and a 57-day backtest on Nifty and Bank Nifty option history both showed it losing after costs, mostly on index options. Its stored trades were purged from the journal with `backend/scripts/purge_setup5.py` (a backup copy is written first).
 
-```
-   Option Premium Candle Chart (e.g. NIFTY 22500 CE)
-   ──────────────────────────────────────────────────
-   Upper BB  ─────────────────────────────▲
-                                         ● Close > Option Upper BB
-   Option VWAP ──────────────────────────▲ (Buyers dominating premium)
-   9 EMA     ─────────────────────────────▲
-                                         ▲ Volume Surge >= 1.2x 20-bar avg
-```
+Kept on purpose: the `SETUP_5_OPTION_BB` enum value, `is_setup5` (it still means "managed on the option premium chart", which Setups 10 and 13 rely on), the shared signal builder, and `evaluate_option_chart_signal`, which is no longer called by the scanner but is still covered by tests.
 
-### Qualification Criteria
-
-Evaluated on 5-minute candles accumulated from real Dhan exchange option quotes:
-1. **Option Upper Bollinger Band Breakout:**
-   $$\text{Option Close} > \text{Option Upper Band}$$
-2. **Option Session VWAP Dominance:**
-   $$\text{Option Close} > \text{Option Session VWAP}$$
-   *(If premium is below VWAP, option writers/sellers are in control; trade is rejected).*
-3. **Option Momentum Confirmation:**
-   $$\text{Option Wilder RSI} \ge 58.0$$
-4. **Volume Surge & Illiquid Option Protection:**
-   $$\text{Option Volume} \ge \max(1000\text{ contracts},\, 1.2 \times \text{Avg Volume}_{20\text{-bar}})$$
-   *(Protects against false breakouts on illiquid far-strike contracts).*
-
-### Dynamic Risk & Targets (Option Points)
-* **Option Stop-Loss:** Anchored below the option 9 EMA or the breakout bar's low with a minimum 4% buffer:
-  $$\text{Bar Range} = \max(\text{High} - \text{Low},\, \text{Close} \times 0.04)$$
-  $$\text{Risk Pts} = \max(\text{Close} - 9\text{ EMA},\, \text{Bar Range} \times 0.5,\, \text{Close} \times 0.04)$$
-  $$\text{Option SL Price} = \max(0.5,\, \text{Close} - \text{Risk Pts})$$
-* **Option Target 1 (+1.5R):** $\text{Close} + (\text{Risk Pts} \times 1.5)$
-* **Option Target 2 (+2.5R):** $\text{Close} + (\text{Risk Pts} \times 2.5)$
-
-### Strict Option-Chart-Only Exit Execution
-In [`paper_trader.py`](file:///Users/manigopal/Documents/BB_OPTIONS_DASHBOARD/backend/app/services/paper_trader.py#L275-L325), Setup 5 positions **never check underlying spot price**:
-* **Stop-Loss Hit:** $\text{LTP}_{\text{option}} \le \text{Option SL}$
-* **Target 1 Hit:** $\text{LTP}_{\text{option}} \ge \text{Option T1}$ (Books 50% lots and trails Option SL to Entry).
-* **Target 2 Hit:** $\text{LTP}_{\text{option}} \ge \text{Option T2}$ (Full exit).
-* **Underlying Spot Decoupling:** Even if the underlying stock swings violently, the Setup 5 position remains open unless the option chart premium hits its defined technical levels.
+Setups 10 and 13 no longer defer to Setup 5 on the same side; Setup 13 still defers to Setup 10.
 
 ---
 

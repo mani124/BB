@@ -9,7 +9,7 @@ from app.services.indicators import calculate_indicators
 from tests.test_option_chart_strategy import create_option_candles
 
 @pytest.mark.asyncio
-async def test_scanner_worker_evaluates_setup_5_from_live_option_candles():
+async def test_scanner_worker_no_longer_produces_setup_5_signals():
     universe_mgr = UniverseManager()
     worker = ScannerWorker(universe_mgr=universe_mgr)
     worker.set_session_credentials("10001", "test_tok")
@@ -64,11 +64,6 @@ async def test_scanner_worker_evaluates_setup_5_from_live_option_candles():
     # Run single scan cycle
     state = await worker.run_single_scan_cycle("10001", "test_tok")
 
-    # Verify Setup 5 is detected and present in signals
+    # Setup 5 was removed: the same breakout that used to raise a Setup 5 signal now raises none
     s5_signals = [s for s in state.signals if s.setup_type == SetupType.SETUP_5_OPTION_BB]
-    assert len(s5_signals) >= 1, "ScannerWorker should surface Setup 5 Option Chart BB signals"
-    sig = s5_signals[0]
-    assert sig.entry_price == 115.0
-    assert sig.strike_recommendation.underlying_price == 22500.0
-    assert sig.strike_recommendation.estimated_option_entry == 115.0
-    assert sig.setup_type == SetupType.SETUP_5_OPTION_BB
+    assert s5_signals == []

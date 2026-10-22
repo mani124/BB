@@ -23,7 +23,6 @@ export const SETUP_FILTERS: { key: string; label: string; title: string }[] = [
   { key: 'Setup 2: Walking the Bands (9 EMA)', label: 'S2 Walking Bands', title: 'Setup 2: Walking Bands (9 EMA)' },
   { key: 'Setup 3: W/M Reversal', label: 'S3 W/M Reversal', title: 'Setup 3: W/M Reversal' },
   { key: 'Setup 4: 9:30 AM Opening Range Breakout', label: 'S4 9:30 ORB', title: 'Setup 4: 9:30 AM ORB' },
-  { key: 'Setup 5: Option Chart BB Scalp', label: 'S5 Option BB Scalp', title: 'Setup 5: Option BB Scalp' },
   { key: 'Setup 6: Pin Bar Exhaustion Snapback', label: 'S6 Pin Bar', title: 'Setup 6: Pin Bar Snapback' },
   { key: 'Setup 7: 2.5σ Puncture & Inside Bar', label: 'S7 Inside Bar', title: 'Setup 7: 2.5σ Inside Bar' },
   { key: 'Setup 8: Climax Swing Divergence Fade', label: 'S8 Divergence Fade', title: 'Setup 8: Divergence Fade' },

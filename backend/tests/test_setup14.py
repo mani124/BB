@@ -143,4 +143,4 @@ def test_default_switch_is_index_only():
     assert DEFAULT_MODES["14"] == "index"
     assert block_reason(DEFAULT_MODES, SetupType.SETUP_14_OI_WALL_BOUNCE, "RELIANCE")
     assert block_reason(DEFAULT_MODES, SetupType.SETUP_14_OI_WALL_BOUNCE, "NIFTY 50") is None
-    assert DEFAULT_MODES["1"] == "index" and DEFAULT_MODES["5"] == "all"
+    assert DEFAULT_MODES["1"] == "index" and "5" not in DEFAULT_MODES   # Setup 5 was removed

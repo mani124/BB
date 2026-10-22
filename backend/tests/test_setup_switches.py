@@ -19,7 +19,7 @@ def _no_cooldown(monkeypatch):
 
 def test_defaults_limit_setups_1_and_2_to_indices():
     d = setup_switches.DEFAULT_MODES
-    assert d["1"] == "index" and d["2"] == "index" and d["5"] == "all"
+    assert d["1"] == "index" and d["2"] == "index" and "5" not in d
 
 
 def test_block_reason_modes():
@@ -59,19 +59,18 @@ def test_auto_entry_respects_switch_but_manual_does_not(tmp_path):
 def test_modes_persist_and_survive_reset(tmp_path):
     db = str(tmp_path / "t.db")
     eng = PaperTradingEngine(db_path=db)
-    eng.set_setup_modes({"5": "off", "2": "all"})
+    eng.set_setup_modes({"6": "off", "2": "all"})
     eng.reset_sync()
-    assert eng.get_portfolio().setup_modes["5"] == "off"
+    assert eng.get_portfolio().setup_modes["6"] == "off"
     eng2 = PaperTradingEngine(db_path=db)
-    eng2.storage.save_setting("setup_modes", '{"5": "stocks"}')
+    eng2.storage.save_setting("setup_modes", '{"6": "stocks"}')
     eng3 = PaperTradingEngine(db_path=db)
-    assert eng3.get_portfolio().setup_modes["5"] == "stocks"
+    assert eng3.get_portfolio().setup_modes["6"] == "stocks"
     assert eng3.get_portfolio().setup_modes["1"] == "index"
 
 
 def test_entry_logs_liquidity_snapshot(tmp_path):
     eng = PaperTradingEngine(db_path=str(tmp_path / "t.db"))
-    eng.runtime.set("setup5_quality_gate_enabled", False)     # this test is about the logged snapshot, not the Setup 5 gate
     sig = make_signal("LQ_1", symbol="IRFC", entry=40.0)
     rec = sig.strike_recommendation
     rec.real_ask_price, rec.real_bid_price = 40.0, 39.0
@@ -94,9 +93,9 @@ def test_settings_endpoint_updates_and_validates_modes():
     client = TestClient(app)
     before = dict(paper_trader.get_portfolio().setup_modes)
     try:
-        r = client.post("/api/paper/settings", json={"setup_modes": {"5": "stocks"}})
-        assert r.status_code == 200 and r.json()["setup_modes"]["5"] == "stocks"
-        bad = client.post("/api/paper/settings", json={"setup_modes": {"5": "sometimes"}})
+        r = client.post("/api/paper/settings", json={"setup_modes": {"6": "stocks"}})
+        assert r.status_code == 200 and r.json()["setup_modes"]["6"] == "stocks"
+        bad = client.post("/api/paper/settings", json={"setup_modes": {"6": "sometimes"}})
         assert bad.status_code == 422
         bad2 = client.post("/api/paper/settings", json={"setup_modes": {"99": "off"}})
         assert bad2.status_code == 422

@@ -25,11 +25,9 @@ from app.services.indicators import calculate_indicators
 from app.services.strategy_engine import evaluate_signals, Signal, SetupType
 from app.services.relative_strength import evaluate_relative_strength, NIFTY_SYMBOL
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size, option_exchange_segment
-from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.setup13 import evaluate_option_vwap_reclaim
 from app.services.setup12 import evaluate_adx_ema_cross
 from app.services.setup_t315 import evaluate_t315
-from app.services.setup5_quality import stock_range_pct
 from app.services.setup_t315f import INDEX_SCALE, emas as t315f_emas, evaluate_t315f
 from app.services.bar_builder import BarBuilder
 from app.services.setup14 import WALL_REFRESH_S, compute_oi_walls, evaluate_oi_wall_bounce
@@ -800,7 +798,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 det_map[cs.id] = cs
             detected = list(det_map.values())
 
-            # Enrich signals and evaluate Setup 5 with live option chain from Dhan
+            # Enrich signals and evaluate the option-chart setups with the live option chain from Dhan
             if mode == "live" and cid and tok:
                 try:
                     expiry, oc = await self.get_or_fetch_option_chain(cid, tok, inst)
@@ -901,7 +899,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                                 live_rec.quote_as_of = time.time() - live_rec.quote_age_s
                                 sig.strike_recommendation = live_rec
 
-                        # Also evaluate Setup 5 (Option Chart BB Scalp) directly on live option candles
+                        # Option-chart setups (10 and 13) are evaluated directly on the live option candles
                         if current_price > 0:
                             opt_signals = await self._evaluate_option_chart_setups(
                                 cid, tok, inst, oc, expiry, current_price)
@@ -1120,24 +1118,6 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 straddle_legs[opt_type] = StraddleLeg(
                     df=ind_opt, strike_symbol=strike_symbol, security_id=sec_id_str, quote=leg_quote,
                 )
-                sig = evaluate_option_chart_signal(
-                    symbol=inst.symbol,
-                    strike_symbol=strike_symbol,
-                    option_type=opt_type,
-                    option_df=ind_opt,
-                    underlying_price=underlying_price,
-                    strike_price=atm_strike,
-                    expiry_date=expiry,
-                    lot_size=lot_size,
-                    option_security_id=sec_id_str,
-                    timeframe="5m",
-                    current_quote=leg_quote,
-                )
-                if sig:
-                    if inst.instrument_type == "EQUITY":
-                        # the volatility of the underlying stock, for the Setup 5 quality gate (setup5_quality.py)
-                        sig.indicators_snapshot["stock_range_pct"] = stock_range_pct(self._candle_history.get(inst.symbol))
-                    results.append(sig)
                 s13 = None
                 try:
                     s13 = evaluate_option_vwap_reclaim(
@@ -1160,8 +1140,7 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 if s13:
                     s13_candidates.append(s13)
 
-        # Setup 10: ATM straddle premium squeeze, from the same two completed-bar series.
-        # Skipped when Setup 5 already fired on this side, so one contract is never entered twice.
+        # Setup 10: ATM straddle premium squeeze, from the two completed-bar series above.
         if len(straddle_legs) == 2:
             s10 = evaluate_straddle_squeeze(
                 symbol=inst.symbol,
@@ -1172,14 +1151,12 @@ class ScannerWorker(ScannerCandlesMixin, ScannerStreamMixin):
                 lot_size=lot_size,
                 timeframe="5m",
             )
-            if s10 and not any(r.option_type == s10.option_type and r.setup_type == SetupType.SETUP_5_OPTION_BB
-                               for r in results):
+            if s10:
                 results.append(s10)
 
-        # Setup 13: never enter the same side as Setup 5 or Setup 10 in one scan (one contract, one entry)
+        # Setup 13: never enter the same side as Setup 10 in one scan (one contract, one entry)
         for s13 in s13_candidates:
-            if not any(r.option_type == s13.option_type and r.setup_type in (
-                    SetupType.SETUP_5_OPTION_BB, SetupType.SETUP_10_STRADDLE_SQUEEZE) for r in results):
+            if not any(r.option_type == s13.option_type and r.setup_type == SetupType.SETUP_10_STRADDLE_SQUEEZE for r in results):
                 results.append(s13)
 
         return results

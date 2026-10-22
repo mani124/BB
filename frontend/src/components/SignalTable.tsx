@@ -59,7 +59,7 @@ const SignalTableImpl: React.FC<SignalTableProps> = ({ signals, onPaperBuy, onIn
             const rec = sig.strike_recommendation;
             const ind = sig.indicators_snapshot;
             const isBought = activeSignalIds?.has(sig.id) || false;
-            const isOptionChart = sig.setup_type.includes('Setup 5') || sig.setup_type.includes('SETUP_5') || sig.setup_type.includes('Setup 10') || sig.setup_type.includes('SETUP_10') || sig.setup_type.includes('Setup 11') || sig.setup_type.includes('SETUP_11') || sig.setup_type.includes('Setup 13') || sig.setup_type.includes('SETUP_13') || sig.setup_type.includes('Setup 16') || sig.setup_type.includes('SETUP_16');
+            const isOptionChart = sig.setup_type.includes('Setup 10') || sig.setup_type.includes('SETUP_10') || sig.setup_type.includes('Setup 11') || sig.setup_type.includes('SETUP_11') || sig.setup_type.includes('Setup 13') || sig.setup_type.includes('SETUP_13') || sig.setup_type.includes('Setup 16') || sig.setup_type.includes('SETUP_16');
             const unconfirmed = sig.is_confirmed === false;
 
             return (

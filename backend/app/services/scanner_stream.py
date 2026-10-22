@@ -19,7 +19,6 @@ from app.services.dhan_packet_codec import segment_to_int
 from app.services.indicators import calculate_indicators
 from app.services.strategy_engine import evaluate_signals, Signal, SetupType
 from app.services.strike_selector import resolve_live_strike_from_chain, get_lot_size, option_exchange_segment
-from app.services.option_chart_strategy import evaluate_option_chart_signal
 from app.services.paper_trader import paper_trader, PaperPortfolio, PaperPosition
 from app.services.momentum_ranker import MomentumRanker, MomentumRankings
 from app.services.scanner_models import *  # noqa: F401,F403

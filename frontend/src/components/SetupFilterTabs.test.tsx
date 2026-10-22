@@ -26,7 +26,7 @@ describe('SetupFilterTabs', () => {
     expect(screen.getByText(/S2 Walking Bands/i)).toBeInTheDocument();
     expect(screen.getByText(/S3 W\/M Reversal/i)).toBeInTheDocument();
     expect(screen.getByText(/S4 9:30 ORB/i)).toBeInTheDocument();
-    expect(screen.getByText(/S5 Option BB Scalp/i)).toBeInTheDocument();
+    expect(screen.queryByText(/S5 Option BB Scalp/i)).not.toBeInTheDocument();   // Setup 5 was removed
     expect(screen.getByText(/S6 Pin Bar/i)).toBeInTheDocument();
     expect(screen.getByText(/S7 Inside Bar/i)).toBeInTheDocument();
     expect(screen.getByText(/S8 Divergence Fade/i)).toBeInTheDocument();

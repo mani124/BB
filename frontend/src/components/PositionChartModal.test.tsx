@@ -5,7 +5,7 @@ describe('setupIndicators', () => {
   it('maps each setup to the overlays it is evaluated on', () => {
     expect(setupIndicators('Setup 2: Walking the Bands (9 EMA)')).toEqual(['bb', 'ema']);
     expect(setupIndicators('Setup 4: 9:30 AM Opening Range Breakout')).toEqual(['orb', 'vwap']);
-    expect(setupIndicators('Setup 5: Option Chart BB Scalp')).toEqual(['bb', 'vwap', 'ema']);
+    expect(setupIndicators('Setup 13: Option VWAP Reclaim')).toEqual(['bb', 'vwap', 'ema']);
     expect(setupIndicators('Setup 7: 2.5σ Puncture & Inside Bar')).toContain('bb25');
     expect(setupIndicators('Setup 9: Relative Strength vs NIFTY (9 EMA Pullback)')).toEqual(['ema', 'vwap']);
     expect(setupIndicators('Setup 1: BB Squeeze Breakout')).toEqual(['bb']);

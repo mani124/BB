@@ -9,7 +9,6 @@ export function setupCode(setupType: string | undefined): string {
   if (s.includes('WALKING')) return 'S2';
   if (s.includes('REVERSAL') || s.includes('W/M')) return 'S3';
   if (s.includes('ORB') || s.includes('OPENING RANGE')) return 'S4';
-  if (s.includes('OPTION')) return 'S5';
   if (s.includes('PIN')) return 'S6';
   if (s.includes('INSIDE')) return 'S7';
   if (s.includes('DIVERGENCE') || s.includes('CLIMAX')) return 'S8';

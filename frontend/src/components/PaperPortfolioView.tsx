@@ -45,7 +45,6 @@ const SETUP_FILTER_OPTIONS = [
   { id: 'SETUP_2', label: 'S2 Walking Bands' },
   { id: 'SETUP_3', label: 'S3 W/M Reversal' },
   { id: 'SETUP_4', label: 'S4 9:30 ORB' },
-  { id: 'SETUP_5', label: 'S5 Option Chart' },
   { id: 'SETUP_6', label: 'S6 Pin Bar' },
   { id: 'SETUP_7', label: 'S7 Inside Bar' },
   { id: 'SETUP_8', label: 'S8 Climax Divergence' },
@@ -80,9 +79,6 @@ const matchSetup = (tradeSetup: string | undefined, filterId: string) => {
   if (filterId === 'SETUP_4') {
     return s.includes('SETUP_4') || s.includes('SETUP 4') || s.includes('ORB') || s.includes('OPENING RANGE');
   }
-  if (filterId === 'SETUP_5') {
-    return s.includes('SETUP_5') || s.includes('SETUP 5') || s.includes('OPTION');
-  }
   if (filterId === 'SETUP_6') {
     return s.includes('SETUP_6') || s.includes('SETUP 6') || s.includes('PINBAR') || s.includes('PIN BAR') || s.includes('PIN_BAR');
   }
@@ -116,7 +112,6 @@ const SETUP_SWITCH_ROWS: { key: string; label: string; perIndex?: boolean }[] = 
   { key: '2', label: 'Setup 2 · Walking the Bands' },
   { key: '3', label: 'Setup 3 · W/M Reversal' },
   { key: '4', label: 'Setup 4 · 9:30 ORB' },
-  { key: '5', label: 'Setup 5 · Option Chart Scalp' },
   { key: '6', label: 'Setup 6 · Pin Bar Snapback' },
   { key: '7', label: 'Setup 7 · Inside Bar Snapback' },
   { key: '8', label: 'Setup 8 · Divergence Fade' },
