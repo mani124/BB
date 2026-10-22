@@ -61,3 +61,5 @@ None.
 - Phase 5: Playwright now starts the backend on a throwaway journal (`BB_DB_PATH=/tmp/bb-e2e/trades.db`), because layouts and the kill switch live on the server; `resetServerLayouts` restores the presets between dock specs.
 - Phase 5: axe fixes found by the all-workspace spec: focusable scroll regions in `PanelFrame`, session timeline button names, earnings sub-tab names, trade detail region, and Dockview's invalid `aria-level="0"` on floating groups is removed by the host.
 - Phase 5 known gap: `exposure` concentration banner needs at least two rows in a group (one row is always 100 %).
+
+- Phase 6.1: command palette (Ctrl+K) with panels, workspaces, layout actions, symbols, danger commands (kill switch, close all with typed phrase, reset portfolio) that only open confirmations; e2e `palette.spec.ts`. On mobile the palette omits dock/workspace entries.

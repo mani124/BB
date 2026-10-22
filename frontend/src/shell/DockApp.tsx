@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DhanAuthProvider, useDhanAuth } from '../context/DhanAuthContext';
 import { ThemeProvider } from '../context/ThemeContext';
 import { CapabilityDialog } from '../components/CapabilityDialog';
@@ -20,6 +20,18 @@ import { DOCK_COMMAND_ENTRIES, NOOP_COMMANDS, type DockCommands } from '../featu
 import { matchShortcut } from '../features/shortcuts';
 import { useLayouts } from '../features/layouts/useLayouts';
 import { startAlertsEngine } from '../features/alerts/engine';
+import { CommandPalette } from '../features/commands/CommandPalette';
+import { registerCommands, type CommandContext } from '../features/commands/commandRegistry';
+import { requestLayoutAction } from '../features/layouts/layoutUi';
+import { useConfirm } from '../features/confirm/ConfirmProvider';
+import { useKillSwitchDialog } from './KillSwitch';
+import { setDensity } from './Chrome';
+import { useTheme } from '../context/ThemeContext';
+import { select } from '../data/selection';
+import { pollNow } from '../data/pollers';
+import { refreshPortfolio } from '../data/actions';
+import { PANELS } from '../panels/registry';
+import { Search } from 'lucide-react';
 import { AlertsBadge } from '../features/alerts/AlertsBadge';
 import { ModeBanner } from './ModeBanner';
 import { StatusBar } from './StatusBar';
@@ -56,6 +68,20 @@ const Content: React.FC = () => {
   const desktop = useDesktopMedia();
   const commandsRef = useRef<DockCommands>(NOOP_COMMANDS);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const confirm = useConfirm();
+  const openKillSwitch = useKillSwitchDialog();
+  const { toggleTheme } = useTheme();
+  const paletteState = useApp((st) => ({ scanner: st.scanner, watch: st.watch }), (a, b) => a.scanner === b.scanner && a.watch === b.watch);
+  const commands = useMemo(
+    () => (paletteOpen ? registerCommands({ panels: PANELS.map((p) => ({ id: p.id, title: p.title, category: p.category })), workspaces: layouts.workspaces, customs: layouts.customs, state: paletteState, desktop }) : []),
+    [paletteOpen, layouts.workspaces, layouts.customs, paletteState, desktop],
+  );
+  const ctx: CommandContext = useMemo(() => ({
+    get dock() { return commandsRef.current; },
+    switchWorkspace: layouts.switchTo, layoutAction: requestLayoutAction, confirm, openKillSwitch, showHelp: () => setHelpOpen(true), toggleTheme, setDensity,
+    refreshData: () => { pollNow(); void refreshPortfolio(); }, select,
+  }), [layouts.switchTo, confirm, openKillSwitch, toggleTheme]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -64,6 +90,7 @@ const Content: React.FC = () => {
       const entry = DOCK_COMMAND_ENTRIES.find((c) => c.shortcut === id);
       if (entry) { e.preventDefault(); entry.run(commandsRef.current); return; }
       if (id === 'help') { e.preventDefault(); setHelpOpen(true); }
+      if (id === 'palette') { e.preventDefault(); setPaletteOpen((o) => !o); }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -108,7 +135,8 @@ const Content: React.FC = () => {
   return (
     <div className="h-screen flex flex-col overflow-hidden" data-testid="dock-app">
       <ModeBanner />
-      <Chrome workspaceSlot={desktop ? <WorkspaceSwitcher layouts={layouts} /> : undefined} alertsSlot={<AlertsBadge onOpen={() => commandsRef.current.openPanel('alerts')} />} />
+      <Chrome workspaceSlot={desktop ? <WorkspaceSwitcher layouts={layouts} /> : undefined} alertsSlot={<AlertsBadge onOpen={() => commandsRef.current.openPanel('alerts')} />}
+        paletteSlot={<button type="button" className="desk-btn" aria-label="Open command palette" title="Command palette (Ctrl+K)" onClick={() => setPaletteOpen(true)}><Search className="h-3.5 w-3.5" aria-hidden /></button>} />
       <LiveAnnouncer message={announcement} />
       <div className="px-2 pt-1 empty:hidden"><ConnectionBanner activeMode={scanner.activeMode} feedStatus={scanner.feed} wsConnected={scanner.ws} stream={stream} /></div>
       <main className="flex-1 min-h-0" aria-label="Workspace">
@@ -120,6 +148,7 @@ const Content: React.FC = () => {
       <StatusBar />
       <ToastHost />
       {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
+      {paletteOpen && <CommandPalette commands={commands} ctx={ctx} onClose={() => setPaletteOpen(false)} />}
       {needsCapability && (
         <CapabilityDialog value={capInput} onChange={setCapInput} error={capError} success={capOk} onSubmit={onSubmit} onClose={closeCapabilityDialog} />
       )}
