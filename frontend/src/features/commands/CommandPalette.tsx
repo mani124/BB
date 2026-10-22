@@ -46,7 +46,8 @@ export const CommandPalette: React.FC<{ commands: Command[]; ctx: CommandContext
             </li>
           ))}
         </ul>
-        {results.length === 0 && <p className="px-3 py-4 text-sm desk-muted" role="status">No command matches “{query}”.</p>}
+        {results.length === 0 && <p className="px-3 py-4 text-sm desk-muted">No command matches “{query}”.</p>}
+        <p className="sr-only" role="status" aria-live="polite">{results.length === 0 ? 'No results' : `${results.length} result${results.length === 1 ? '' : 's'}`}</p>
         <p className="px-3 py-1 text-xs desk-muted" style={{ borderTop: '1px solid var(--line)' }}>↑ ↓ to move, Enter to run, Esc to close. Dangerous commands only open a confirmation.</p>
       </div>
     </Dialog>

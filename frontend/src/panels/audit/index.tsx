@@ -16,9 +16,9 @@ const COLS: ColumnDef<AuditRow>[] = [
 const tone = (o: string) => (o === 'ok' ? 'up' : o === 'error' ? 'down' : o === 'denied' ? 'warn' : 'mute');
 
 const AuditPanel: React.FC<PanelProps> = () => {
-  const ops = useApiData<Raw[]>('/api/audit/actions?limit=500', { refreshMs: 60_000 });
-  const settings = useApiData<Raw[]>('/api/settings/audit?limit=300', { refreshMs: 60_000 });
-  const live = useApiData<Raw[]>('/api/live/audit?limit=300', { refreshMs: 60_000 });
+  const ops = useApiData<Raw[]>('/api/audit/actions?limit=500', { refreshMs: 60_000, watchActions: true });
+  const settings = useApiData<Raw[]>('/api/settings/audit?limit=300', { refreshMs: 60_000, watchActions: true });
+  const live = useApiData<Raw[]>('/api/live/audit?limit=300', { refreshMs: 60_000, watchActions: true });
   const [f, setF] = useState<AuditFilter>({ source: 'all', outcome: 'all', text: '', day: '' });
   const [open, setOpen] = useState<string | null>(null);
   const rows = useMemo(() => mergeAudit(fromActions(ops.data ?? []), fromSettings(settings.data ?? []), fromLive(live.data ?? [])), [ops.data, settings.data, live.data]);
