@@ -11,6 +11,12 @@ import { closeCapabilityDialog, ensureSession, getDashboardCapability, submitCap
 import { startPollers } from '../data/pollers';
 import { startStream } from '../data/stream';
 import { Chrome } from './Chrome';
+import { DockHost } from './dockHost';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import { ShortcutHelp } from '../features/commands/ShortcutHelp';
+import { DOCK_COMMAND_ENTRIES, NOOP_COMMANDS, type DockCommands } from '../features/commands/dockCommands';
+import { matchShortcut } from '../features/shortcuts';
+import { useLayouts } from '../features/layouts/useLayouts';
 import { ModeBanner } from './ModeBanner';
 import { StatusBar } from './StatusBar';
 
@@ -41,6 +47,21 @@ const Content: React.FC = () => {
   const [capError, setCapError] = useState<string | null>(null);
   const [capOk, setCapOk] = useState(false);
   useDhanAutoReconnect();
+  const layouts = useLayouts();
+  const commandsRef = useRef<DockCommands>(NOOP_COMMANDS);
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const id = matchShortcut(e);
+      if (!id || id === 'killSwitch') return;
+      const entry = DOCK_COMMAND_ENTRIES.find((c) => c.shortcut === id);
+      if (entry) { e.preventDefault(); entry.run(commandsRef.current); return; }
+      if (id === 'help') { e.preventDefault(); setHelpOpen(true); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     let stopStream: (() => void) | null = null;
@@ -72,14 +93,18 @@ const Content: React.FC = () => {
   return (
     <div className="h-screen flex flex-col overflow-hidden" data-testid="dock-app">
       <ModeBanner />
-      <Chrome />
+      <Chrome workspaceSlot={<WorkspaceSwitcher layouts={layouts} />} />
       <LiveAnnouncer message={announcement} />
       <div className="px-2 pt-1 empty:hidden"><ConnectionBanner activeMode={scanner.activeMode} feedStatus={scanner.feed} wsConnected={scanner.ws} stream={stream} /></div>
       <main className="flex-1 min-h-0" aria-label="Workspace">
-        <div className="p-4 text-sm desk-muted">Workspace loading</div>
+        {layouts.ready
+          ? <DockHost key={`${layouts.current}:${layouts.revision}`} layout={layouts.spec} onLayoutChange={layouts.onChange} commandsRef={commandsRef}
+              onLoadError={layouts.reportLoadError} onReset={layouts.reset} />
+          : <div className="p-4 text-sm desk-muted" role="status">Workspace loading</div>}
       </main>
       <StatusBar />
       <ToastHost />
+      {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
       {needsCapability && (
         <CapabilityDialog value={capInput} onChange={setCapInput} error={capError} success={capOk} onSubmit={onSubmit} onClose={closeCapabilityDialog} />
       )}
