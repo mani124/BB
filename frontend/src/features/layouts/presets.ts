@@ -10,8 +10,8 @@ const col = (sizes: number[], ...children: LayoutNode[]): LayoutNode => ({ type:
 
 const spec = (name: WorkspaceName, root: LayoutNode): LayoutSpec => ({ schema_version: LAYOUT_SCHEMA_VERSION, name, preset_version: PRESET_VERSION, root });
 
-/** Panels the presets name that are built in later phases; the preset test tightens to "registered only" at Phase 5. */
-export const PLANNED_PANEL_IDS: string[] = ['risk', 'exposure', 'audit', 'alerts', 'perf-summary', 'equity', 'attribution', 'distributions', 'execution', 'orders', 'health', 'readiness', 'recorder', 'universe'];
+/** Panels the presets name that are not built yet. Empty since Phase 5: every preset panel is registered. */
+export const PLANNED_PANEL_IDS: string[] = [];
 
 export const PRESETS: Record<WorkspaceName, LayoutSpec> = {
   Trading: spec('Trading', row([0.22, 0.56, 0.22],

@@ -19,12 +19,15 @@ import { ShortcutHelp } from '../features/commands/ShortcutHelp';
 import { DOCK_COMMAND_ENTRIES, NOOP_COMMANDS, type DockCommands } from '../features/commands/dockCommands';
 import { matchShortcut } from '../features/shortcuts';
 import { useLayouts } from '../features/layouts/useLayouts';
+import { startAlertsEngine } from '../features/alerts/engine';
+import { AlertsBadge } from '../features/alerts/AlertsBadge';
 import { ModeBanner } from './ModeBanner';
 import { StatusBar } from './StatusBar';
 
 /** Demo mode with a real saved token: reconnect once, as the legacy shell does (sentinel tokens are ignored). */
 function useDhanAutoReconnect(): void {
-  const { connect } = useDhanAuth();
+  const { connect, isLoggedIn, tokenExpiry } = useDhanAuth();
+  useEffect(() => { appStore.setState((st) => ({ ui: { ...st.ui, dhan: { loggedIn: isLoggedIn, expiry: tokenExpiry } } })); }, [isLoggedIn, tokenExpiry]);
   const activeMode = useApp((s) => s.scanner.active_mode);
   const busy = useRef(false);
   useEffect(() => {
@@ -41,7 +44,7 @@ function useDhanAutoReconnect(): void {
 
 const Content: React.FC = () => {
   const [nonce, setNonce] = useState(0);
-  const [announcement] = useState('');
+  const [announcement, setAnnouncement] = useState('');
   const needsCapability = useApp((s) => s.ui.needsCapability);
   const scanner = useApp((s) => ({ activeMode: s.scanner.active_mode, feed: s.scanner.feed_status, ws: Boolean(s.scanner.ws_connected) }), (a, b) => a.activeMode === b.activeMode && a.feed === b.feed && a.ws === b.ws);
   const stream = useApp((s) => s.stream);
@@ -79,6 +82,15 @@ const Content: React.FC = () => {
     return () => { cancelled = true; stopStream?.(); stopPollers?.(); };
   }, [nonce]);
 
+  useEffect(() => startAlertsEngine({
+    onCritical: (a) => {
+      setAnnouncement(`Critical alert: ${a.message}`);
+      try {
+        if (appStore.getState().ui.notifications && typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification('BB critical alert', { body: a.message });
+      } catch { /* notifications unavailable */ }
+    },
+  }), []);
+
   useEffect(() => { try { document.documentElement.dataset.density = appStore.getState().ui.density; } catch { /* no document */ } }, []);
 
   const onSubmit = useCallback(async (e: React.FormEvent) => {
@@ -96,7 +108,7 @@ const Content: React.FC = () => {
   return (
     <div className="h-screen flex flex-col overflow-hidden" data-testid="dock-app">
       <ModeBanner />
-      <Chrome workspaceSlot={desktop ? <WorkspaceSwitcher layouts={layouts} /> : undefined} />
+      <Chrome workspaceSlot={desktop ? <WorkspaceSwitcher layouts={layouts} /> : undefined} alertsSlot={<AlertsBadge onOpen={() => commandsRef.current.openPanel('alerts')} />} />
       <LiveAnnouncer message={announcement} />
       <div className="px-2 pt-1 empty:hidden"><ConnectionBanner activeMode={scanner.activeMode} feedStatus={scanner.feed} wsConnected={scanner.ws} stream={stream} /></div>
       <main className="flex-1 min-h-0" aria-label="Workspace">

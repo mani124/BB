@@ -2,10 +2,12 @@ import { test, expect } from '@playwright/test';
 import axe from 'axe-core';
 import { DashboardPage } from '../pages/DashboardPage';
 import { getDashboardKey } from '../fixtures/auth.fixture';
+import { resetServerLayouts } from '../fixtures/layouts';
 
 test.describe('Workspace management', () => {
   test.beforeEach(async ({ page }) => {
     await new DashboardPage(page).injectAuthKey(getDashboardKey());
+    await resetServerLayouts(page, getDashboardKey());
     await page.addInitScript(() => { try { if (!sessionStorage.getItem('e2e_cleared')) { localStorage.removeItem('bb_layouts'); localStorage.removeItem('bb_workspace'); sessionStorage.setItem('e2e_cleared', '1'); } } catch { /* none */ } });
     await page.goto('/?shell=dock');
     await expect(page.getByRole('tab', { name: 'Chart' })).toBeVisible({ timeout: 15000 });
@@ -52,5 +54,23 @@ test.describe('Workspace management', () => {
       return res.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).slice(0, 3).join(', ')}`);
     });
     expect(found).toEqual([]);
+  });
+});
+
+test.describe('Invalid saved layout', () => {
+  test('falls back to the default and raises a warning in the alerts panel', async ({ page }) => {
+    const key = getDashboardKey();
+    await new DashboardPage(page).injectAuthKey(key);
+    // A saved body that is not a layout (stored on the server like any layout).
+    const put = await page.request.put('/api/ui/layouts/workspace%3AOperations', {
+      headers: { 'X-Dashboard-Capability': key },
+      data: { kind: 'workspace', schema_version: 1, body: { schema_version: 1, name: 'Operations', root: { type: 'group', panels: [{ id: 'no-such-panel' }] } } },
+    });
+    expect(put.ok()).toBeTruthy();
+    await page.addInitScript(() => { try { if (!sessionStorage.getItem('e2e_cleared')) { localStorage.removeItem('bb_layouts'); localStorage.removeItem('bb_alerts'); localStorage.setItem('bb_workspace', 'Operations'); sessionStorage.setItem('e2e_cleared', '1'); } } catch { /* none */ } });
+    await page.goto('/?shell=dock');
+    await expect(page.getByRole('tab', { name: 'System health' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('region', { name: 'Alerts' }).getByText(/Saved layout was invalid/)).toBeVisible({ timeout: 10000 });
+    await resetServerLayouts(page, key);
   });
 });

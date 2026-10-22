@@ -13,13 +13,14 @@ Read this first when resuming. Spec: `docs/superpowers/specs/2026-10-22-institut
 | 1 Foundations | done (tasks 1.1-1.9) | #83 |
 | 2 Panel parity | done (tasks 2.1-2.9) | #84 |
 | 3 Dock host, layouts, keyboard, mobile | done (3.1-3.7) | PR pending |
-| 4 Backend additions | done (4.1-4.5), pytest 878 | PR pending |
-| 5 New panels | not started | |
+| 4 Backend additions | done (4.1-4.5) | #86 |
+| 5 New panels | done (5.1-5.11) | PR pending |
 | 6 Palette and polish | not started | |
 | 7 Hardening and parity proof (7.1-7.5) | not started | |
 | 7.6 Cutover, 7.7 Cleanup | waiting for owner | |
 
 ## Tasks done
+- 5.1-5.11: 14 new panels (risk, exposure, perf-summary, equity, attribution, distributions, execution, orders, audit, readiness, recorder, universe, health, alerts), alerts engine (`features/alerts`: 13 pure rules, store, engine, badge), `PanelErrorBoundary`, all seven presets now drop nothing, e2e over every workspace with axe.
 - 4.1-4.5: `ui_store` + `/api/ui/layouts` (snapshots, limits), `action_audit` + middleware + `/api/audit/actions`, `analytics` service + `/api/analytics/*` (equity, attribution, distribution, execution, risk), docs `DASHBOARD_API_ADDITIONS.md`, VM README note.
 - 3.1-3.7: `features/layouts` (layoutModel, presets, layoutApi, useLayouts), `shell/dockHost.tsx` (only Dockview import), `WorkspaceSwitcher` with layout menu, `features/shortcuts.ts`, `commands/{dockCommands,ShortcutHelp}`, floating and pop-out with fallbacks and re-open banner, `MobileShell` (below 1024 px).
 - 2.1-2.9: 16 panels (signals, focus, positions, positions-table, chart, market, trades, session, journal + End-of-day report, earnings, settings, live, controls, telemetry, costs, setup-stats), `panels/definitions.ts`, `panels/parity.test.ts`, toasts, `actions.request`, confirm adapters for legacy components.
@@ -28,6 +29,9 @@ Read this first when resuming. Spec: `docs/superpowers/specs/2026-10-22-institut
 - 0.2 Spike: dockview-react 8.6.1 MIT; pop-out and serialisation work; decisions D1-D6 in notes.
 
 ## Test results (latest)
+- Phase 5: Vitest 467, tsc errors 14 (baseline), pytest 879, e2e 40 pass (hermetic throwaway journal), main chunk 151.27 kB gzip, DockApp lazy chunk 124.86 kB gzip.
+
+## Test results (Phase 3)
 - Vitest 369 pass; tsc errors 14 (baseline, no new); build ok (main chunk 151.22 kB gzip, DockApp lazy chunk 120.05 kB gzip + 10.78 kB css); pytest 821 pass (backend untouched); e2e 31 pass (with env vars above; 4 new dock specs: layout, keyboard, popout, workspaces, mobile).
 
 ## Blocked
@@ -49,3 +53,11 @@ None.
 - Phase 3: Dockview group and our PanelFrame both expose `role=region` with the panel name (axe passes at serious/critical); revisit in the Phase 7 a11y pass.
 
 - Phase 4: analytics reads the raw portfolio lists (`paper_trader._portfolio`) so quarantined rows can be counted; book `paper` follows the server's feed mode, `all` is unfiltered.
+
+- Phase 5: `analytics/attribution` gained an `overall` bucket (whole selection) so perf-summary can show profit factor and expectancy; distribution `bins` accepts 1 to 60 (the panel clamps 1 to 50).
+- Phase 5: server layouts cannot delete a built-in workspace, so Reset workspace now saves the default over it (the old copy stays in the snapshots).
+- Phase 5: alerts are persisted whole (with their acknowledged flag) under `bb_alerts`, not only the acknowledged ids; identical unacknowledged alerts inside 30 s are merged. Browser notifications are off by default; sound is not built. New error events raise an alert only for ERROR and CRITICAL.
+- Phase 5: `ui.dhan` mirrors the Dhan session in the store so the alert rules stay pure.
+- Phase 5: Playwright now starts the backend on a throwaway journal (`BB_DB_PATH=/tmp/bb-e2e/trades.db`), because layouts and the kill switch live on the server; `resetServerLayouts` restores the presets between dock specs.
+- Phase 5: axe fixes found by the all-workspace spec: focusable scroll regions in `PanelFrame`, session timeline button names, earnings sub-tab names, trade detail region, and Dockview's invalid `aria-level="0"` on floating groups is removed by the host.
+- Phase 5 known gap: `exposure` concentration banner needs at least two rows in a group (one row is always 100 %).

@@ -221,13 +221,15 @@ def attribution_report(trades: list, excursions: list[dict], group: str = "setup
         buckets.sort(key=lambda r: WEEKDAYS.index(r["key"]) if r["key"] in WEEKDAYS else 99)
     else:
         buckets.sort(key=lambda r: r["net_pnl"], reverse=True)
-    return clean({"group": group, "buckets": buckets, "generated_at": now_iso(), "excluded": excluded})
+    overall = _bucket(trades, exc)
+    overall["low_sample"] = overall["trades"] < LOW_SAMPLE
+    return clean({"group": group, "buckets": buckets, "overall": overall, "generated_at": now_iso(), "excluded": excluded})
 
 
 # ---- distribution ------------------------------------------------------------------------------------------------
 
 def distribution_report(trades: list, excursions: list[dict], bins: int = 20, excluded: int = 0) -> dict:
-    bins = max(5, min(int(bins), 60))
+    bins = max(1, min(int(bins), 60))
     pnls = [_outcome(p) for p in trades]
     rs = [r for r in (_r(p) for p in trades) if r is not None]
     held = [m for m in (_minutes_held(p) for p in trades) if m is not None]

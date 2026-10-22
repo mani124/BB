@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { DashboardPage } from '../pages/DashboardPage';
 import { getDashboardKey } from '../fixtures/auth.fixture';
+import { resetServerLayouts } from '../fixtures/layouts';
 
 /** Identity of a tab's group: the titles in its tab strip. */
 const groupOf = (page: Page, tabName: string) => page.evaluate((name) => {
@@ -11,6 +12,7 @@ const groupOf = (page: Page, tabName: string) => page.evaluate((name) => {
 test.describe('Dock keyboard parity', () => {
   test.beforeEach(async ({ page }) => {
     await new DashboardPage(page).injectAuthKey(getDashboardKey());
+    await resetServerLayouts(page, getDashboardKey());
     await page.addInitScript(() => { try { if (!sessionStorage.getItem('e2e_cleared')) { localStorage.removeItem('bb_layouts'); sessionStorage.setItem('e2e_cleared', '1'); } } catch { /* none */ } });
     await page.goto('/?shell=dock&workspace=Trading');
     await expect(page.getByRole('tab', { name: 'Chart' })).toBeVisible({ timeout: 15000 });
