@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import indexCss from '../index.css?raw';
+import tokensCss from './tokens.css?raw';
+import dockCss from './dockview-theme.css?raw';
 import { contrast } from '../lib/contrast';
 
-const read = (f: string) => readFileSync(resolve(__dirname, f), 'utf8');
-const css = `${read('../index.css')}\n${read('./tokens.css')}`;
+const css = `${indexCss}\n${tokensCss}`;
 
 function block(selector: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -32,7 +32,7 @@ describe('design tokens', () => {
   });
 
   it('dockview theme maps the documented variables', () => {
-    const t = read('./dockview-theme.css');
+    const t = dockCss;
     for (const v of ['--dv-group-view-background-color', '--dv-tabs-and-actions-container-background-color', '--dv-activegroup-visiblepanel-tab-color', '--dv-separator-border']) {
       expect(t).toContain(v);
     }
