@@ -5,6 +5,7 @@ import { CapabilityDialog } from '../components/CapabilityDialog';
 import { ConnectionBanner } from '../components/ConnectionStatus';
 import { LiveAnnouncer } from '../components/LiveAnnouncer';
 import { ConfirmProvider } from '../features/confirm/ConfirmProvider';
+import { ToastHost } from '../features/toast/ToastHost';
 import { appStore, useApp } from '../data/appStore';
 import { closeCapabilityDialog, ensureSession, getDashboardCapability, submitCapability } from '../data/auth';
 import { startPollers } from '../data/pollers';
@@ -78,6 +79,7 @@ const Content: React.FC = () => {
         <div className="p-4 text-sm desk-muted">Workspace loading</div>
       </main>
       <StatusBar />
+      <ToastHost />
       {needsCapability && (
         <CapabilityDialog value={capInput} onChange={setCapInput} error={capError} success={capOk} onSubmit={onSubmit} onClose={closeCapabilityDialog} />
       )}

@@ -48,6 +48,8 @@ export interface AppState {
   stream: StreamStatus;
   meta: Record<SliceName, SliceMeta>;
   selection: Selection;
+  /** The user closed the default selection; keep Focus empty until they choose something. */
+  selectionDismissed: boolean;
   /** Linked filter set by the attribution panel and honoured by trades and perf-summary. */
   filter: { group: string; key: string } | null;
   alerts: Alert[];

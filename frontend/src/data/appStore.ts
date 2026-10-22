@@ -43,6 +43,7 @@ export function initialState(): AppState {
     stream: { state: 'connecting', ageSec: 0 },
     meta,
     selection: null,
+    selectionDismissed: false,
     filter: null,
     alerts: [],
     ui: { density: readDensity(), workspace: 'Trading', needsCapability: false, notifications: false },

@@ -7,7 +7,12 @@ import type { AppState, Selection } from './types';
 export type { Selection };
 
 export function select(sel: Selection): void {
-  appStore.setState({ selection: sel });
+  appStore.setState({ selection: sel, selectionDismissed: false });
+}
+
+/** Empty the Focus panel and keep it empty (no default selection) until something is chosen. */
+export function clearSelection(): void {
+  appStore.setState({ selection: null, selectionDismissed: true });
 }
 
 export function setFilter(filter: AppState['filter']): void {
@@ -23,7 +28,8 @@ export function defaultSelection(state: AppState): Selection {
 }
 
 export function effectiveSelection(state: AppState): Selection {
-  return state.selection ?? defaultSelection(state);
+  if (state.selection) return state.selection;
+  return state.selectionDismissed ? null : defaultSelection(state);
 }
 
 export interface Resolved {

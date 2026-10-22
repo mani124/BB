@@ -3,6 +3,7 @@ import { apiFetch } from '../api/client';
 import type { PaperPortfolio, SetupMode, Signal } from '../types';
 import { alertsHook } from './alertsHook';
 import { appStore, applyPortfolio } from './appStore';
+import { pushToast } from './toasts';
 import { createStore } from './store';
 
 export interface ActionResult { ok: boolean; message: string; detail?: unknown }
@@ -62,6 +63,12 @@ interface RunOptions {
 }
 
 async function run(o: RunOptions): Promise<ActionResult & { body?: Record<string, unknown> }> {
+  const r = await runInner(o);
+  if (r.message !== 'Already running') pushToast(r.ok, r.message);
+  return r;
+}
+
+async function runInner(o: RunOptions): Promise<ActionResult & { body?: Record<string, unknown> }> {
   if (isInFlight(o.key)) return { ok: false, message: 'Already running' };
   setFlight(o.key, true);
   const ctrl = new AbortController();
@@ -103,6 +110,11 @@ async function run(o: RunOptions): Promise<ActionResult & { body?: Record<string
 
 const j = (path: string, key: string, okMessage: string, body?: unknown, extra: Partial<RunOptions> = {}) =>
   run({ key, path, body, okMessage, refetch: refreshLive, ...extra });
+
+/** Generic audited request for panels whose endpoints have no dedicated action (earnings, live routing). */
+export function request(path: string, opts: { key: string; method?: 'POST' | 'PUT' | 'DELETE'; body?: unknown; okMessage: string; failPrefix?: string; source?: string; severity?: 'info' | 'critical'; refetch?: () => Promise<unknown> }) {
+  return run({ path, ...opts });
+}
 
 export const actions = {
   scanNow: () => run({ key: 'scanNow', path: '/api/signals/scan-now', okMessage: 'Scan requested.', failPrefix: 'Scan failed' }),

@@ -1,5 +1,6 @@
 import type React from 'react';
 import type { SliceName } from '../data/types';
+import { DEFINITIONS } from './definitions';
 
 export type PanelId = string;
 export type PanelCategory = 'trading' | 'risk' | 'performance' | 'execution' | 'operations' | 'books' | 'review';
@@ -45,8 +46,8 @@ export function validateRegistry(defs: PanelDefinition[]): PanelDefinition[] {
   return defs;
 }
 
-/** Appended to by each panel task: import its definition and add it here. */
-export const PANELS: PanelDefinition[] = validateRegistry([]);
+/** All panels; the list itself lives in definitions.ts. */
+export const PANELS: PanelDefinition[] = validateRegistry(DEFINITIONS);
 
 export function getPanel(id: PanelId, defs: PanelDefinition[] = PANELS): PanelDefinition | undefined {
   return defs.find((d) => d.id === id);
