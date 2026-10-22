@@ -19,6 +19,10 @@ export default {
         up: 'var(--up)',
         down: 'var(--down)',
         warn: 'var(--warn)',
+        stale: 'var(--stale)',
+        modePaper: 'var(--mode-paper)',
+        modeDry: 'var(--mode-dry)',
+        modeLive: 'var(--mode-live)',
       },
       fontSize: {
         xs: 'var(--fs-xs)',

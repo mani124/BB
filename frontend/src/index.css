@@ -1,3 +1,5 @@
+@import './theme/tokens.css';
+@import './theme/dockview-theme.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
