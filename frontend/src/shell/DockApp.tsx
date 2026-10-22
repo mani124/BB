@@ -12,6 +12,8 @@ import { startPollers } from '../data/pollers';
 import { startStream } from '../data/stream';
 import { Chrome } from './Chrome';
 import { DockHost } from './dockHost';
+import { MobileShell } from './MobileShell';
+import { useDesktopMedia } from './useDesktopMedia';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { ShortcutHelp } from '../features/commands/ShortcutHelp';
 import { DOCK_COMMAND_ENTRIES, NOOP_COMMANDS, type DockCommands } from '../features/commands/dockCommands';
@@ -48,6 +50,7 @@ const Content: React.FC = () => {
   const [capOk, setCapOk] = useState(false);
   useDhanAutoReconnect();
   const layouts = useLayouts();
+  const desktop = useDesktopMedia();
   const commandsRef = useRef<DockCommands>(NOOP_COMMANDS);
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -93,11 +96,11 @@ const Content: React.FC = () => {
   return (
     <div className="h-screen flex flex-col overflow-hidden" data-testid="dock-app">
       <ModeBanner />
-      <Chrome workspaceSlot={<WorkspaceSwitcher layouts={layouts} />} />
+      <Chrome workspaceSlot={desktop ? <WorkspaceSwitcher layouts={layouts} /> : undefined} />
       <LiveAnnouncer message={announcement} />
       <div className="px-2 pt-1 empty:hidden"><ConnectionBanner activeMode={scanner.activeMode} feedStatus={scanner.feed} wsConnected={scanner.ws} stream={stream} /></div>
       <main className="flex-1 min-h-0" aria-label="Workspace">
-        {layouts.ready
+        {!desktop ? <MobileShell /> : layouts.ready
           ? <DockHost key={`${layouts.current}:${layouts.revision}`} layout={layouts.spec} onLayoutChange={layouts.onChange} commandsRef={commandsRef}
               onLoadError={layouts.reportLoadError} onReset={layouts.reset} />
           : <div className="p-4 text-sm desk-muted" role="status">Workspace loading</div>}
