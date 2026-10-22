@@ -326,3 +326,6 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
+
+/* Panels whose prices are frozen (stream stale or reconnecting): dim the numbers and underline them with a dashed rule. */
+[data-frozen='true'] [data-frozen-content='true'] .desk-num { opacity: 0.6; text-decoration: underline dashed; text-underline-offset: 3px; }

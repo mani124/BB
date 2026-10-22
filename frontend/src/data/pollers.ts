@@ -105,3 +105,11 @@ export function startPollers(opts: { intervals?: Partial<Record<PollKey, number>
     document.removeEventListener('visibilitychange', onVisible);
   };
 }
+
+/** Re-runs every poller now (used by the error strip's Retry button). */
+export function pollNow(): void {
+  DEFS.forEach((def) => {
+    if (def.key === 'analytics' && analyticsHooks.size === 0) return;
+    void def.run().then(() => markReady(def.slice)).catch((e: unknown) => markError(def.slice, e instanceof Error ? e.message : 'request failed'));
+  });
+}
