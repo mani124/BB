@@ -13,13 +13,14 @@ Read this first when resuming. Spec: `docs/superpowers/specs/2026-10-22-institut
 | 1 Foundations | done (tasks 1.1-1.9) | #83 |
 | 2 Panel parity | done (tasks 2.1-2.9) | #84 |
 | 3 Dock host, layouts, keyboard, mobile | done (3.1-3.7) | PR pending |
-| 4 Backend additions | not started | |
+| 4 Backend additions | done (4.1-4.5), pytest 878 | PR pending |
 | 5 New panels | not started | |
 | 6 Palette and polish | not started | |
 | 7 Hardening and parity proof (7.1-7.5) | not started | |
 | 7.6 Cutover, 7.7 Cleanup | waiting for owner | |
 
 ## Tasks done
+- 4.1-4.5: `ui_store` + `/api/ui/layouts` (snapshots, limits), `action_audit` + middleware + `/api/audit/actions`, `analytics` service + `/api/analytics/*` (equity, attribution, distribution, execution, risk), docs `DASHBOARD_API_ADDITIONS.md`, VM README note.
 - 3.1-3.7: `features/layouts` (layoutModel, presets, layoutApi, useLayouts), `shell/dockHost.tsx` (only Dockview import), `WorkspaceSwitcher` with layout menu, `features/shortcuts.ts`, `commands/{dockCommands,ShortcutHelp}`, floating and pop-out with fallbacks and re-open banner, `MobileShell` (below 1024 px).
 - 2.1-2.9: 16 panels (signals, focus, positions, positions-table, chart, market, trades, session, journal + End-of-day report, earnings, settings, live, controls, telemetry, costs, setup-stats), `panels/definitions.ts`, `panels/parity.test.ts`, toasts, `actions.request`, confirm adapters for legacy components.
 - 1.1 tokens/density/dockview theme + contrast tests; 1.2 store core; 1.3 appStore + SSE stream; 1.4 pollers; 1.5 actions + auth + confirm; 1.6 selection; 1.7 lib (time, numbers, csv, useTable); 1.8 PanelFrame + registry; 1.9 shell flag, Chrome, StatusBar, ModeBanner, kill switch (DhanConnectDialog extracted from Header).
@@ -46,3 +47,5 @@ None.
 - Phase 3: group focus order is geometric (top then left) because spatial navigation is not in the free edition; Split needs a group with 2+ panels (toast otherwise); floating groups hold one panel (a multi-panel float is reduced to its first panel when saved); pop-outs restore as floating panels with a "Re-open pop-outs" banner.
 - Phase 3: command palette (Ctrl+K) and the alerts warning "Saved layout was invalid; default restored" are visible only after Phases 5 and 6; the warning is already pushed through `alertsHook`. Keyboard e2e covers focus group, move, maximise/restore, close, float/dock via the panel menu; reopen-from-palette is added with the palette in Phase 6.
 - Phase 3: Dockview group and our PanelFrame both expose `role=region` with the panel name (axe passes at serious/critical); revisit in the Phase 7 a11y pass.
+
+- Phase 4: analytics reads the raw portfolio lists (`paper_trader._portfolio`) so quarantined rows can be counted; book `paper` follows the server's feed mode, `all` is unfiltered.
