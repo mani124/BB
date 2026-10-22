@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../data/appStore';
 import { formatIst, istToday } from '../../lib/time';
 import { points } from '../../lib/numbers';
 import { useTable, type ColumnDef } from '../../lib/useTable';
 import { PanelFrame } from '../PanelFrame';
+import { ColumnChooser, ColumnsButton, DataTable } from '../DataTable';
 import type { PanelProps } from '../registry';
 
 type Order = Record<string, unknown>;
@@ -26,6 +27,7 @@ const OrdersPanel: React.FC<PanelProps> = () => {
   const orders = useApp((s) => s.live.orders) as Order[];
   const mode = useApp((s) => (s.live.status as { mode?: string } | null)?.mode);
   const table = useTable(orders, { columns: ORDER_COLUMNS, storageKey: 'orders', csvName: `orders_${istToday()}.csv`, initialSort: { key: 'ts', dir: 'desc' } });
+  const [chooser, setChooser] = useState(false);
   const cell = (o: Order, key: string): React.ReactNode => {
     switch (key) {
       case 'ts': return o.ts ? formatIst(String(o.ts), 'datetime') : '';
@@ -35,19 +37,12 @@ const OrdersPanel: React.FC<PanelProps> = () => {
     }
   };
   return (
-    <PanelFrame title="Orders and fills" sources={['live']} exportCsv={table.exportCsv}>
+    <PanelFrame title="Orders and fills" sources={['live']} exportCsv={table.exportCsv} actions={<ColumnsButton open={chooser} onToggle={() => setChooser((v) => !v)} />}>
+      {chooser && <ColumnChooser table={table} />}
       {orders.length === 0 ? (
         <p className="p-6 text-center text-sm desk-muted">{mode && mode !== 'off' ? 'No orders yet.' : 'Live routing is off, so there are no routed orders.'}</p>
       ) : (
-        <div className="overflow-x-auto" tabIndex={0} onKeyDown={table.onKeyDown} aria-label="Orders table">
-          <table className="desk-table" aria-label="Orders">
-            <thead><tr>{table.columns.map((c) => (
-              <th key={c.key} scope="col" aria-sort={table.sort?.key === c.key ? (table.sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                <button type="button" className="font-semibold" onClick={() => table.setSort(c.key)}>{c.label}{table.sort?.key === c.key ? (table.sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}</button>
-              </th>))}</tr></thead>
-            <tbody>{table.visibleRows.map((o, i) => <tr key={String(o.id ?? i)}>{table.columns.map((c) => <td key={c.key}>{cell(o, c.key)}</td>)}</tr>)}</tbody>
-          </table>
-        </div>
+        <DataTable table={table} label="Orders" rowKey={(o, i) => String(o.id ?? i)} renderCell={(o, c) => cell(o, c.key)} />
       )}
     </PanelFrame>
   );

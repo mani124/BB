@@ -2,14 +2,16 @@ import React, { useMemo, useState } from 'react';
 import { useApiData } from '../../data/hooks/useApiData';
 import { filterAudit, fromActions, fromLive, fromSettings, mergeAudit, type AuditFilter, type AuditRow } from '../../features/audit/merge';
 import { formatIst, istToday } from '../../lib/time';
-import { downloadCsv, toCsv } from '../../lib/csv';
+import { useTable, type ColumnDef } from '../../lib/useTable';
 import { PanelFrame } from '../PanelFrame';
+import { ColumnChooser, ColumnsButton, DataTable } from '../DataTable';
 import type { PanelProps } from '../registry';
 
 type Raw = Record<string, unknown>;
-const COLS = [
-  { key: 'ts', label: 'Time' }, { key: 'source', label: 'Source' }, { key: 'actor', label: 'Actor' }, { key: 'action', label: 'Action' },
-  { key: 'target', label: 'Target' }, { key: 'outcome', label: 'Outcome' }, { key: 'detail', label: 'Detail' },
+const COLS: ColumnDef<AuditRow>[] = [
+  { key: 'ts', label: 'Time (IST)', sortable: true }, { key: 'source', label: 'Source', sortable: true }, { key: 'actor', label: 'Actor', sortable: true },
+  { key: 'action', label: 'Action', sortable: true }, { key: 'target', label: 'Target', sortable: true }, { key: 'outcome', label: 'Outcome', sortable: true },
+  { key: 'detail', label: 'Detail' },
 ];
 const tone = (o: string) => (o === 'ok' ? 'up' : o === 'error' ? 'down' : o === 'denied' ? 'warn' : 'mute');
 
@@ -22,15 +24,17 @@ const AuditPanel: React.FC<PanelProps> = () => {
   const rows = useMemo(() => mergeAudit(fromActions(ops.data ?? []), fromSettings(settings.data ?? []), fromLive(live.data ?? [])), [ops.data, settings.data, live.data]);
   const shown = useMemo(() => filterAudit(rows, f), [rows, f]);
   const failed = [['operator actions', ops], ['settings changes', settings], ['live routing', live]] as const;
-  const exportCsv = () => downloadCsv(`audit_${istToday()}.csv`, toCsv(shown as unknown as Record<string, unknown>[], COLS));
+  const [chooser, setChooser] = useState(false);
+  const table = useTable(shown, { columns: COLS, storageKey: 'audit', csvName: `audit_${istToday()}.csv`, initialSort: { key: 'ts', dir: 'desc' } });
   return (
-    <PanelFrame title="Audit trail" sources={[]} exportCsv={exportCsv} onRetry={() => { ops.reload(); settings.reload(); live.reload(); }}>
+    <PanelFrame title="Audit trail" sources={[]} exportCsv={table.exportCsv} actions={<ColumnsButton open={chooser} onToggle={() => setChooser((v) => !v)} />} onRetry={() => { ops.reload(); settings.reload(); live.reload(); }}>
       {failed.filter(([, h]) => h.error).map(([name, h]) => (
         <div key={name} className="desk-alert text-xs flex items-center gap-2" role="alert">
           <span>Could not load {name}: {h.error}. Other sources are still listed.</span>
           <button type="button" className="desk-btn ml-auto" onClick={h.reload}>Retry</button>
         </div>
       ))}
+      {chooser && <ColumnChooser table={table} />}
       <div className="flex flex-wrap items-center gap-2 px-2 py-1 text-xs" style={{ borderBottom: '1px solid var(--line)' }}>
         <label>Source <select className="desk-input" style={{ width: 'auto' }} value={f.source} onChange={(e) => setF({ ...f, source: e.target.value as AuditFilter['source'] })}>
           <option value="all">All</option><option value="operator">Operator actions</option><option value="settings">Settings</option><option value="live">Live routing</option></select></label>
@@ -41,29 +45,20 @@ const AuditPanel: React.FC<PanelProps> = () => {
         <span className="desk-muted ml-auto">{shown.length} of {rows.length} rows. The trail is read-only.</span>
       </div>
       {shown.length === 0 ? <p className="p-6 text-center text-sm desk-muted">{rows.length === 0 ? 'No audited actions yet.' : 'No rows match these filters.'}</p> : (
-        <div className="overflow-x-auto" tabIndex={0} role="group" aria-label="Audit rows, scrollable">
-          <table className="desk-table" aria-label="Audit rows">
-            <thead><tr><th scope="col">Time (IST)</th><th scope="col">Source</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Target</th><th scope="col">Outcome</th><th scope="col">Detail</th></tr></thead>
-            <tbody>
-              {shown.slice(0, 500).map((r: AuditRow) => (
-                <React.Fragment key={r.id}>
-                  <tr>
-                    <td>{r.ts ? formatIst(r.ts, 'datetime') : ''}</td><td>{r.source}</td><td>{r.actor}</td><td>{r.action}</td><td>{r.target}</td>
-                    <td><span className={`desk-pill ${tone(r.outcome)}`}>{r.outcome}</span></td>
-                    <td>
-                      {r.before !== undefined
-                        ? <button type="button" className="desk-btn" aria-expanded={open === r.id} onClick={() => setOpen(open === r.id ? null : r.id)}>{r.detail}</button>
-                        : <span title={r.detail}>{r.detail}</span>}
-                    </td>
-                  </tr>
-                  {open === r.id && r.before !== undefined && (
-                    <tr><td colSpan={7}><dl className="text-xs grid grid-cols-[auto_1fr] gap-x-2"><dt className="desk-muted">Before</dt><dd className="desk-num">{r.before || '(empty)'}</dd><dt className="desk-muted">After</dt><dd className="desk-num">{r.after || '(empty)'}</dd></dl></td></tr>
-                  )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable table={table} label="Audit rows" rowKey={(r) => r.id}
+          renderCell={(r, c) => {
+            switch (c.key) {
+              case 'ts': return r.ts ? formatIst(r.ts, 'datetime') : '';
+              case 'outcome': return <span className={`desk-pill ${tone(r.outcome)}`}>{r.outcome}</span>;
+              case 'detail': return r.before !== undefined
+                ? <button type="button" className="desk-btn" aria-expanded={open === r.id} onClick={() => setOpen(open === r.id ? null : r.id)}>{r.detail}</button>
+                : <span title={r.detail}>{r.detail}</span>;
+              default: return String((r as unknown as Record<string, unknown>)[c.key] ?? '');
+            }
+          }}
+          renderDetail={(r) => open === r.id && r.before !== undefined
+            ? <tr><td colSpan={table.columns.length}><dl className="text-xs grid grid-cols-[auto_1fr] gap-x-2"><dt className="desk-muted">Before</dt><dd className="desk-num">{r.before || '(empty)'}</dd><dt className="desk-muted">After</dt><dd className="desk-num">{r.after || '(empty)'}</dd></dl></td></tr>
+            : null} />
       )}
     </PanelFrame>
   );

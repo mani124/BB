@@ -32,6 +32,7 @@ import { pollNow } from '../data/pollers';
 import { refreshPortfolio } from '../data/actions';
 import { PANELS } from '../panels/registry';
 import { Search } from 'lucide-react';
+import { useAnnouncements } from '../features/alerts/announce';
 import { AlertsBadge } from '../features/alerts/AlertsBadge';
 import { ModeBanner } from './ModeBanner';
 import { StatusBar } from './StatusBar';
@@ -64,6 +65,7 @@ const Content: React.FC = () => {
   const [capError, setCapError] = useState<string | null>(null);
   const [capOk, setCapOk] = useState(false);
   useDhanAutoReconnect();
+  useAnnouncements(setAnnouncement);
   const layouts = useLayouts();
   const desktop = useDesktopMedia();
   const commandsRef = useRef<DockCommands>(NOOP_COMMANDS);

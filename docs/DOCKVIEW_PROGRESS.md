@@ -30,6 +30,7 @@ Read this first when resuming. Spec: `docs/superpowers/specs/2026-10-22-institut
 
 ## Test results (latest)
 - Phase 5: Vitest 467, tsc errors 14 (baseline), pytest 879, e2e 40 pass (hermetic throwaway journal), main chunk 151.27 kB gzip, DockApp lazy chunk 124.86 kB gzip.
+- Phase 6: Vitest 499, tsc errors 14, e2e 45 pass, main 151.28 kB gzip, DockApp 128.19 kB gzip.
 
 ## Test results (Phase 3)
 - Vitest 369 pass; tsc errors 14 (baseline, no new); build ok (main chunk 151.22 kB gzip, DockApp lazy chunk 120.05 kB gzip + 10.78 kB css); pytest 821 pass (backend untouched); e2e 31 pass (with env vars above; 4 new dock specs: layout, keyboard, popout, workspaces, mobile).
@@ -63,3 +64,6 @@ None.
 - Phase 5 known gap: `exposure` concentration banner needs at least two rows in a group (one row is always 100 %).
 
 - Phase 6.1: command palette (Ctrl+K) with panels, workspaces, layout actions, symbols, danger commands (kill switch, close all with typed phrase, reset portfolio) that only open confirmations; e2e `palette.spec.ts`. On mobile the palette omits dock/workspace entries.
+- Phase 6.2: shared `panels/DataTable.tsx` (sort, column chooser, CSV, arrow/Enter rows, `@tanstack/react-virtual` 3.10.8 windowing above 150 rows, spacer rows, aria-rowcount) now used by positions-table, orders, attribution and audit. Deviation: `signals` stays a card list and `trades` keeps the existing `TradesScreen` (master-detail with its own list), so they were not converted; both already support keyboard selection and the linked filter.
+- Phase 6.3: `features/alerts/announce.ts` feeds the live region (new confirmed signals, kill switch, loss cap) ported from legacy; density toggle persistence and reduced motion (e2e `dock_motion.spec.ts`) tested.
+- Phase 6 results: Vitest 499, tsc 14 (baseline), e2e 45 pass, main chunk 151.28 kB gzip, DockApp chunk 128.19 kB gzip.
