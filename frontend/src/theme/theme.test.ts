@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import indexCss from '../index.css?raw';
-import tokensCss from './tokens.css?raw';
-import dockCss from './dockview-theme.css?raw';
+
+// Vitest does not return CSS text for ?raw imports, and the project has no Node typings: read the files at run time.
+const fs = await import(/* @vite-ignore */ 'node:' + 'fs');
+const proc = (globalThis as unknown as { process: { cwd(): string } }).process;
+const read = (f: string): string => fs.readFileSync(`${proc.cwd()}/src/${f}`, 'utf8');
+const indexCss = read('index.css');
+const tokensCss = read('theme/tokens.css');
+const dockCss = read('theme/dockview-theme.css');
 import { contrast } from '../lib/contrast';
 
 const css = `${indexCss}\n${tokensCss}`;
