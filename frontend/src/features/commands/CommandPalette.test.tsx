@@ -39,9 +39,11 @@ describe('CommandPalette', () => {
     render(<CommandPalette commands={make()} ctx={ctx} onClose={() => {}} />);
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'trades' } });
     expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.getByRole('status')).toHaveTextContent('1 result');
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'qqqq' } });
     expect(screen.queryAllByRole('option')).toHaveLength(0);
-    expect(screen.getByRole('status')).toHaveTextContent('No command matches');
+    expect(screen.getByRole('status')).toHaveTextContent('No results');
+    expect(screen.getByText(/No command matches/)).toBeTruthy();
     expect(screen.getByRole('combobox')).not.toHaveAttribute('aria-activedescendant');
   });
   it('Enter closes the palette and then runs the command', () => {

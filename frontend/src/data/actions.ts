@@ -17,6 +17,12 @@ const setFlight = (key: string, on: boolean) => {
   if (on) keys[key] = true; else delete keys[key];
   inflight.setState({ keys });
 };
+/** Counts finished mutating requests, so panels that list their audit trail can refetch. */
+const epoch = createStore<{ n: number }>({ n: 0 });
+export function useActionEpoch(): number {
+  const get = () => epoch.getState().n;
+  return useSyncExternalStore(epoch.subscribe, get, get);
+}
 export const isInFlight = (key: string): boolean => Boolean(inflight.getState().keys[key]);
 export function useInFlight(key: string): boolean {
   const get = () => Boolean(inflight.getState().keys[key]);
@@ -105,6 +111,7 @@ async function runInner(o: RunOptions): Promise<ActionResult & { body?: Record<s
   } finally {
     clearTimeout(timer);
     setFlight(o.key, false);
+    epoch.setState({ n: epoch.getState().n + 1 });
   }
 }
 

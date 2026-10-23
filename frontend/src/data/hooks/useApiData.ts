@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../api/client';
 import { appStore, useApp } from '../appStore';
+import { useActionEpoch } from '../actions';
 
 export type Query = Record<string, string | number | boolean | null | undefined>;
 
@@ -24,10 +25,12 @@ export interface ApiData<T> {
  * GET a JSON endpoint, refetch on a timer, when the closed-trade count changes and when `path` changes.
  * The last good data stays on screen under an error. Pass null to skip.
  */
-export function useApiData<T>(path: string | null, opts: { refreshMs?: number; watchTrades?: boolean } = {}): ApiData<T> {
-  const { refreshMs = 120_000, watchTrades = false } = opts;
+export function useApiData<T>(path: string | null, opts: { refreshMs?: number; watchTrades?: boolean; watchActions?: boolean } = {}): ApiData<T> {
+  const { refreshMs = 120_000, watchTrades = false, watchActions = false } = opts;
   const [state, setState] = useState<{ data: T | null; error: string | null; loading: boolean; fetchedAt: number | null }>({ data: null, error: null, loading: path !== null, fetchedAt: null });
   const seq = useRef(0);
+  const actionEpoch = useActionEpoch();
+  const actionTick = watchActions ? actionEpoch : 0;
   const tradeCount = useApp((s) => (watchTrades ? s.scanner.paper_portfolio?.total_trades_count ?? s.closedTrades.length : 0));
 
   const run = useCallback(async () => {
@@ -56,7 +59,7 @@ export function useApiData<T>(path: string | null, opts: { refreshMs?: number; w
     void run();
     const id = refreshMs > 0 ? setInterval(() => { if (!document.hidden) void run(); }, refreshMs) : null;
     return () => { seq.current++; if (id) clearInterval(id); };
-  }, [path, refreshMs, run, tradeCount]);
+  }, [path, refreshMs, run, tradeCount, actionTick]);
 
   return { ...state, reload: () => { void run(); } };
 }
