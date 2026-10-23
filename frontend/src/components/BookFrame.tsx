@@ -66,7 +66,7 @@ export const BookFrame: React.FC<Props> = ({ idPrefix, title, titleId, pills = [
         </div>}
       </section>
       <Tabs<string> idPrefix={idPrefix} label={`${title} sections`} className="desk-subtabs shrink-0" tabClassName="desk-subtab" value={active} onChange={setActive}
-        items={tabs.map((t) => ({ id: t.id, name: t.label, label: <>{t.label}{t.count != null && <span className="desk-pill desk-num ml-1">{t.count}</span>}</> }))} />
+        items={tabs.map((t) => ({ id: t.id, name: t.count != null ? `${t.label} ${t.count}` : t.label, label: <>{t.label}{t.count != null && ' '}{t.count != null && <span className="desk-pill desk-num ml-1">{t.count}</span>}</> }))} />
       <div id={`${idPrefix}-panel`} role="tabpanel" aria-labelledby={`${idPrefix}-tab-${current.id}`} className="flex flex-col gap-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto pb-3">
         {current.content}
       </div>

@@ -13,13 +13,15 @@ Read this first when resuming. Spec: `docs/superpowers/specs/2026-10-22-institut
 | 1 Foundations | done (tasks 1.1-1.9) | #83 |
 | 2 Panel parity | done (tasks 2.1-2.9) | #84 |
 | 3 Dock host, layouts, keyboard, mobile | done (3.1-3.7) | PR pending |
-| 4 Backend additions | not started | |
-| 5 New panels | not started | |
+| 4 Backend additions | done (4.1-4.5) | #86 |
+| 5 New panels | done (5.1-5.11) | PR pending |
 | 6 Palette and polish | not started | |
 | 7 Hardening and parity proof (7.1-7.5) | not started | |
 | 7.6 Cutover, 7.7 Cleanup | waiting for owner | |
 
 ## Tasks done
+- 5.1-5.11: 14 new panels (risk, exposure, perf-summary, equity, attribution, distributions, execution, orders, audit, readiness, recorder, universe, health, alerts), alerts engine (`features/alerts`: 13 pure rules, store, engine, badge), `PanelErrorBoundary`, all seven presets now drop nothing, e2e over every workspace with axe.
+- 4.1-4.5: `ui_store` + `/api/ui/layouts` (snapshots, limits), `action_audit` + middleware + `/api/audit/actions`, `analytics` service + `/api/analytics/*` (equity, attribution, distribution, execution, risk), docs `DASHBOARD_API_ADDITIONS.md`, VM README note.
 - 3.1-3.7: `features/layouts` (layoutModel, presets, layoutApi, useLayouts), `shell/dockHost.tsx` (only Dockview import), `WorkspaceSwitcher` with layout menu, `features/shortcuts.ts`, `commands/{dockCommands,ShortcutHelp}`, floating and pop-out with fallbacks and re-open banner, `MobileShell` (below 1024 px).
 - 2.1-2.9: 16 panels (signals, focus, positions, positions-table, chart, market, trades, session, journal + End-of-day report, earnings, settings, live, controls, telemetry, costs, setup-stats), `panels/definitions.ts`, `panels/parity.test.ts`, toasts, `actions.request`, confirm adapters for legacy components.
 - 1.1 tokens/density/dockview theme + contrast tests; 1.2 store core; 1.3 appStore + SSE stream; 1.4 pollers; 1.5 actions + auth + confirm; 1.6 selection; 1.7 lib (time, numbers, csv, useTable); 1.8 PanelFrame + registry; 1.9 shell flag, Chrome, StatusBar, ModeBanner, kill switch (DhanConnectDialog extracted from Header).
@@ -27,6 +29,10 @@ Read this first when resuming. Spec: `docs/superpowers/specs/2026-10-22-institut
 - 0.2 Spike: dockview-react 8.6.1 MIT; pop-out and serialisation work; decisions D1-D6 in notes.
 
 ## Test results (latest)
+- Phase 5: Vitest 467, tsc errors 14 (baseline), pytest 879, e2e 40 pass (hermetic throwaway journal), main chunk 151.27 kB gzip, DockApp lazy chunk 124.86 kB gzip.
+- Phase 6: Vitest 499, tsc errors 14, e2e 45 pass, main 151.28 kB gzip, DockApp 128.19 kB gzip.
+
+## Test results (Phase 3)
 - Vitest 369 pass; tsc errors 14 (baseline, no new); build ok (main chunk 151.22 kB gzip, DockApp lazy chunk 120.05 kB gzip + 10.78 kB css); pytest 821 pass (backend untouched); e2e 31 pass (with env vars above; 4 new dock specs: layout, keyboard, popout, workspaces, mobile).
 
 ## Blocked
@@ -46,3 +52,26 @@ None.
 - Phase 3: group focus order is geometric (top then left) because spatial navigation is not in the free edition; Split needs a group with 2+ panels (toast otherwise); floating groups hold one panel (a multi-panel float is reduced to its first panel when saved); pop-outs restore as floating panels with a "Re-open pop-outs" banner.
 - Phase 3: command palette (Ctrl+K) and the alerts warning "Saved layout was invalid; default restored" are visible only after Phases 5 and 6; the warning is already pushed through `alertsHook`. Keyboard e2e covers focus group, move, maximise/restore, close, float/dock via the panel menu; reopen-from-palette is added with the palette in Phase 6.
 - Phase 3: Dockview group and our PanelFrame both expose `role=region` with the panel name (axe passes at serious/critical); revisit in the Phase 7 a11y pass.
+
+- Phase 4: analytics reads the raw portfolio lists (`paper_trader._portfolio`) so quarantined rows can be counted; book `paper` follows the server's feed mode, `all` is unfiltered.
+
+- Phase 5: `analytics/attribution` gained an `overall` bucket (whole selection) so perf-summary can show profit factor and expectancy; distribution `bins` accepts 1 to 60 (the panel clamps 1 to 50).
+- Phase 5: server layouts cannot delete a built-in workspace, so Reset workspace now saves the default over it (the old copy stays in the snapshots).
+- Phase 5: alerts are persisted whole (with their acknowledged flag) under `bb_alerts`, not only the acknowledged ids; identical unacknowledged alerts inside 30 s are merged. Browser notifications are off by default; sound is not built. New error events raise an alert only for ERROR and CRITICAL.
+- Phase 5: `ui.dhan` mirrors the Dhan session in the store so the alert rules stay pure.
+- Phase 5: Playwright now starts the backend on a throwaway journal (`BB_DB_PATH=/tmp/bb-e2e/trades.db`), because layouts and the kill switch live on the server; `resetServerLayouts` restores the presets between dock specs.
+- Phase 5: axe fixes found by the all-workspace spec: focusable scroll regions in `PanelFrame`, session timeline button names, earnings sub-tab names, trade detail region, and Dockview's invalid `aria-level="0"` on floating groups is removed by the host.
+- Phase 5 known gap: `exposure` concentration banner needs at least two rows in a group (one row is always 100 %).
+
+- Phase 6.1: command palette (Ctrl+K) with panels, workspaces, layout actions, symbols, danger commands (kill switch, close all with typed phrase, reset portfolio) that only open confirmations; e2e `palette.spec.ts`. On mobile the palette omits dock/workspace entries.
+- Phase 6.2: shared `panels/DataTable.tsx` (sort, column chooser, CSV, arrow/Enter rows, `@tanstack/react-virtual` 3.10.8 windowing above 150 rows, spacer rows, aria-rowcount) now used by positions-table, orders, attribution and audit. Deviation: `signals` stays a card list and `trades` keeps the existing `TradesScreen` (master-detail with its own list), so they were not converted; both already support keyboard selection and the linked filter.
+- Phase 6.3: `features/alerts/announce.ts` feeds the live region (new confirmed signals, kill switch, loss cap) ported from legacy; density toggle persistence and reduced motion (e2e `dock_motion.spec.ts`) tested.
+- Phase 6 results: Vitest 499, tsc 14 (baseline), e2e 45 pass, main chunk 151.28 kB gzip, DockApp chunk 128.19 kB gzip.
+
+## Phase 7 (hardening and sign-off)
+- 7.1 `a11y_dock.spec.ts`: axe with colour contrast, 7 workspaces, light and dark, 0 serious/critical; `docs/A11Y_CHECKLIST.md`; palette announces result count.
+- 7.2 `scripts/check-bundle.mjs` + `npm run check:bundle` (initial 147.7 kB gzip, dock 273.0 kB); `perf.spec.ts` (300 signals, 200 trades, 10 ticks/s, 60 s: 0 long tasks, heap +0.9 MB).
+- 7.3 `dock_flows.spec.ts` (401 dialog, kill switch typed phrase and failed list, close then audit row, silent stream goes stale, layout across two browser contexts, legacy flag). Found and fixed: audit panel did not refetch after an action (`useApiData` `watchActions`). Close and kill-switch calls are mocked at the route level; real audit rows are covered by backend `test_action_audit.py`.
+- 7.4 screenshots in `docs/screenshots/institutional/` (regenerate with `SCREENSHOTS=1`), gallery in `DOCKVIEW_NOTES.md`.
+- 7.5 `docs/DOCKVIEW_PARITY.md`; added tests for Dhan auto-reconnect and Dhan connect dialog (`shell/dhan.test.tsx`), hook moved to `shell/useDhanAutoReconnect.ts`.
+- Final: Vitest 507, tsc 14, pytest 879, Playwright 66 pass. 7.6 and 7.7 waiting for owner.

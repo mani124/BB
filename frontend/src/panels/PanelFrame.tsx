@@ -83,7 +83,7 @@ export const PanelFrame: React.FC<PanelFrameProps> = ({ title, sources, actions,
           <button type="button" className="desk-btn ml-auto" onClick={onRetry ?? pollNow}><RefreshCw className="h-3 w-3" aria-hidden /> Retry</button>
         </div>
       )}
-      <div className="flex-1 min-h-0 overflow-auto" data-frozen-content={frozen ? 'true' : undefined}>{children}</div>
+      <div className="flex-1 min-h-0 overflow-auto" role="group" aria-label={`${title} content`} tabIndex={0} data-frozen-content={frozen ? 'true' : undefined}>{children}</div>
     </section>
   );
 };
