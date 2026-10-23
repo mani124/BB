@@ -55,6 +55,12 @@ def test_attribution_low_sample_boundary_and_cost_drag():
     assert by["Setup 1"]["cost_drag_pct"] is not None
 
 
+def test_attribution_has_an_overall_bucket():
+    r = analytics.attribution_report([T("a", 100), T("b", -40, setup="Setup 2")], [], "setup")
+    assert r["overall"]["trades"] == 2 and r["overall"]["net_pnl"] == 60 and r["overall"]["low_sample"] is True
+    assert analytics.attribution_report([], [], "setup")["overall"] == {"trades": 0, "low_sample": True}
+
+
 def test_zero_gross_has_no_cost_drag():
     t = T("z", net=-10.0, gross_pnl=0.0, pnl_rupees=0.0, total_charges=10.0)
     r = analytics.attribution_report([t], [], "setup")
@@ -141,7 +147,9 @@ def test_api_validation():
     assert client.get("/api/analytics/attribution?group=bogus").status_code == 422
     assert client.get("/api/analytics/equity?from=2026-10-20&to=2026-10-19").status_code == 422
     assert client.get("/api/analytics/equity?side=XX").status_code == 422
-    assert client.get("/api/analytics/distribution?bins=2").status_code == 422
+    assert client.get("/api/analytics/distribution?bins=0").status_code == 422
+    assert client.get("/api/analytics/distribution?bins=61").status_code == 422
+    assert client.get("/api/analytics/distribution?bins=1").status_code == 200
     assert client.get("/api/analytics/equity?book=all").json()["points"] is not None
 
 

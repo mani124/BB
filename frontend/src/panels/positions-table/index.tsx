@@ -7,6 +7,7 @@ import { istToday } from '../../lib/time';
 import { useTable, type ColumnDef } from '../../lib/useTable';
 import type { PaperPosition } from '../../types';
 import { PanelFrame } from '../PanelFrame';
+import { ColumnChooser, ColumnsButton, DataTable } from '../DataTable';
 import { useConfirmedClose } from '../hooks';
 import type { PanelProps } from '../registry';
 
@@ -53,41 +54,14 @@ const PositionsTablePanel: React.FC<PanelProps> = () => {
 
   return (
     <PanelFrame title="Positions blotter" sources={['portfolio']} exportCsv={table.exportCsv}
-      actions={<button type="button" className="desk-btn" aria-expanded={chooser} onClick={() => setChooser((v) => !v)}>Columns</button>}>
-      {chooser && (
-        <fieldset className="px-2 py-1 flex flex-wrap gap-3 text-xs" style={{ borderBottom: '1px solid var(--line)' }}>
-          <legend className="sr-only">Visible columns</legend>
-          {table.allColumns.map((c) => (
-            <label key={c.key} className="flex items-center gap-1"><input type="checkbox" checked={!table.hiddenKeys.has(c.key)} onChange={() => table.toggleColumn(c.key)} />{c.label}</label>
-          ))}
-        </fieldset>
-      )}
+      actions={<ColumnsButton open={chooser} onToggle={() => setChooser((v) => !v)} />}>
+      {chooser && <ColumnChooser table={table} />}
       {!portfolio ? <div className="p-4 text-sm desk-muted" role="status">Loading portfolio…</div>
         : positions.length === 0 ? <div className="p-6 text-center text-sm desk-muted">No open paper positions.</div>
         : (
-          <div className="overflow-x-auto" tabIndex={0} onKeyDown={table.onKeyDown} aria-label="Open positions table, use arrow keys to move and Enter to select">
-            <table className="desk-table" aria-label="Open positions">
-              <thead><tr>
-                {table.columns.map((c) => (
-                  <th key={c.key} scope="col" className={numeric.has(c.key) ? 'r' : undefined} aria-sort={table.sort?.key === c.key ? (table.sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                    <button type="button" className="font-semibold" onClick={() => table.setSort(c.key)}>{c.label}{table.sort?.key === c.key ? (table.sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}</button>
-                  </th>
-                ))}
-                <th scope="col"><span className="sr-only">Actions</span></th>
-              </tr></thead>
-              <tbody>
-                {table.visibleRows.map((p, i) => (
-                  <tr key={p.id} data-active={i === table.activeIndex || undefined} aria-selected={selection?.kind === 'position' && selection.id === p.id}
-                    className={`cursor-pointer ${selection?.kind === 'position' && selection.id === p.id ? 'desk-selected' : ''}`}
-                    style={i === table.activeIndex ? { outline: '1px dashed var(--accent)', outlineOffset: -1 } : undefined}
-                    onClick={() => { table.setActiveIndex(i); select({ kind: 'position', id: p.id }); }}>
-                    {table.columns.map((c) => <td key={c.key} className={numeric.has(c.key) ? 'r desk-num' : undefined}>{cell(p, c.key)}</td>)}
-                    <td className="r"><button type="button" className="desk-btn sm danger" aria-label={`Close ${p.strike_symbol} from table`} onClick={(e) => { e.stopPropagation(); void close(p.id); }}>Close</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable table={table} label="Open positions" numeric={numeric} rowKey={(p) => p.id} renderCell={(p, c) => cell(p, c.key)}
+            isSelected={(p) => selection?.kind === 'position' && selection.id === p.id} onRowClick={(p) => select({ kind: 'position', id: p.id })}
+            trailing={{ header: 'Actions', render: (p) => <button type="button" className="desk-btn sm danger" aria-label={`Close ${p.strike_symbol} from table`} onClick={(e) => { e.stopPropagation(); void close(p.id); }}>Close</button> }} />
         )}
     </PanelFrame>
   );

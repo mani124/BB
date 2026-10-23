@@ -7,6 +7,7 @@ import { pushToast } from '../data/toasts';
 import { fromDockviewJson, toDockviewJson, validateLayout, type LayoutSpec } from '../features/layouts/layoutModel';
 import { DEFINITIONS } from '../panels/definitions';
 import { PanelCommandsContext } from '../panels/PanelCommands';
+import { PanelErrorBoundary } from '../panels/PanelErrorBoundary';
 import { PanelMenuContext, type PanelMenuItem } from '../panels/PanelFrame';
 import { baseId } from '../features/layouts/layoutModel';
 import type { DockCommands } from '../features/commands/dockCommands';
@@ -47,9 +48,9 @@ const PanelHost: React.FC<IDockviewPanelProps> = ({ api, params, containerApi })
   void containerApi;
   return (
     <PanelMenuContext.Provider value={menu}>
-      <Suspense fallback={<Loading />}>
+      <PanelErrorBoundary panel={def.id}><Suspense fallback={<Loading />}>
         <Component id={api.id} params={current} setParams={setParams} api={{ id: api.id, setTitle: (t) => api.setTitle(t), close: () => api.close(), setActive: () => api.setActive() }} />
-      </Suspense>
+      </Suspense></PanelErrorBoundary>
     </PanelMenuContext.Provider>
   );
 };
@@ -224,6 +225,18 @@ export const DockHost: React.FC<DockHostProps> = ({ layout, onLayoutChange, comm
 
   useEffect(() => () => { if (kickTimer.current) clearTimeout(kickTimer.current); }, []);
 
+  const hostEl = useRef<HTMLDivElement>(null);
+  // Dockview puts aria-level="0" on floating-group dialogs, which is not a valid value. Drop it so assistive tools do not trip on it.
+  useEffect(() => {
+    const el = hostEl.current;
+    if (!el) return undefined;
+    const clean = () => el.querySelectorAll('.dv-resize-container[aria-level]').forEach((n) => n.removeAttribute('aria-level'));
+    clean();
+    const mo = new MutationObserver(clean);
+    mo.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-level'] });
+    return () => mo.disconnect();
+  }, []);
+
   const reopenPopouts = () => {
     const a = apiRef.current;
     if (!a) return;
@@ -243,7 +256,7 @@ export const DockHost: React.FC<DockHostProps> = ({ layout, onLayoutChange, comm
             <button type="button" className="desk-btn sm" onClick={reopenPopouts}>Re-open pop-outs</button>
           </div>
         )}
-        <div data-theme-mode={theme} style={{ height: '100%', width: '100%' }} data-testid="dock-host">
+        <div ref={hostEl} data-theme-mode={theme} style={{ height: '100%', width: '100%' }} data-testid="dock-host">
           <DockviewReact theme={dockTheme} components={COMPONENTS} defaultTabComponent={TabTitle} watermarkComponent={Watermark}
             rightHeaderActionsComponent={HeaderActions} onReady={onReady} />
         </div>

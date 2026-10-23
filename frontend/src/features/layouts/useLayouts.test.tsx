@@ -71,13 +71,14 @@ describe('useLayouts', () => {
     expect(result.current.saveAs('Mine')).toMatch(/already exists/);
   });
 
-  it('reset of a workspace deletes the saved layout and rebuilds the dock', async () => {
+  it('reset of a workspace saves the default over it (the server cannot delete built-ins) and rebuilds the dock', async () => {
     const { result } = await setup();
     const rev = result.current.revision;
     act(() => result.current.onChange({ ...PRESETS.Trading, based_on: 'changed' }));
     expect(result.current.spec.based_on).toBe('changed');
     act(() => result.current.reset());
-    expect(api.deleteLayout).toHaveBeenCalledWith('Trading');
+    expect(api.deleteLayout).not.toHaveBeenCalledWith('Trading');
+    expect(api.saveLayout).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'Trading' }));
     expect(result.current.spec.based_on).toBeUndefined();
     expect(result.current.revision).toBeGreaterThan(rev);
   });
@@ -149,9 +150,10 @@ describe('WorkspaceSwitcher', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Layout/ }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Reset workspace' }));
     const dlg = await screen.findByRole('dialog');
-    expect(api.deleteLayout).not.toHaveBeenCalled();
+    expect(api.saveLayout).not.toHaveBeenCalled();
     fireEvent.click(within(dlg).getByRole('button', { name: 'Reset workspace' }));
-    await waitFor(() => expect(api.deleteLayout).toHaveBeenCalledWith('Trading'));
+    await waitFor(() => expect(api.saveLayout).toHaveBeenCalledWith(expect.objectContaining({ name: 'Trading' })));
+    expect(api.deleteLayout).not.toHaveBeenCalled();
   });
 
   it('save layout as validates the name inline', async () => {

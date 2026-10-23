@@ -7,13 +7,13 @@ const ok = (r: ReturnType<typeof validateLayout>) => { if (!r.ok) throw new Erro
 
 describe('presets', () => {
   it('has the seven workspaces', () => { expect(Object.keys(PRESETS).sort()).toEqual([...WORKSPACE_NAMES].sort()); });
-  it('every preset validates and only drops panels that are planned for later phases', () => {
-    const planned = new Set(PLANNED_PANEL_IDS);
+  it('every preset validates and drops nothing: all panels are registered', () => {
+    expect(PLANNED_PANEL_IDS).toEqual([]);
     const registered = new Set(PANELS.map((d) => d.id));
     for (const name of WORKSPACE_NAMES) {
       const r = ok(validateLayout(PRESETS[name]));
-      for (const d of r.dropped) expect(planned.has(d.split('#')[0]) && !registered.has(d.split('#')[0]), `${name}: ${d}`).toBe(true);
-      for (const id of allPanelIds(PRESETS[name])) expect(registered.has(id.split('#')[0]) || planned.has(id.split('#')[0]), `${name}: ${id}`).toBe(true);
+      expect(r.dropped, name).toEqual([]);
+      for (const id of allPanelIds(PRESETS[name])) expect(registered.has(id.split('#')[0]), `${name}: ${id}`).toBe(true);
     }
   });
   it('Trading starts with signals, focus, positions-table and positions', () => {

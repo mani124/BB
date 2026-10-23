@@ -100,9 +100,9 @@ export function useLayouts(): UseLayouts {
     switchTo: select,
     onChange,
     reset() {
+      // The server refuses to delete a built-in workspace, so a reset saves the default over it (the old one stays in the snapshots).
       if (isWorkspaceName(current)) {
-        void deleteLayout(current);
-        setLayouts((l) => { const c = { ...l }; delete c[layoutKey(current)]; return c; });
+        store(structuredClone(PRESETS[current]));
       } else {
         const base = spec.based_on && isWorkspaceName(spec.based_on) ? PRESETS[spec.based_on] : PRESETS.Trading;
         store({ ...structuredClone(base), name: current, based_on: base.name });

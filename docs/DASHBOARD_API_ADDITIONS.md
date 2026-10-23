@@ -13,7 +13,7 @@ All additions are new files plus one middleware registration and three router re
 | `POST /api/ui/layouts/{name}/restore/{id}` | Return a snapshot body; the replaced state is kept as a new snapshot. |
 | `GET /api/audit/actions` | Recent operator actions (filters: `limit`, `action`, `outcome`, `since`). |
 | `GET /api/analytics/equity` | Equity curve, daily P&L, drawdown episodes. |
-| `GET /api/analytics/attribution?group=` | P&L by `setup`, `symbol`, `side`, `hour`, `weekday` or `exit_reason`, with cost drag and a low-sample flag (< 20 trades). |
+| `GET /api/analytics/attribution?group=` | P&L by `setup`, `symbol`, `side`, `hour`, `weekday` or `exit_reason`, with cost drag and a low-sample flag (< 20 trades), plus an `overall` bucket for the whole selection. |
 | `GET /api/analytics/distribution` | P&L, R and hold-time histograms, MFE/MAE points. |
 | `GET /api/analytics/execution` | Slippage, spread, liquidity quartiles, charge breakdown, and a `not_recorded` list for fields the data does not have. |
 | `GET /api/analytics/risk` | Open risk (entry minus stop times quantity) by underlying, side, pool and setup. |

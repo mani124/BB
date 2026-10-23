@@ -39,7 +39,7 @@ async def attribution(from_: Optional[str] = Query(None, alias="from"), to: Opti
 @router.get("/distribution")
 async def distribution(from_: Optional[str] = Query(None, alias="from"), to: Optional[str] = None,
                        book: str = Query("paper", pattern="^(paper|all)$"), setup: Optional[str] = None,
-                       side: Optional[str] = Query(None, pattern="^(CE|PE)$"), bins: int = Query(20, ge=5, le=60)) -> dict:
+                       side: Optional[str] = Query(None, pattern="^(CE|PE)$"), bins: int = Query(20, ge=1, le=60)) -> dict:
     trades, excluded = _selected(from_, to, book, setup, side)
     return analytics.distribution_report(trades, paper_trader.telemetry.excursions(hours=24 * 365, limit=5000), bins, excluded)
 

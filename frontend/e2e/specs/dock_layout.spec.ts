@@ -1,10 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { DashboardPage } from '../pages/DashboardPage';
 import { getDashboardKey } from '../fixtures/auth.fixture';
+import { resetServerLayouts } from '../fixtures/layouts';
 
 test.describe('Dock layout', () => {
   test.beforeEach(async ({ page }) => {
     await new DashboardPage(page).injectAuthKey(getDashboardKey());
+    await resetServerLayouts(page, getDashboardKey());
     await page.addInitScript(() => { try { if (!sessionStorage.getItem('e2e_cleared')) { localStorage.removeItem('bb_layouts'); localStorage.removeItem('bb_workspace'); sessionStorage.setItem('e2e_cleared', '1'); } } catch { /* none */ } });
   });
 
