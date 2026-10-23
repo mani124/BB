@@ -10,9 +10,11 @@ interface Props {
   onClosePaper: (sourceId: string) => Promise<void>;
   onRefresh: () => void | Promise<void>;
   initialTradeId?: string | null;
+  /** Dock shell passes the accessible dialog; the legacy shell keeps window.confirm. */
+  confirmFn?: (message: string) => boolean | Promise<boolean>;
 }
 
-export const TradesScreen: React.FC<Props> = ({ trades, loadDetail, loadChart, onClosePaper, onRefresh, initialTradeId }) => {
+export const TradesScreen: React.FC<Props> = ({ trades, loadDetail, loadChart, onClosePaper, onRefresh, initialTradeId, confirmFn = (m) => window.confirm(m) }) => {
   const [query, setQuery] = useState('');
   const [book, setBook] = useState<'all' | DashboardBook>('all');
   const [status, setStatus] = useState<'all' | 'OPEN' | 'CLOSED'>('all');
@@ -50,7 +52,7 @@ export const TradesScreen: React.FC<Props> = ({ trades, loadDetail, loadChart, o
 
   const closeSelected = async () => {
     if (!selected || selected.book !== 'paper') return;
-    if (!window.confirm(`Close ${selected.instrument} in ${selected.display_book}? This exits the position now.`)) return;
+    if (!(await confirmFn(`Close ${selected.instrument} in ${selected.display_book}? This exits the position now.`))) return;
     setClosing(true);
     setActionError(null);
     try {
@@ -81,7 +83,7 @@ export const TradesScreen: React.FC<Props> = ({ trades, loadDetail, loadChart, o
         <section className={`desk-panel overflow-hidden lg:overflow-y-auto ${phoneDetailOpen ? 'hidden lg:block' : ''}`} aria-label="Trade queue">
           <TradeQueue trades={filtered} selectedId={selected?.id ?? null} onSelect={(id) => { setSelectedId(id); setPhoneDetailOpen(true); }} />
         </section>
-        <div className={`lg:overflow-y-auto lg:pr-1 ${phoneDetailOpen ? '' : 'hidden lg:block'}`}>
+        <div className={`lg:overflow-y-auto lg:pr-1 ${phoneDetailOpen ? '' : 'hidden lg:block'}`} tabIndex={0} role="group" aria-label="Trade detail">
           <button type="button" className="desk-btn mb-3 lg:hidden" aria-label="Back to trades" onClick={() => setPhoneDetailOpen(false)}>← Back to trades</button>
           {selected ? <TradeDetail trade={selected} detail={detail} chart={chart} loading={loading} onClose={closeSelected} closing={closing} actionError={actionError} />
             : <section className="desk-panel p-5 desk-muted">Select a trade or adjust the filters.</section>}

@@ -8,7 +8,11 @@ type Draft = string | boolean;
 
 const asDraft = (s: RuntimeSetting): Draft => (s.type === 'bool' ? Boolean(s.value) : String(s.value));
 
-export const SettingsPanel: React.FC<{ initial?: RuntimeSettingsPayload; initialAudit?: SettingAuditRow[] }> = ({ initial, initialAudit }) => {
+export const RISK_GROUPS = ['Risk limits (RMS)', 'Entry quality guards', 'Position sizing', 'Live broker routing'];
+
+export const SettingsPanel: React.FC<{ initial?: RuntimeSettingsPayload; initialAudit?: SettingAuditRow[];
+  /** Dock shell: called with risk-group changes (label, old, new) before saving; returning false cancels. */
+  confirmRiskChanges?: (changes: { label: string; from: string; to: string }[]) => boolean | Promise<boolean> }> = ({ initial, initialAudit, confirmRiskChanges }) => {
   const [data, setData] = useState<RuntimeSettingsPayload | null>(initial ?? null);
   const [audit, setAudit] = useState<SettingAuditRow[]>(initialAudit ?? []);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -43,6 +47,10 @@ export const SettingsPanel: React.FC<{ initial?: RuntimeSettingsPayload; initial
       if (!dirty(s)) continue;
       const d = drafts[s.key];
       changes[s.key] = s.type === 'int' || s.type === 'float' ? Number(d) : d;
+    }
+    if (confirmRiskChanges) {
+      const risky = data.settings.filter((s) => dirty(s) && RISK_GROUPS.includes(s.group)).map((s) => ({ label: s.label, from: String(s.value), to: String(drafts[s.key]) }));
+      if (risky.length > 0 && !(await confirmRiskChanges(risky))) return;
     }
     setBusy(true);
     setError(null);

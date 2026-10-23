@@ -29,16 +29,30 @@ interface Props {
   selectedCandidateId: string | null;
   onSelectCandidate: (id: string) => void;
   wsConnected: boolean;
+  /** Optional controlled view state (the dock panel persists it with the layout). */
+  view?: Partial<SignalsView>;
+  onViewChange?: (patch: Partial<SignalsView>) => void;
+}
+
+export interface SignalsView {
+  mode: 'signals' | 'watching';
+  sortBy: 'newest' | 'symbol' | 'setup';
+  bookFilter: 'all' | WatchBook;
+  statusFilter: 'all' | 'actionable' | 'waiting';
 }
 
 /** Left column: what the scanners found (signals) or are still watching (candidates). One list, one selection. */
 export const SignalsPane: React.FC<Props> = ({
-  state, signals, loaded, activeSignalIds, selectedSignalId, onSelectSignal, filters, onFilters, dashboardWatch, selectedCandidateId, onSelectCandidate, wsConnected,
+  state, signals, loaded, activeSignalIds, selectedSignalId, onSelectSignal, filters, onFilters, dashboardWatch, selectedCandidateId, onSelectCandidate, wsConnected, view, onViewChange,
 }) => {
-  const [mode, setMode] = useState<'signals' | 'watching'>('signals');
-  const [sortBy, setSortBy] = useState<'newest' | 'symbol' | 'setup'>('newest');
-  const [bookFilter, setBookFilter] = useState<'all' | WatchBook>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'actionable' | 'waiting'>('all');
+  const [local, setLocal] = useState<SignalsView>({ mode: 'signals', sortBy: 'newest', bookFilter: 'all', statusFilter: 'all' });
+  const cur = { ...local, ...(view ?? {}) };
+  const patch = (p: Partial<SignalsView>) => { setLocal((l) => ({ ...l, ...p })); onViewChange?.(p); };
+  const { mode, sortBy, bookFilter, statusFilter } = cur;
+  const setMode = (v: SignalsView['mode']) => patch({ mode: v });
+  const setSortBy = (v: SignalsView['sortBy']) => patch({ sortBy: v });
+  const setBookFilter = (v: SignalsView['bookFilter']) => patch({ bookFilter: v });
+  const setStatusFilter = (v: SignalsView['statusFilter']) => patch({ statusFilter: v });
 
   const sorted = useMemo(() => [...signals].sort((x, y) => {
     const confirmation = Number(y.is_confirmed !== false) - Number(x.is_confirmed !== false);

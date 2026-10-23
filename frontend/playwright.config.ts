@@ -29,7 +29,8 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'cd ../backend && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001',
+      // A throwaway journal keeps e2e runs hermetic: saved layouts, the kill switch and audit rows never leak between runs or into real data.
+      command: 'rm -rf /tmp/bb-e2e && mkdir -p /tmp/bb-e2e && cd ../backend && BB_DB_PATH=/tmp/bb-e2e/trades.db .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001',
       url: 'http://127.0.0.1:8001/api/health',
       reuseExistingServer: true,
       timeout: 30000,

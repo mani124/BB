@@ -6,19 +6,23 @@ export interface RiskControlsProps {
   onKillSwitch?: (engage: boolean) => void;
   /** Button only, for narrow headers where the cap chip does not fit. */
   compact?: boolean;
+  /** Dock shell passes the accessible dialog; the legacy shell keeps window.confirm. */
+  confirmFn?: (message: string) => boolean | Promise<boolean>;
 }
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
 /** Header chip showing the daily loss cap / kill switch state, plus the kill-switch button. */
-export const RiskControls: React.FC<RiskControlsProps> = ({ risk, onKillSwitch, compact = false }) => {
+export const RiskControls: React.FC<RiskControlsProps> = ({ risk, onKillSwitch, compact = false, confirmFn = (m) => window.confirm(m) }) => {
   if (!risk) return null;
 
   const confirmAndRun = (engage: boolean) => {
     const msg = engage
       ? 'Engage the kill switch? This closes ALL open positions now and pauses new entries until you re-enable them.'
       : 'Re-enable new entries?';
-    if (onKillSwitch && window.confirm(msg)) onKillSwitch(engage);
+    if (!onKillSwitch) return;
+    const answer = confirmFn(msg);
+    if (typeof answer === 'boolean') { if (answer) onKillSwitch(engage); } else void answer.then((ok) => { if (ok) onKillSwitch(engage); });
   };
 
   let chip: React.ReactNode;
