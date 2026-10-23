@@ -46,7 +46,7 @@ export function initialState(): AppState {
     selectionDismissed: false,
     filter: null,
     alerts: [],
-    ui: { density: readDensity(), workspace: 'Trading', needsCapability: false, notifications: false },
+    ui: { density: readDensity(), workspace: 'Trading', needsCapability: false, notifications: false, dhan: { loggedIn: false, expiry: null } },
   };
 }
 

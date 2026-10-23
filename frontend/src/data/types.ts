@@ -58,5 +58,7 @@ export interface AppState {
     workspace: string;
     needsCapability: boolean;
     notifications: boolean;
+    /** Mirror of the Dhan session for the alert rules (set by the shell). */
+    dhan: { loggedIn: boolean; expiry: number | null };
   };
 }
