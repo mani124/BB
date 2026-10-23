@@ -19,7 +19,7 @@ export interface EarningsInitial {
   calendar?: EarningsCalendarRow[];
 }
 
-export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial }) => {
+export const EarningsPanel: React.FC<{ initial?: EarningsInitial; /** Dock shell passes the accessible dialog; the legacy shell keeps window.confirm. */ confirmFn?: (message: string) => boolean | Promise<boolean> }> = ({ initial, confirmFn = (m) => window.confirm(m) }) => {
   const [summary, setSummary] = useState<EarningsSummary | null>(initial?.summary ?? null);
   const [positions, setPositions] = useState<EarningsPosition[]>(initial?.positions ?? []);
   const [candidates, setCandidates] = useState<EarningsCandidate[]>(initial?.candidates ?? []);
@@ -95,7 +95,7 @@ export const EarningsPanel: React.FC<{ initial?: EarningsInitial }> = ({ initial
       actions={<>
         <button type="button" className="desk-btn accent" disabled={busy} onClick={() => call('/api/earnings/run-cycle', { method: 'POST' }, 'Cycle run')}>Run check now</button>
         <button type="button" className="desk-btn danger" disabled={busy || open.length === 0}
-          onClick={() => { if (window.confirm('Close all open earnings paper positions now?')) void call('/api/earnings/square-off', { method: 'POST' }, 'Positions closed'); }}>
+          onClick={async () => { if (await confirmFn('Close all open earnings paper positions now?')) void call('/api/earnings/square-off', { method: 'POST' }, 'Positions closed'); }}>
           Square off
         </button>
       </>}

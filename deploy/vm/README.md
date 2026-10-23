@@ -36,3 +36,6 @@ The app checks itself and sends a Telegram message (needs `TELEGRAM_BOT_TOKEN` a
 
 ## Clean restarts (graceful shutdown)
 The dashboard's live stream (`/api/signals/stream`) stays open while a browser tab is open, and uvicorn waits for open connections on SIGTERM, so a restart could hang until systemd sent SIGKILL (seen at 15:35 on 2026-10-16). Make uvicorn cancel leftover connections after a few seconds: add `--timeout-graceful-shutdown 10` to the `ExecStart` line of `bb-options.service` (or set `UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN=10` in the service's environment file), then `sudo systemctl daemon-reload && sudo systemctl restart bb-options` outside market hours. Cancelling does not skip the save: the app still flushes pending trade writes in its shutdown step. Check with `journalctl -u bb-options -n 30` after a restart: you should see "Application shutdown complete" and no SIGKILL.
+
+## New tables (dashboard layouts and audit)
+The dock dashboard adds three tables (`ui_layouts`, `ui_layout_snapshots`, `action_audit`) to the same SQLite file. They are created on first start; there is no migration step and a deploy needs no extra command. See `docs/DASHBOARD_API_ADDITIONS.md`.
