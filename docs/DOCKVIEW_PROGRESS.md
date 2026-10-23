@@ -30,6 +30,7 @@ Read this first when resuming. Spec: `docs/superpowers/specs/2026-10-22-institut
 
 ## Test results (latest)
 - Phase 5: Vitest 467, tsc errors 14 (baseline), pytest 879, e2e 40 pass (hermetic throwaway journal), main chunk 151.27 kB gzip, DockApp lazy chunk 124.86 kB gzip.
+- Phase 6: Vitest 499, tsc errors 14, e2e 45 pass, main 151.28 kB gzip, DockApp 128.19 kB gzip.
 
 ## Test results (Phase 3)
 - Vitest 369 pass; tsc errors 14 (baseline, no new); build ok (main chunk 151.22 kB gzip, DockApp lazy chunk 120.05 kB gzip + 10.78 kB css); pytest 821 pass (backend untouched); e2e 31 pass (with env vars above; 4 new dock specs: layout, keyboard, popout, workspaces, mobile).
@@ -61,3 +62,16 @@ None.
 - Phase 5: Playwright now starts the backend on a throwaway journal (`BB_DB_PATH=/tmp/bb-e2e/trades.db`), because layouts and the kill switch live on the server; `resetServerLayouts` restores the presets between dock specs.
 - Phase 5: axe fixes found by the all-workspace spec: focusable scroll regions in `PanelFrame`, session timeline button names, earnings sub-tab names, trade detail region, and Dockview's invalid `aria-level="0"` on floating groups is removed by the host.
 - Phase 5 known gap: `exposure` concentration banner needs at least two rows in a group (one row is always 100 %).
+
+- Phase 6.1: command palette (Ctrl+K) with panels, workspaces, layout actions, symbols, danger commands (kill switch, close all with typed phrase, reset portfolio) that only open confirmations; e2e `palette.spec.ts`. On mobile the palette omits dock/workspace entries.
+- Phase 6.2: shared `panels/DataTable.tsx` (sort, column chooser, CSV, arrow/Enter rows, `@tanstack/react-virtual` 3.10.8 windowing above 150 rows, spacer rows, aria-rowcount) now used by positions-table, orders, attribution and audit. Deviation: `signals` stays a card list and `trades` keeps the existing `TradesScreen` (master-detail with its own list), so they were not converted; both already support keyboard selection and the linked filter.
+- Phase 6.3: `features/alerts/announce.ts` feeds the live region (new confirmed signals, kill switch, loss cap) ported from legacy; density toggle persistence and reduced motion (e2e `dock_motion.spec.ts`) tested.
+- Phase 6 results: Vitest 499, tsc 14 (baseline), e2e 45 pass, main chunk 151.28 kB gzip, DockApp chunk 128.19 kB gzip.
+
+## Phase 7 (hardening and sign-off)
+- 7.1 `a11y_dock.spec.ts`: axe with colour contrast, 7 workspaces, light and dark, 0 serious/critical; `docs/A11Y_CHECKLIST.md`; palette announces result count.
+- 7.2 `scripts/check-bundle.mjs` + `npm run check:bundle` (initial 147.7 kB gzip, dock 273.0 kB); `perf.spec.ts` (300 signals, 200 trades, 10 ticks/s, 60 s: 0 long tasks, heap +0.9 MB).
+- 7.3 `dock_flows.spec.ts` (401 dialog, kill switch typed phrase and failed list, close then audit row, silent stream goes stale, layout across two browser contexts, legacy flag). Found and fixed: audit panel did not refetch after an action (`useApiData` `watchActions`). Close and kill-switch calls are mocked at the route level; real audit rows are covered by backend `test_action_audit.py`.
+- 7.4 screenshots in `docs/screenshots/institutional/` (regenerate with `SCREENSHOTS=1`), gallery in `DOCKVIEW_NOTES.md`.
+- 7.5 `docs/DOCKVIEW_PARITY.md`; added tests for Dhan auto-reconnect and Dhan connect dialog (`shell/dhan.test.tsx`), hook moved to `shell/useDhanAutoReconnect.ts`.
+- Final: Vitest 507, tsc 14, pytest 879, Playwright 66 pass. 7.6 and 7.7 waiting for owner.

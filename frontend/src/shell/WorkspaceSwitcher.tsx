@@ -5,6 +5,7 @@ import { Dialog } from '../components/Dialog';
 import type { UseLayouts } from '../features/layouts/useLayouts';
 import type { Snapshot } from '../features/layouts/layoutApi';
 import { pushToast } from '../data/toasts';
+import { useLayoutActionRequests } from '../features/layouts/layoutUi';
 
 type Modal = null | 'saveAs' | 'rename' | 'import' | 'snapshots';
 
@@ -71,6 +72,7 @@ export const WorkspaceSwitcher: React.FC<{ layouts: UseLayouts }> = ({ layouts }
   const builtIn = layouts.workspaces.includes(layouts.current);
 
   const close = () => setMenu(false);
+  useLayoutActionRequests((a) => { if (a === 'saveAs') setModal('saveAs'); else void doReset(); });
   const doReset = async () => {
     close();
     if (await confirm({ title: `Reset ${layouts.current}?`, body: 'The workspace returns to its default layout. Your arrangement is replaced.', confirmLabel: 'Reset workspace', danger: true })) layouts.reset();

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../data/appStore';
 import { buildQuery, useApiData } from '../../data/hooks/useApiData';
 import { setFilter } from '../../data/selection';
@@ -7,6 +7,7 @@ import type { AttributionReport, Bucket } from '../../features/analytics/types';
 import { inr, pct, points } from '../../lib/numbers';
 import { useTable, type ColumnDef } from '../../lib/useTable';
 import { PanelFrame } from '../PanelFrame';
+import { ColumnChooser, ColumnsButton, DataTable } from '../DataTable';
 import type { PanelProps } from '../registry';
 import { pickEnum } from '../hooks';
 import { AsyncStrip, Bar, Computed, LowSampleBadge, RangeBar } from '../kit';
@@ -43,6 +44,7 @@ const AttributionPanel: React.FC<PanelProps> = ({ params, setParams }) => {
     columns: COLUMNS, storageKey: `attribution-${group}`, csvName: `attribution_${group}.csv`, initialSort: { key: 'net_pnl', dir: 'desc' },
     onActivate: (b) => toggle(b.key ?? ''),
   });
+  const [chooser, setChooser] = useState(false);
   const maxNet = Math.max(0, ...rows.map((r) => Math.abs(r.net_pnl ?? 0)));
   const toggle = (key: string) => setFilter(filter && filter.group === group && filter.key === key ? null : { group, key });
   const save = (patch: Record<string, unknown>) => setParams({ ...params, ...patch });
@@ -61,7 +63,8 @@ const AttributionPanel: React.FC<PanelProps> = ({ params, setParams }) => {
     }
   };
   return (
-    <PanelFrame title="Attribution" sources={[]} exportCsv={table.exportCsv} onRetry={api.reload}>
+    <PanelFrame title="Attribution" sources={[]} exportCsv={table.exportCsv} onRetry={api.reload} actions={<ColumnsButton open={chooser} onToggle={() => setChooser((v) => !v)} />}>
+      {chooser && <ColumnChooser table={table} />}
       <RangeBar spec={spec} book={book} onSpec={(s) => save({ range: s.range, from: s.from, to: s.to })} onBook={(b) => save({ book: b })} />
       <div className="flex items-center gap-2 px-2 py-1">
         <label className="text-xs">Group by <select className="desk-input" style={{ width: 'auto' }} value={group} onChange={(e) => save({ group: e.target.value })}>
@@ -73,25 +76,8 @@ const AttributionPanel: React.FC<PanelProps> = ({ params, setParams }) => {
       <AsyncStrip state={api} onRetry={api.reload} what="attribution" />
       {api.data && rows.length === 0 && <p className="p-6 text-center text-sm desk-muted">No closed trades in this range.</p>}
       {rows.length > 0 && (
-        <div className="overflow-x-auto" tabIndex={0} onKeyDown={table.onKeyDown} aria-label="Attribution table, arrow keys move, Enter filters">
-          <table className="desk-table" aria-label={`Attribution by ${GROUP_LABELS[group]}`}>
-            <thead><tr>
-              {table.columns.map((c) => (
-                <th key={c.key} scope="col" className={c.key === 'key' ? undefined : 'r'} aria-sort={table.sort?.key === c.key ? (table.sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
-                  <button type="button" className="font-semibold" onClick={() => table.setSort(c.key)}>{c.label}{table.sort?.key === c.key ? (table.sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}</button>
-                </th>
-              ))}
-            </tr></thead>
-            <tbody>
-              {table.visibleRows.map((b, i) => (
-                <tr key={b.key} data-active={i === table.activeIndex || undefined} className={filter?.group === group && filter.key === b.key ? 'desk-selected' : undefined} aria-selected={filter?.group === group && filter.key === b.key}
-                  onClick={() => toggle(b.key ?? '')} style={{ cursor: 'pointer' }}>
-                  {table.columns.map((c) => <td key={c.key} className={c.key === 'key' ? undefined : 'r desk-num'}>{cell(b, c.key)}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable table={table} label={`Attribution by ${GROUP_LABELS[group]}`} numeric={new Set(COLUMNS.filter((c) => c.key !== 'key').map((c) => c.key))}
+          rowKey={(b) => String(b.key)} renderCell={(b, c) => cell(b, c.key)} isSelected={(b) => filter?.group === group && filter.key === b.key} onRowClick={(b) => toggle(b.key ?? '')} />
       )}
       <Computed at={api.data?.generated_at} />
     </PanelFrame>
