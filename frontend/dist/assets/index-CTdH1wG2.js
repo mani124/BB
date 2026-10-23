@@ -1,0 +1,1 @@
+import{j as r,W as n}from"./index-C1Mxa2PG.js";import{P as a}from"./DockApp-DZWJEE-v.js";import{b as s}from"./hooks-gx_ADmpT.js";const f=()=>{const e=s({title:"Square off earnings book?",confirmLabel:"Square off",danger:!0});return r.jsx(a,{title:"Earnings",sources:[],children:r.jsx(n,{confirmFn:e})})};export{f as default};

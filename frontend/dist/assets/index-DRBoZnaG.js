@@ -1,0 +1,1 @@
+import{j as t,a4 as s}from"./index-C1Mxa2PG.js";import{P as a}from"./DockApp-DZWJEE-v.js";const p=()=>t.jsx(a,{title:"Setup statistics",sources:["analytics"],children:t.jsx(s,{})});export{p as default};

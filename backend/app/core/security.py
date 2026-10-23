@@ -1,0 +1,158 @@
+import logging
+import re
+from typing import Optional
+from fastapi import Request, HTTPException, status
+
+import hmac
+import secrets
+import time
+from app.core.config import settings
+
+SESSION_TTL_SECONDS = 30 * 86400
+
+
+def _sign(payload: str) -> str:
+    # Keyed on the dashboard key, so cookies survive a restart but die if the key is rotated.
+    key = settings.DASHBOARD_CAPABILITY.strip().encode()
+    return hmac.new(key, payload.encode(), "sha256").hexdigest()
+
+
+def issue_session_token() -> str:
+    """Stateless signed token '<nonce>.<expiry>.<sig>': no server memory, so a restart does not sign anyone out."""
+    payload = f"{secrets.token_urlsafe(16)}.{int(time.time()) + SESSION_TTL_SECONDS}"
+    return f"{payload}.{_sign(payload)}"
+
+
+def is_valid_session_token(token: str) -> bool:
+    if not settings.DASHBOARD_CAPABILITY.strip():
+        return False
+    parts = token.split(".")
+    if len(parts) != 3:
+        return False
+    payload = f"{parts[0]}.{parts[1]}"
+    if not hmac.compare_digest(parts[2], _sign(payload)):
+        return False
+    try:
+        return int(parts[1]) > time.time()
+    except ValueError:
+        return False
+
+JWT_PATTERN = re.compile(r"eyJ[a-zA-Z0-9_\-\.]{15,}")
+
+def is_valid_dashboard_capability(request: Request) -> bool:
+    """
+    Verify whether the request presents an authorized dashboard capability.
+    Checked sources:
+      1. 'X-Dashboard-Capability' or 'x-dashboard-capability' header
+      2. 'Authorization: Bearer <token>' header
+      3. 'dashboard_session' cookie holding a session token issued by POST /api/auth/session
+    """
+    expected = settings.DASHBOARD_CAPABILITY.strip()
+    if not expected:
+        return False
+
+    cap_header = (request.headers.get("X-Dashboard-Capability") or request.headers.get("x-dashboard-capability") or "").strip()
+    if cap_header and hmac.compare_digest(cap_header.encode(), expected.encode()):
+        return True
+
+    auth_header = (request.headers.get("Authorization") or request.headers.get("authorization") or "").strip()
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        if token and hmac.compare_digest(token.encode(), expected.encode()):
+            return True
+
+    cookie_token = (request.cookies.get("dashboard_session") or "").strip()
+    if cookie_token and is_valid_session_token(cookie_token):
+        return True
+
+    return False
+
+def sanitize_token(token: Optional[str]) -> str:
+    """Mask token so only partial prefix and suffix show."""
+    if not token:
+        return ""
+    if len(token) <= 8:
+        return "***"
+    return f"{token[:3]}...{token[-4:]}"
+
+def get_dhan_credentials(request: Request) -> tuple[str, str]:
+    """
+    Extract zero-persistence Dhan credentials from request headers.
+    Headers:
+        X-Dhan-Client-Id: User Client ID
+        X-Dhan-Access-Token: 24h JWT Access Token
+    """
+    client_id = (request.headers.get("X-Dhan-Client-Id") or "").strip()
+    access_token = (request.headers.get("X-Dhan-Access-Token") or "").strip()
+    
+    if not client_id or not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Dhan authentication headers (X-Dhan-Client-Id, X-Dhan-Access-Token)"
+        )
+    return client_id, access_token
+
+def get_optional_dhan_credentials(request: Request) -> tuple[Optional[str], Optional[str]]:
+    """Extract credentials if provided; return (None, None) if missing."""
+    client_id = (request.headers.get("X-Dhan-Client-Id") or "").strip() or None
+    access_token = (request.headers.get("X-Dhan-Access-Token") or "").strip() or None
+    return client_id, access_token
+
+class RedactingFilter(logging.Filter):
+    """Logging filter to mask sensitive Dhan tokens."""
+    def __init__(self, patterns: list[str] | None = None):
+        super().__init__()
+        self.patterns = list(patterns) if patterns else []
+
+    def _redact_text(self, text: str) -> str:
+        if not isinstance(text, str):
+            return text
+        for pat in self.patterns:
+            if pat and len(pat) > 4 and pat in text:
+                text = text.replace(pat, "[REDACTED]")
+        return JWT_PATTERN.sub("[REDACTED]", text)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = self._redact_text(record.msg)
+        if record.args:
+            if isinstance(record.args, tuple):
+                new_args = []
+                for a in record.args:
+                    if isinstance(a, str):
+                        new_args.append(self._redact_text(a))
+                    elif isinstance(a, dict):
+                        new_args.append({k: (self._redact_text(v) if isinstance(v, str) else v) for k, v in a.items()})
+                    else:
+                        new_args.append(a)
+                record.args = tuple(new_args)
+            elif isinstance(record.args, dict):
+                record.args = {k: (self._redact_text(v) if isinstance(v, str) else v) for k, v in record.args.items()}
+        return True
+
+_original_record_factory = None
+
+def setup_security_logging(patterns: list[str] | None = None) -> None:
+    """
+    Hook into logging.setLogRecordFactory and attach RedactingFilter
+    so all LogRecords created anywhere in the process are sanitized.
+    """
+    global _original_record_factory
+    filter_instance = RedactingFilter(patterns=patterns)
+
+    if _original_record_factory is None:
+        _original_record_factory = logging.getLogRecordFactory()
+
+    base_factory = _original_record_factory
+
+    def record_factory(*args, **kwargs):
+        record = base_factory(*args, **kwargs)
+        filter_instance.filter(record)
+        return record
+
+    logging.setLogRecordFactory(record_factory)
+
+    root_logger = logging.getLogger()
+    root_logger.addFilter(filter_instance)
+    for handler in root_logger.handlers:
+        handler.addFilter(filter_instance)

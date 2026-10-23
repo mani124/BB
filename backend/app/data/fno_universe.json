@@ -1,0 +1,1706 @@
+{
+  "360ONE": {
+    "symbol": "360ONE",
+    "security_id": "13061",
+    "lot_size": 500,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ABB": {
+    "symbol": "ABB",
+    "security_id": "13",
+    "lot_size": 125,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ABCAPITAL": {
+    "symbol": "ABCAPITAL",
+    "security_id": "21614",
+    "lot_size": 3100,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ADANIENSOL": {
+    "symbol": "ADANIENSOL",
+    "security_id": "10217",
+    "lot_size": 675,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ADANIENT": {
+    "symbol": "ADANIENT",
+    "security_id": "25",
+    "lot_size": 309,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ADANIGREEN": {
+    "symbol": "ADANIGREEN",
+    "security_id": "3563",
+    "lot_size": 600,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ADANIPORTS": {
+    "symbol": "ADANIPORTS",
+    "security_id": "15083",
+    "lot_size": 475,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ADANIPOWER": {
+    "symbol": "ADANIPOWER",
+    "security_id": "17388",
+    "lot_size": 3550,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ALKEM": {
+    "symbol": "ALKEM",
+    "security_id": "11703",
+    "lot_size": 125,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "AMBER": {
+    "symbol": "AMBER",
+    "security_id": "1185",
+    "lot_size": 100,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "AMBUJACEM": {
+    "symbol": "AMBUJACEM",
+    "security_id": "1270",
+    "lot_size": 1200,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ANANDRATHI": {
+    "symbol": "ANANDRATHI",
+    "security_id": "7145",
+    "lot_size": 250,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ANGELONE": {
+    "symbol": "ANGELONE",
+    "security_id": "324",
+    "lot_size": 2500,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "APLAPOLLO": {
+    "symbol": "APLAPOLLO",
+    "security_id": "25780",
+    "lot_size": 350,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "APOLLOHOSP": {
+    "symbol": "APOLLOHOSP",
+    "security_id": "157",
+    "lot_size": 125,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ASHOKLEY": {
+    "symbol": "ASHOKLEY",
+    "security_id": "212",
+    "lot_size": 5000,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ASIANPAINT": {
+    "symbol": "ASIANPAINT",
+    "security_id": "236",
+    "lot_size": 250,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ASTRAL": {
+    "symbol": "ASTRAL",
+    "security_id": "14418",
+    "lot_size": 425,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ATHERENERG": {
+    "symbol": "ATHERENERG",
+    "security_id": "757645",
+    "lot_size": 375,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "AUBANK": {
+    "symbol": "AUBANK",
+    "security_id": "21238",
+    "lot_size": 1000,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "AUROPHARMA": {
+    "symbol": "AUROPHARMA",
+    "security_id": "275",
+    "lot_size": 550,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "AXISBANK": {
+    "symbol": "AXISBANK",
+    "security_id": "5900",
+    "lot_size": 625,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BAJAJ-AUTO": {
+    "symbol": "BAJAJ-AUTO",
+    "security_id": "16669",
+    "lot_size": 75,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BAJAJFINSV": {
+    "symbol": "BAJAJFINSV",
+    "security_id": "16675",
+    "lot_size": 300,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BAJAJHLDNG": {
+    "symbol": "BAJAJHLDNG",
+    "security_id": "305",
+    "lot_size": 75,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BAJFINANCE": {
+    "symbol": "BAJFINANCE",
+    "security_id": "317",
+    "lot_size": 750,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BANDHANBNK": {
+    "symbol": "BANDHANBNK",
+    "security_id": "2263",
+    "lot_size": 3600,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BANKBARODA": {
+    "symbol": "BANKBARODA",
+    "security_id": "4668",
+    "lot_size": 2925,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BANKINDIA": {
+    "symbol": "BANKINDIA",
+    "security_id": "4745",
+    "lot_size": 5200,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BDL": {
+    "symbol": "BDL",
+    "security_id": "2144",
+    "lot_size": 425,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BEL": {
+    "symbol": "BEL",
+    "security_id": "383",
+    "lot_size": 1425,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BHARATFORG": {
+    "symbol": "BHARATFORG",
+    "security_id": "422",
+    "lot_size": 500,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BHARTIARTL": {
+    "symbol": "BHARTIARTL",
+    "security_id": "10604",
+    "lot_size": 475,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BHEL": {
+    "symbol": "BHEL",
+    "security_id": "438",
+    "lot_size": 2625,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BIOCON": {
+    "symbol": "BIOCON",
+    "security_id": "11373",
+    "lot_size": 2500,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BLUESTARCO": {
+    "symbol": "BLUESTARCO",
+    "security_id": "8311",
+    "lot_size": 325,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BOSCHLTD": {
+    "symbol": "BOSCHLTD",
+    "security_id": "2181",
+    "lot_size": 25,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BPCL": {
+    "symbol": "BPCL",
+    "security_id": "526",
+    "lot_size": 1975,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BRITANNIA": {
+    "symbol": "BRITANNIA",
+    "security_id": "547",
+    "lot_size": 125,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "BSE": {
+    "symbol": "BSE",
+    "security_id": "19585",
+    "lot_size": 200,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "CAMS": {
+    "symbol": "CAMS",
+    "security_id": "342",
+    "lot_size": 825,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "CANBK": {
+    "symbol": "CANBK",
+    "security_id": "10794",
+    "lot_size": 6750,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "CDSL": {
+    "symbol": "CDSL",
+    "security_id": "21174",
+    "lot_size": 475,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "CGPOWER": {
+    "symbol": "CGPOWER",
+    "security_id": "760",
+    "lot_size": 850,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "CHOLAFIN": {
+    "symbol": "CHOLAFIN",
+    "security_id": "685",
+    "lot_size": 625,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "CIPLA": {
+    "symbol": "CIPLA",
+    "security_id": "694",
+    "lot_size": 425,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "COALINDIA": {
+    "symbol": "COALINDIA",
+    "security_id": "20374",
+    "lot_size": 1350,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "COCHINSHIP": {
+    "symbol": "COCHINSHIP",
+    "security_id": "21508",
+    "lot_size": 400,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "COFORGE": {
+    "symbol": "COFORGE",
+    "security_id": "11543",
+    "lot_size": 475,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "COLPAL": {
+    "symbol": "COLPAL",
+    "security_id": "15141",
+    "lot_size": 275,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "CONCOR": {
+    "symbol": "CONCOR",
+    "security_id": "4749",
+    "lot_size": 1250,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "CROMPTON": {
+    "symbol": "CROMPTON",
+    "security_id": "17094",
+    "lot_size": 2150,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "CUMMINSIND": {
+    "symbol": "CUMMINSIND",
+    "security_id": "1901",
+    "lot_size": 200,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "DABUR": {
+    "symbol": "DABUR",
+    "security_id": "772",
+    "lot_size": 1250,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "DELHIVERY": {
+    "symbol": "DELHIVERY",
+    "security_id": "9599",
+    "lot_size": 2075,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "DIVISLAB": {
+    "symbol": "DIVISLAB",
+    "security_id": "10940",
+    "lot_size": 100,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "DIXON": {
+    "symbol": "DIXON",
+    "security_id": "21690",
+    "lot_size": 50,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "DLF": {
+    "symbol": "DLF",
+    "security_id": "14732",
+    "lot_size": 950,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "DMART": {
+    "symbol": "DMART",
+    "security_id": "19913",
+    "lot_size": 150,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "DRREDDY": {
+    "symbol": "DRREDDY",
+    "security_id": "881",
+    "lot_size": 625,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "EICHERMOT": {
+    "symbol": "EICHERMOT",
+    "security_id": "910",
+    "lot_size": 100,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ENRIN": {
+    "symbol": "ENRIN",
+    "security_id": "756871",
+    "lot_size": 175,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ETERNAL": {
+    "symbol": "ETERNAL",
+    "security_id": "5097",
+    "lot_size": 2425,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "FEDERALBNK": {
+    "symbol": "FEDERALBNK",
+    "security_id": "1023",
+    "lot_size": 2500,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "FORCEMOT": {
+    "symbol": "FORCEMOT",
+    "security_id": "11573",
+    "lot_size": 25,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "FORTIS": {
+    "symbol": "FORTIS",
+    "security_id": "14592",
+    "lot_size": 775,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "GAIL": {
+    "symbol": "GAIL",
+    "security_id": "4717",
+    "lot_size": 3550,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "GLENMARK": {
+    "symbol": "GLENMARK",
+    "security_id": "7406",
+    "lot_size": 375,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "GMRAIRPORT": {
+    "symbol": "GMRAIRPORT",
+    "security_id": "13528",
+    "lot_size": 6975,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "GODFRYPHLP": {
+    "symbol": "GODFRYPHLP",
+    "security_id": "1181",
+    "lot_size": 275,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "GODREJCP": {
+    "symbol": "GODREJCP",
+    "security_id": "10099",
+    "lot_size": 500,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "GODREJPROP": {
+    "symbol": "GODREJPROP",
+    "security_id": "17875",
+    "lot_size": 325,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "GRASIM": {
+    "symbol": "GRASIM",
+    "security_id": "1232",
+    "lot_size": 250,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "GVT&D": {
+    "symbol": "GVT&D",
+    "security_id": "16783",
+    "lot_size": 125,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "HAL": {
+    "symbol": "HAL",
+    "security_id": "2303",
+    "lot_size": 150,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "HAVELLS": {
+    "symbol": "HAVELLS",
+    "security_id": "9819",
+    "lot_size": 500,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "HCLTECH": {
+    "symbol": "HCLTECH",
+    "security_id": "7229",
+    "lot_size": 400,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "HDFCAMC": {
+    "symbol": "HDFCAMC",
+    "security_id": "4244",
+    "lot_size": 300,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "HDFCBANK": {
+    "symbol": "HDFCBANK",
+    "security_id": "1333",
+    "lot_size": 650,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "HDFCLIFE": {
+    "symbol": "HDFCLIFE",
+    "security_id": "467",
+    "lot_size": 1100,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "HEROMOTOCO": {
+    "symbol": "HEROMOTOCO",
+    "security_id": "1348",
+    "lot_size": 150,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "HINDALCO": {
+    "symbol": "HINDALCO",
+    "security_id": "1363",
+    "lot_size": 700,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "HINDPETRO": {
+    "symbol": "HINDPETRO",
+    "security_id": "1406",
+    "lot_size": 2025,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "HINDUNILVR": {
+    "symbol": "HINDUNILVR",
+    "security_id": "1394",
+    "lot_size": 300,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "HINDZINC": {
+    "symbol": "HINDZINC",
+    "security_id": "1424",
+    "lot_size": 1225,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "HYUNDAI": {
+    "symbol": "HYUNDAI",
+    "security_id": "25844",
+    "lot_size": 275,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ICICIBANK": {
+    "symbol": "ICICIBANK",
+    "security_id": "4963",
+    "lot_size": 700,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ICICIGI": {
+    "symbol": "ICICIGI",
+    "security_id": "21770",
+    "lot_size": 325,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ICICIPRULI": {
+    "symbol": "ICICIPRULI",
+    "security_id": "18652",
+    "lot_size": 925,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "IDEA": {
+    "symbol": "IDEA",
+    "security_id": "14366",
+    "lot_size": 71475,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "IDFCFIRSTB": {
+    "symbol": "IDFCFIRSTB",
+    "security_id": "11184",
+    "lot_size": 9275,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "IEX": {
+    "symbol": "IEX",
+    "security_id": "220",
+    "lot_size": 4350,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "INDHOTEL": {
+    "symbol": "INDHOTEL",
+    "security_id": "1512",
+    "lot_size": 1000,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "INDIANB": {
+    "symbol": "INDIANB",
+    "security_id": "14309",
+    "lot_size": 1000,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "INDIGO": {
+    "symbol": "INDIGO",
+    "security_id": "11195",
+    "lot_size": 150,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "INDUSINDBK": {
+    "symbol": "INDUSINDBK",
+    "security_id": "5258",
+    "lot_size": 700,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "INDUSTOWER": {
+    "symbol": "INDUSTOWER",
+    "security_id": "29135",
+    "lot_size": 1700,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "INFY": {
+    "symbol": "INFY",
+    "security_id": "1594",
+    "lot_size": 400,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "INOXWIND": {
+    "symbol": "INOXWIND",
+    "security_id": "7852",
+    "lot_size": 6400,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "IOC": {
+    "symbol": "IOC",
+    "security_id": "1624",
+    "lot_size": 4875,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "IREDA": {
+    "symbol": "IREDA",
+    "security_id": "20261",
+    "lot_size": 4525,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "IRFC": {
+    "symbol": "IRFC",
+    "security_id": "2029",
+    "lot_size": 5425,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ITC": {
+    "symbol": "ITC",
+    "security_id": "1660",
+    "lot_size": 1725,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "JINDALSTEL": {
+    "symbol": "JINDALSTEL",
+    "security_id": "6733",
+    "lot_size": 625,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "JIOFIN": {
+    "symbol": "JIOFIN",
+    "security_id": "18143",
+    "lot_size": 2350,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "JSWENERGY": {
+    "symbol": "JSWENERGY",
+    "security_id": "17869",
+    "lot_size": 1075,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "JSWSTEEL": {
+    "symbol": "JSWSTEEL",
+    "security_id": "11723",
+    "lot_size": 675,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "JUBLFOOD": {
+    "symbol": "JUBLFOOD",
+    "security_id": "18096",
+    "lot_size": 1250,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "KALYANKJIL": {
+    "symbol": "KALYANKJIL",
+    "security_id": "2955",
+    "lot_size": 1350,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "KAYNES": {
+    "symbol": "KAYNES",
+    "security_id": "12092",
+    "lot_size": 150,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "KEI": {
+    "symbol": "KEI",
+    "security_id": "13310",
+    "lot_size": 175,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "KFINTECH": {
+    "symbol": "KFINTECH",
+    "security_id": "13359",
+    "lot_size": 575,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "KOTAKBANK": {
+    "symbol": "KOTAKBANK",
+    "security_id": "1922",
+    "lot_size": 2000,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "KPITTECH": {
+    "symbol": "KPITTECH",
+    "security_id": "9683",
+    "lot_size": 775,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "LAURUSLABS": {
+    "symbol": "LAURUSLABS",
+    "security_id": "19234",
+    "lot_size": 850,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "LICHSGFIN": {
+    "symbol": "LICHSGFIN",
+    "security_id": "1997",
+    "lot_size": 1000,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "LICI": {
+    "symbol": "LICI",
+    "security_id": "9480",
+    "lot_size": 1400,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "LODHA": {
+    "symbol": "LODHA",
+    "security_id": "3220",
+    "lot_size": 625,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "LT": {
+    "symbol": "LT",
+    "security_id": "11483",
+    "lot_size": 175,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "LTF": {
+    "symbol": "LTF",
+    "security_id": "24948",
+    "lot_size": 2250,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "LTM": {
+    "symbol": "LTM",
+    "security_id": "17818",
+    "lot_size": 150,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "LUPIN": {
+    "symbol": "LUPIN",
+    "security_id": "10440",
+    "lot_size": 425,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "M&M": {
+    "symbol": "M&M",
+    "security_id": "2031",
+    "lot_size": 200,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "MAHABANK": {
+    "symbol": "MAHABANK",
+    "security_id": "11377",
+    "lot_size": 6500,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "MANAPPURAM": {
+    "symbol": "MANAPPURAM",
+    "security_id": "19061",
+    "lot_size": 3000,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "MANKIND": {
+    "symbol": "MANKIND",
+    "security_id": "15380",
+    "lot_size": 250,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "MARICO": {
+    "symbol": "MARICO",
+    "security_id": "4067",
+    "lot_size": 1200,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "MARUTI": {
+    "symbol": "MARUTI",
+    "security_id": "10999",
+    "lot_size": 50,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "MAXHEALTH": {
+    "symbol": "MAXHEALTH",
+    "security_id": "22377",
+    "lot_size": 525,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "MAZDOCK": {
+    "symbol": "MAZDOCK",
+    "security_id": "509",
+    "lot_size": 225,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "MCX": {
+    "symbol": "MCX",
+    "security_id": "31181",
+    "lot_size": 225,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "MFSL": {
+    "symbol": "MFSL",
+    "security_id": "2142",
+    "lot_size": 400,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "MOTHERSON": {
+    "symbol": "MOTHERSON",
+    "security_id": "4204",
+    "lot_size": 6150,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "MOTILALOFS": {
+    "symbol": "MOTILALOFS",
+    "security_id": "14947",
+    "lot_size": 775,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "MPHASIS": {
+    "symbol": "MPHASIS",
+    "security_id": "4503",
+    "lot_size": 275,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "MUTHOOTFIN": {
+    "symbol": "MUTHOOTFIN",
+    "security_id": "23650",
+    "lot_size": 275,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "NAM-INDIA": {
+    "symbol": "NAM-INDIA",
+    "security_id": "357",
+    "lot_size": 625,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "NATIONALUM": {
+    "symbol": "NATIONALUM",
+    "security_id": "6364",
+    "lot_size": 1875,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "NAUKRI": {
+    "symbol": "NAUKRI",
+    "security_id": "13751",
+    "lot_size": 550,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "NBCC": {
+    "symbol": "NBCC",
+    "security_id": "31415",
+    "lot_size": 6500,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "NESTLEIND": {
+    "symbol": "NESTLEIND",
+    "security_id": "17963",
+    "lot_size": 500,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "NHPC": {
+    "symbol": "NHPC",
+    "security_id": "17400",
+    "lot_size": 6950,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "NMDC": {
+    "symbol": "NMDC",
+    "security_id": "15332",
+    "lot_size": 6750,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "NTPC": {
+    "symbol": "NTPC",
+    "security_id": "11630",
+    "lot_size": 1500,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "NYKAA": {
+    "symbol": "NYKAA",
+    "security_id": "6545",
+    "lot_size": 3125,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "OBEROIRLTY": {
+    "symbol": "OBEROIRLTY",
+    "security_id": "20242",
+    "lot_size": 350,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "OFSS": {
+    "symbol": "OFSS",
+    "security_id": "10738",
+    "lot_size": 100,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "OIL": {
+    "symbol": "OIL",
+    "security_id": "17438",
+    "lot_size": 1400,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ONGC": {
+    "symbol": "ONGC",
+    "security_id": "2475",
+    "lot_size": 2250,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PAGEIND": {
+    "symbol": "PAGEIND",
+    "security_id": "14413",
+    "lot_size": 20,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PATANJALI": {
+    "symbol": "PATANJALI",
+    "security_id": "17029",
+    "lot_size": 1075,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PAYTM": {
+    "symbol": "PAYTM",
+    "security_id": "6705",
+    "lot_size": 725,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PERSISTENT": {
+    "symbol": "PERSISTENT",
+    "security_id": "18365",
+    "lot_size": 125,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PETRONET": {
+    "symbol": "PETRONET",
+    "security_id": "11351",
+    "lot_size": 1900,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PFC": {
+    "symbol": "PFC",
+    "security_id": "14299",
+    "lot_size": 1300,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PGEL": {
+    "symbol": "PGEL",
+    "security_id": "25358",
+    "lot_size": 950,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PHOENIXLTD": {
+    "symbol": "PHOENIXLTD",
+    "security_id": "14552",
+    "lot_size": 350,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PIDILITIND": {
+    "symbol": "PIDILITIND",
+    "security_id": "2664",
+    "lot_size": 500,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PIIND": {
+    "symbol": "PIIND",
+    "security_id": "24184",
+    "lot_size": 175,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PNB": {
+    "symbol": "PNB",
+    "security_id": "10666",
+    "lot_size": 8000,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PNBHOUSING": {
+    "symbol": "PNBHOUSING",
+    "security_id": "18908",
+    "lot_size": 650,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "POLICYBZR": {
+    "symbol": "POLICYBZR",
+    "security_id": "6656",
+    "lot_size": 350,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "POLYCAB": {
+    "symbol": "POLYCAB",
+    "security_id": "9590",
+    "lot_size": 125,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "POWERGRID": {
+    "symbol": "POWERGRID",
+    "security_id": "14977",
+    "lot_size": 1900,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "POWERINDIA": {
+    "symbol": "POWERINDIA",
+    "security_id": "18457",
+    "lot_size": 25,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PREMIERENE": {
+    "symbol": "PREMIERENE",
+    "security_id": "25049",
+    "lot_size": 650,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "PRESTIGE": {
+    "symbol": "PRESTIGE",
+    "security_id": "20302",
+    "lot_size": 450,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "RADICO": {
+    "symbol": "RADICO",
+    "security_id": "10990",
+    "lot_size": 150,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "RBLBANK": {
+    "symbol": "RBLBANK",
+    "security_id": "18391",
+    "lot_size": 3175,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "RECLTD": {
+    "symbol": "RECLTD",
+    "security_id": "15355",
+    "lot_size": 1575,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "RELIANCE": {
+    "symbol": "RELIANCE",
+    "security_id": "2885",
+    "lot_size": 500,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "RVNL": {
+    "symbol": "RVNL",
+    "security_id": "9552",
+    "lot_size": 1925,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SAGILITY": {
+    "symbol": "SAGILITY",
+    "security_id": "27052",
+    "lot_size": 12000,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SAIL": {
+    "symbol": "SAIL",
+    "security_id": "2963",
+    "lot_size": 4700,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SBICARD": {
+    "symbol": "SBICARD",
+    "security_id": "17971",
+    "lot_size": 800,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SBILIFE": {
+    "symbol": "SBILIFE",
+    "security_id": "21808",
+    "lot_size": 375,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SBIN": {
+    "symbol": "SBIN",
+    "security_id": "3045",
+    "lot_size": 750,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SHREECEM": {
+    "symbol": "SHREECEM",
+    "security_id": "3103",
+    "lot_size": 25,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SHRIRAMFIN": {
+    "symbol": "SHRIRAMFIN",
+    "security_id": "4306",
+    "lot_size": 825,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SIEMENS": {
+    "symbol": "SIEMENS",
+    "security_id": "3150",
+    "lot_size": 175,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SOLARINDS": {
+    "symbol": "SOLARINDS",
+    "security_id": "13332",
+    "lot_size": 50,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SONACOMS": {
+    "symbol": "SONACOMS",
+    "security_id": "4684",
+    "lot_size": 1225,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SRF": {
+    "symbol": "SRF",
+    "security_id": "3273",
+    "lot_size": 200,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SUNPHARMA": {
+    "symbol": "SUNPHARMA",
+    "security_id": "3351",
+    "lot_size": 350,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SUPREMEIND": {
+    "symbol": "SUPREMEIND",
+    "security_id": "3363",
+    "lot_size": 175,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SUZLON": {
+    "symbol": "SUZLON",
+    "security_id": "12018",
+    "lot_size": 12700,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "SWIGGY": {
+    "symbol": "SWIGGY",
+    "security_id": "27066",
+    "lot_size": 1825,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "TATACONSUM": {
+    "symbol": "TATACONSUM",
+    "security_id": "3432",
+    "lot_size": 550,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "TATAELXSI": {
+    "symbol": "TATAELXSI",
+    "security_id": "3411",
+    "lot_size": 125,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "TATAPOWER": {
+    "symbol": "TATAPOWER",
+    "security_id": "3426",
+    "lot_size": 1450,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "TATASTEEL": {
+    "symbol": "TATASTEEL",
+    "security_id": "3499",
+    "lot_size": 2750,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "TCS": {
+    "symbol": "TCS",
+    "security_id": "11536",
+    "lot_size": 225,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "TECHM": {
+    "symbol": "TECHM",
+    "security_id": "13538",
+    "lot_size": 600,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "TIINDIA": {
+    "symbol": "TIINDIA",
+    "security_id": "312",
+    "lot_size": 200,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "TITAN": {
+    "symbol": "TITAN",
+    "security_id": "3506",
+    "lot_size": 175,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "TMPV": {
+    "symbol": "TMPV",
+    "security_id": "3456",
+    "lot_size": 1600,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "TORNTPHARM": {
+    "symbol": "TORNTPHARM",
+    "security_id": "3518",
+    "lot_size": 125,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "TRENT": {
+    "symbol": "TRENT",
+    "security_id": "1964",
+    "lot_size": 225,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "TVSMOTOR": {
+    "symbol": "TVSMOTOR",
+    "security_id": "8479",
+    "lot_size": 175,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "UJJIVANSFB": {
+    "symbol": "UJJIVANSFB",
+    "security_id": "15228",
+    "lot_size": 8000,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ULTRACEMCO": {
+    "symbol": "ULTRACEMCO",
+    "security_id": "11532",
+    "lot_size": 50,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "UNIONBANK": {
+    "symbol": "UNIONBANK",
+    "security_id": "10753",
+    "lot_size": 4425,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "UNITDSPR": {
+    "symbol": "UNITDSPR",
+    "security_id": "10447",
+    "lot_size": 400,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "UNOMINDA": {
+    "symbol": "UNOMINDA",
+    "security_id": "14154",
+    "lot_size": 550,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "UPL": {
+    "symbol": "UPL",
+    "security_id": "11287",
+    "lot_size": 1355,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "VBL": {
+    "symbol": "VBL",
+    "security_id": "18921",
+    "lot_size": 1275,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "VEDL": {
+    "symbol": "VEDL",
+    "security_id": "3063",
+    "lot_size": 1150,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "VMM": {
+    "symbol": "VMM",
+    "security_id": "27969",
+    "lot_size": 4850,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "VOLTAS": {
+    "symbol": "VOLTAS",
+    "security_id": "3718",
+    "lot_size": 375,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "WAAREEENER": {
+    "symbol": "WAAREEENER",
+    "security_id": "25907",
+    "lot_size": 175,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "WIPRO": {
+    "symbol": "WIPRO",
+    "security_id": "3787",
+    "lot_size": 3000,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "YESBANK": {
+    "symbol": "YESBANK",
+    "security_id": "11915",
+    "lot_size": 31100,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  },
+  "ZYDUSLIFE": {
+    "symbol": "ZYDUSLIFE",
+    "security_id": "7929",
+    "lot_size": 900,
+    "exchange_segment": "NSE_EQ",
+    "instrument_type": "EQUITY",
+    "default_timeframe": "5m"
+  }
+}

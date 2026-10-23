@@ -1,0 +1,1 @@
+import{j as r,I as s}from"./index-C1Mxa2PG.js";import{u as t,P as n}from"./DockApp-DZWJEE-v.js";const c=()=>{const a=t(e=>e.scanner.radar);return r.jsx(n,{title:"Market radar",sources:["scanner"],children:r.jsx(s,{radar:a})})};export{c as default};

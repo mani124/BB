@@ -1,0 +1,1 @@
+import{j as e,Q as n,U as o}from"./index-C1Mxa2PG.js";import{b as r,P as t,s as i,i as d}from"./DockApp-DZWJEE-v.js";const c=()=>{const s=r();return e.jsx(t,{title:"Session",sources:["trades"],children:e.jsx(n,{initialDay:d(),loadSession:o,onOpenTrade:a=>{i({kind:"trade",id:a}),s.openPanel("trades")},onOpenReview:()=>s.openPanel("journal")})})};export{c as default};
