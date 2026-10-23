@@ -283,3 +283,6 @@ export const useDhanAuth = () => {
   }
   return context;
 };
+
+/** Like useDhanAuth but returns null outside a provider (read-only panels, tests). */
+export const useOptionalDhanAuth = () => useContext(DhanAuthContext) ?? null;

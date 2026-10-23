@@ -9,7 +9,7 @@ export const SessionTimeline: React.FC<Props> = ({ events, selectedId, onSelect 
     {events.length === 0 && <p className="p-5 text-sm desk-muted">No recorded session events for this day. Older activity may lack telemetry.</p>}
     <div className="divide-y" style={{ borderColor: 'var(--line)' }}>
       {events.map((event) => <button key={event.id} type="button" onClick={() => onSelect(event.id)}
-        aria-pressed={selectedId === event.id} aria-label={`${event.title} ${event.at}`}
+        aria-pressed={selectedId === event.id}
         className="desk-row !justify-start">
         <time className="desk-num text-sm desk-muted shrink-0 w-[4.5rem] whitespace-nowrap" dateTime={event.at}>{new Date(event.at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}</time>
         <span className="min-w-0"><strong className="block">{event.title}</strong>

@@ -107,7 +107,7 @@ const dayLabel = (iso: string): string => {
 const DAYS_SHOWN = 5;
 const PAGE_SIZE = 25;
 
-const SETUP_SWITCH_ROWS: { key: string; label: string; perIndex?: boolean }[] = [
+export const SETUP_SWITCH_ROWS: { key: string; label: string; perIndex?: boolean }[] = [
   { key: '1', label: 'Setup 1 · BB Squeeze' },
   { key: '2', label: 'Setup 2 · Walking the Bands' },
   { key: '3', label: 'Setup 3 · W/M Reversal' },
@@ -128,14 +128,14 @@ const SETUP_SWITCH_ROWS: { key: string; label: string; perIndex?: boolean }[] = 
 ];
 
 // The T315-F setups also run on one index only, so each can be switched on for Nifty or Bank Nifty independently.
-const INDEX_MODE_OPTIONS: { mode: SetupMode; label: string; title: string }[] = [
+export const INDEX_MODE_OPTIONS: { mode: SetupMode; label: string; title: string }[] = [
   { mode: 'off', label: 'Off', title: 'Never auto-enter this setup' },
   { mode: 'nifty', label: 'Nifty', title: 'Auto-enter on Nifty 50 only' },
   { mode: 'banknifty', label: 'Bank Nifty', title: 'Auto-enter on Nifty Bank only' },
   { mode: 'index', label: 'Both', title: 'Auto-enter on Nifty 50 and Nifty Bank' },
 ];
 
-const SETUP_MODE_OPTIONS: { mode: SetupMode; label: string; title: string }[] = [
+export const SETUP_MODE_OPTIONS: { mode: SetupMode; label: string; title: string }[] = [
   { mode: 'off', label: 'Off', title: 'Never auto-enter this setup' },
   { mode: 'index', label: 'Index', title: 'Auto-enter on indices only' },
   { mode: 'stocks', label: 'Stocks', title: 'Auto-enter on stocks only' },

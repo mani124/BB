@@ -1,0 +1,25 @@
+/* Maps Dockview's CSS variables (names confirmed in docs/DOCKVIEW_NOTES.md) onto our tokens. */
+.dockview-theme-bb {
+  --dv-group-view-background-color: var(--panel);
+  --dv-tabs-and-actions-container-background-color: var(--alt);
+  --dv-tabs-and-actions-container-height: 28px;
+  --dv-tabs-and-actions-container-font-size: var(--fs-sm);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--panel);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--alt);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--panel);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--alt);
+  --dv-activegroup-visiblepanel-tab-color: var(--fg);
+  --dv-activegroup-hiddenpanel-tab-color: var(--muted);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--muted);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--muted);
+  --dv-tab-divider-color: var(--line);
+  --dv-separator-border: var(--line-strong);
+  --dv-paneview-header-border-color: var(--line);
+  --dv-drag-over-background-color: var(--accent-soft);
+  --dv-sash-color: var(--line);
+  --dv-active-sash-color: var(--accent);
+  --dv-tab-font-size: var(--fs-sm);
+  --dv-border-radius: 0px;
+}
+.dockview-theme-bb .dv-active-group { outline: 1px solid var(--accent); outline-offset: -1px; }
+.dockview-theme-bb .dv-active-tab { font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }

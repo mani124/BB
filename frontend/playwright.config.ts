@@ -14,19 +14,23 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:5174',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: process.env.PW_CHROMIUM_PATH ? 'off' : 'retain-on-failure',
     actionTimeout: 10000,
     navigationTimeout: 20000,
   },
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(process.env.PW_CHROMIUM_PATH ? { launchOptions: { executablePath: process.env.PW_CHROMIUM_PATH } } : {}),
+      },
     },
   ],
   webServer: [
     {
-      command: 'cd ../backend && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001',
+      // A throwaway journal keeps e2e runs hermetic: saved layouts, the kill switch and audit rows never leak between runs or into real data.
+      command: 'rm -rf /tmp/bb-e2e && mkdir -p /tmp/bb-e2e && cd ../backend && BB_DB_PATH=/tmp/bb-e2e/trades.db .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001',
       url: 'http://127.0.0.1:8001/api/health',
       reuseExistingServer: true,
       timeout: 30000,

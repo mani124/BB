@@ -1,0 +1,26 @@
+/* Institutional dashboard tokens. Extends the trading-desk palette in index.css; never redefines it. */
+:root {
+  --density-row: 24px;
+  --density-pad: 4px;
+  --focus-ring: 2px solid var(--accent);
+  --stale: #7d5200;
+  --mode-paper: #2a67b8;
+  --mode-paper-fg: #ffffff;
+  --mode-dry: #7d5200;
+  --mode-dry-fill: #fbefd0;
+  --mode-live: #a31b24;
+  --mode-live-fg: #ffffff;
+}
+:root[data-density='comfortable'] {
+  --density-row: 32px;
+  --density-pad: 8px;
+}
+:root.dark {
+  --stale: #f2c14e;
+  --mode-paper: #7f9bff;
+  --mode-paper-fg: #0a1233;
+  --mode-dry: #f2c14e;
+  --mode-dry-fill: #3a2d0c;
+  --mode-live: #ff7684;
+  --mode-live-fg: #2a0508;
+}
